@@ -84,6 +84,15 @@ code { font-family: var(--mono); font-size: .84em; }
 html.js .reveal { opacity: 0; transform: translateY(14px); }
 html.js .reveal.in { opacity: 1; transform: none; }
 
+/* The recovery path, and why it is a separate class rather than just `.in`.
+   `.in` starts a transition, and a transition only advances while the document
+   is being rendered — so on the path that exists precisely BECAUSE nothing is
+   being rendered (a crawler, a prerender, a background tab), adding `.in` moves
+   the class but leaves the computed opacity at 0. Measured: 53/53 elements
+   carried `.in` and the headline still computed to opacity 0. So the recovery
+   states the final value outright and switches the transition off. */
+html.shown .reveal { opacity: 1; transform: none; transition: none; }
+
 @media (prefers-reduced-motion: reduce) {
   html.js .reveal { opacity: 1; transform: none; transition: none; }
   .b-walker { animation: none !important; }
