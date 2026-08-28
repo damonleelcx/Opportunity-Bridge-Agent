@@ -60,6 +60,16 @@ type Config struct {
 	SearchAPIURL    string
 	SearchKeyHeader string
 
+	// InviteCodes gate sign-up. EMPTY MEANS SIGN-UP IS CLOSED, not open: a
+	// deployment that forgets to set them must refuse new accounts, never admit
+	// everybody. See docs/bugfix/2026-08-28-data-exposure-no-ownership-checks.md
+	InviteCodes []string
+	// DemoAccount, if set and existing, adopts the subjects left behind by
+	// visitors from before accounts existed. Empty skips the adoption.
+	DemoAccount string
+	// SignInTTL is how long a sign-in cookie stays valid.
+	SignInTTL time.Duration
+
 	// ReplyLanguage is the language the agent writes its answers in.
 	// "zh-CN" | "en" | "match" (mirror whatever the person wrote in).
 	// A session may override it; see prompt.ContextLayer.
@@ -117,6 +127,9 @@ func Load() (Config, error) {
 		SearchAPIKey:    env("OBA_SEARCH_API_KEY", ""),
 		SearchAPIURL:    env("OBA_SEARCH_API_URL", ""),
 		SearchKeyHeader: env("OBA_SEARCH_KEY_HEADER", ""),
+		InviteCodes:     splitList(env("OBA_INVITE_CODES", "")),
+		DemoAccount:     env("OBA_DEMO_ACCOUNT", ""),
+		SignInTTL:       time.Duration(envInt("OBA_SIGNIN_TTL_DAYS", 30)) * 24 * time.Hour,
 		EnvFile:         envResult,
 	}
 	c.Warnings = append(c.Warnings, envResult.Warnings...)
@@ -207,6 +220,19 @@ func (c Config) IntentEnabled(id string) bool {
 		}
 	}
 	return false
+}
+
+// splitList reads a comma-separated setting. Blank entries are dropped, so a
+// trailing comma cannot become an empty invite code that matches an empty
+// submission.
+func splitList(v string) []string {
+	var out []string
+	for _, p := range strings.Split(v, ",") {
+		if p = strings.TrimSpace(p); p != "" {
+			out = append(out, p)
+		}
+	}
+	return out
 }
 
 func env(k, def string) string {
