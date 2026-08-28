@@ -45,7 +45,6 @@ const state = {
 
 async function boot() {
   setLocale(localStorage.getItem("oba.locale") || "zh-CN");
-  syncPlaceholder();
   $("#locale").value = locale();
   $("#favicon").href = faviconDataURI();
   paintIcons();
@@ -95,7 +94,6 @@ function wire() {
   $("#locale").addEventListener("change", async (e) => {
     setLocale(e.target.value);
     localStorage.setItem("oba.locale", e.target.value);
-    syncPlaceholder(); // setLocale's [data-i18n-ph] sweep just overwrote it
     // The gate's heading, submit and switch labels are set in code, because each
     // is one of two strings depending on the mode, so setLocale's sweep over
     // [data-i18n] does not reach them.
@@ -112,10 +110,6 @@ function wire() {
   $("#newSession").addEventListener("click", () => newSession($("#role").value));
 
   wireDrawers();
-
-  // The narrow placeholder has to be re-applied whenever the viewport crosses
-  // the breakpoint, not only at load: a phone rotated to landscape crosses it.
-  NARROW.addEventListener("change", syncPlaceholder);
   $("#intentPick").addEventListener("change", (e) => { state.pinnedIntent = e.target.value; });
 
   $("#composer").addEventListener("submit", (e) => { e.preventDefault(); send($("#input").value); });
@@ -1055,17 +1049,6 @@ function brandMood(mood) {
   for (const slot of [$("#brandAvatar"), $("#gateAvatar")]) {
     setMood(slot, mood, t("a11y.avatar"));
   }
-}
-
-// The composer's placeholder teaches what to say — worth a full example sentence
-// on a desktop, unreadable on a phone. At 375px it wraps to four lines inside a
-// one-line box and is clipped mid-word, which is the first thing a reader sees.
-// The examples are not lost: the quickstart chips under the greeting carry the
-// same sentences, and they are tappable rather than only readable.
-const NARROW = window.matchMedia("(max-width: 900px)");
-
-function syncPlaceholder() {
-  $("#input").placeholder = t(NARROW.matches ? "composer.placeholderShort" : "composer.placeholder");
 }
 
 // ── drawers ────────────────────────────────────────────────────────────────

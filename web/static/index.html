@@ -176,8 +176,18 @@
 
     <form id="composer" class="composer">
       <div class="input-shell">
+        <!-- Short on purpose, and it has to stay short. A one-row textarea clips
+             whatever its placeholder does not fit on one line, and the sentence
+             that used to be here wrapped to two lines at 1000px and four at
+             375px — clipped mid-word, as the first thing a reader saw.
+             The budget: it must fit one line at 320px with 大字号 (19px) on, which
+             is the narrowest case this supports. Measured there, the box gives
+             188px; "Tell me your situation" needs 178. A translation longer than
+             that clips silently, so measure before changing this string.
+             The examples are not lost — the quickstart chips sit directly above
+             this box, where they are tappable rather than only readable. -->
         <textarea id="input" rows="1" data-i18n-ph="composer.placeholder"
-          placeholder="输入你的问题，阿桥随时在…"></textarea>
+          placeholder="说说你的情况"></textarea>
         <div class="input-actions">
           <button type="button" id="mic" class="icon-btn" data-i18n-title="a11y.voiceIn" title="语音输入">
             <span class="ico" data-icon="mic"></span>

@@ -611,6 +611,10 @@ button, select, textarea, input { font: inherit; color: inherit; }
   /* Room for the home indicator on a phone, and nothing added anywhere else. */
   .composer { padding-bottom: max(12px, env(safe-area-inset-bottom)); }
   .composer-foot { flex-wrap: wrap; gap: 10px 14px; }
+  /* 18px of left padding is desktop generosity. On a phone it is the difference
+     between the placeholder fitting on one line and being clipped, and a
+     one-row textarea clips whatever does not fit. */
+  .input-shell { padding: 8px 8px 8px 12px; gap: 8px; }
 }
 
 @media (prefers-reduced-motion: reduce) {
