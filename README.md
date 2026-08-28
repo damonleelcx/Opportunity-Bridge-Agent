@@ -206,9 +206,19 @@ internal/agent ─── the loop: understand → plan → act → verify → re
 
 ## Runtime
 
-Go 1.24+. No database, no external services beyond the Claude API. One binary
-with the interface embedded; state is an optional JSON snapshot.
-Linux / macOS / Windows.
+Go 1.25+ (the postgres driver requires it). One binary with the interface
+embedded. Linux / macOS / Windows.
+
+State has two backends and exactly one is in use at a time. Set
+`OBA_DATABASE_URL` and it is postgres, which is what a real deployment uses —
+a database configured but unreachable stops the process rather than quietly
+writing somewhere else. Leave it unset and it is the JSON snapshot at
+`OBA_STATE_PATH`, which is what local development uses; leave that unset too
+and the app still works, it just forgets. Reads are served from memory under
+both, so nothing on the request path depends on which one you chose.
+
+Beyond the model API, postgres is the only external service, and only when you
+ask for it.
 
 ## Errors
 

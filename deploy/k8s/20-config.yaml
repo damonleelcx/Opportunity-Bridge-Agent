@@ -10,7 +10,15 @@ data:
   OBA_BACKEND: "deepseek"
   OBA_REPLY_LANGUAGE: "zh-CN"
   OBA_CORPUS_DIR: "/app/data"
-  OBA_STATE_PATH: "/app/state/oba.json"
+  # EMPTY ON PURPOSE, and not simply deleted: the image sets this variable
+  # itself, so removing the line here would leave the image's default in place
+  # and the process would log that it is ignoring a path — every start, forever.
+  # Empty means "there is no file backend", which is the truth: OBA_DATABASE_URL
+  # is set below via its Secret, and postgres is the durable home.
+  #
+  # The volume stays mounted for now. It still holds the pre-migration
+  # oba.json, which is the only copy of this data that predates the database.
+  OBA_STATE_PATH: ""
   # Model ids follow OBA_BACKEND; set explicitly here so a deployment reads what
   # it is actually running without anyone having to know the default table.
   OBA_AGENT_MODEL: "deepseek-v4-pro"
@@ -21,3 +29,8 @@ data:
   OBA_MAX_TOOL_CALLS: "12"
   OBA_MAX_WALLCLOCK_SEC: "150"
   OBA_K_ANONYMITY: "5"
+  # Which search vendor the live lookup uses. Named explicitly rather than left
+  # to the default, for the same reason the model ids are: a deployment should
+  # read what it is actually running. The key itself arrives via the
+  # opportunity-bridge-model Secret; without it the lookup is off and says so.
+  OBA_SEARCH_PROVIDER: "bocha"

@@ -35,11 +35,21 @@ import (
 
 func main() {
 	addr := flag.String("addr", "", "listen address (overrides OBA_ADDR)")
+	importState := flag.String("import-state", "",
+		"one-time migration: copy this JSON state file into OBA_DATABASE_URL and exit. "+
+			"Refuses if the database already holds records.")
 	flag.Parse()
 
 	log := slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: slog.LevelInfo}))
 	slog.SetDefault(log)
 
+	if *importState != "" {
+		if err := runImport(*importState, log); err != nil {
+			log.Error("import failed", "error", err)
+			os.Exit(1)
+		}
+		return
+	}
 	if err := run(*addr, log); err != nil {
 		log.Error("startup failed", "error", err)
 		os.Exit(1)
@@ -59,7 +69,11 @@ func run(addrOverride string, log *slog.Logger) error {
 	if err != nil {
 		return err
 	}
-	st := store.New(cfg.StatePath, log)
+	st, err := openStore(cfg, log)
+	if err != nil {
+		return err
+	}
+	defer st.Close()
 	seedSignals(st, cfg, log)
 	adoptLegacyData(st, cfg, log)
 
@@ -162,6 +176,60 @@ func buildLiveSource(cfg config.Config, log *slog.Logger) (livesource.Chain, err
 	log.Info("live web search enabled",
 		"provider", string(cfg.SearchProvider), "regions_in_directory", dir.Regions())
 	return chain, nil
+}
+
+// runImport moves an existing JSON state file into postgres, once.
+//
+// It lives in the server binary rather than in a tool of its own because the
+// deployed image is distroless and contains exactly one executable: a separate
+// tool could not be run where the data actually is.
+func runImport(path string, log *slog.Logger) error {
+	cfg, err := config.Load()
+	if err != nil {
+		return fmt.Errorf("CONFIG_INVALID: %w", err)
+	}
+	if cfg.DatabaseURL == "" {
+		return errors.New("IMPORT_NO_TARGET: -import-state needs OBA_DATABASE_URL set to the database to import into")
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
+	defer cancel()
+	counts, err := store.ImportFileToPostgres(ctx, path, cfg.DatabaseURL, log)
+	if err != nil {
+		return err
+	}
+	log.Info("import complete", "code", "IMPORT_COMPLETE", "counts", counts.String())
+	return nil
+}
+
+// openStore picks the durable home and says which one it picked.
+//
+// A deployment configured for postgres that cannot reach it does NOT fall back
+// to a file. The fallback would be the more available choice and the wrong one:
+// the service would come up, answer people, and write their records somewhere
+// nobody is backing up, while the operator believed otherwise. Refusing to
+// start is loud, and recoverable.
+func openStore(cfg config.Config, log *slog.Logger) (*store.Store, error) {
+	if cfg.DatabaseURL == "" {
+		log.Info("state backend: json file", "code", "STATE_BACKEND",
+			"path", cfg.StatePath, "durable", cfg.StatePath != "")
+		return store.New(cfg.StatePath, log), nil
+	}
+	if cfg.StatePath != "" {
+		// Both are set, which is what a deployment that switched to postgres
+		// without clearing the old variable looks like. postgres wins, and the
+		// ignored one is named so nobody goes looking in a file that stopped
+		// being written.
+		log.Warn("OBA_STATE_PATH is set and is being IGNORED: OBA_DATABASE_URL takes precedence",
+			"code", "STATE_PATH_IGNORED", "ignored_path", cfg.StatePath)
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 90*time.Second)
+	defer cancel()
+	st, err := store.OpenPostgres(ctx, cfg.DatabaseURL, log)
+	if err != nil {
+		return nil, err
+	}
+	log.Info("state backend: postgres", "code", "STATE_BACKEND", "durable", true)
+	return st, nil
 }
 
 func buildClient(cfg config.Config) (llm.Client, error) {

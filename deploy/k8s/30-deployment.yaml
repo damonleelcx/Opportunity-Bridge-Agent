@@ -59,6 +59,8 @@ spec:
                 name: opportunity-bridge-model
             - secretRef:
                 name: opportunity-bridge-auth
+            - secretRef:
+                name: opportunity-bridge-db
           # Startup is fail-fast on anything that would make the agent dishonest
           # — an unreadable corpus, a missing model credential — so a pod that
           # is Running has a corpus it can cite and a key it can use.
