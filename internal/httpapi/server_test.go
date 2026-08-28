@@ -599,3 +599,42 @@ func TestSignOutRevokesServerSide(t *testing.T) {
 		t.Errorf("status %d: the cookie still works after sign-out, so signing out only cleared one browser", res.StatusCode)
 	}
 }
+
+// The front door and the app are two different documents, and both are served
+// without signing in.
+//
+// `/` used to BE the app, so a stranger who followed a link arrived at an
+// unlabelled password box. It is the landing page now and the app moved to
+// `/app` — which has no file of its own name, so it is a named route rather
+// than something the file server finds. Rename `app.html` and that route 500s
+// while `/` keeps working, which is a failure nobody would notice from the
+// front page. Both must also stay reachable signed-out: a landing page behind
+// a sign-in is a landing page nobody arriving can read.
+// One honest limit: dropping only the bare "GET /app" pattern does NOT turn
+// this red, because Go's mux then redirects /app to the /app/ subtree pattern
+// and the client follows it. What it does catch is the app shell being renamed
+// (500), both patterns going away (404), and `/` drifting back to the app.
+// See docs/14-interface.md, "The landing page".
+func TestTheLandingPageAndTheAppAreBothServedSignedOut(t *testing.T) {
+	ts := newServer(t, llm.Script{})
+
+	for _, tc := range []struct{ path, wants, what string }{
+		{"/", `class="hero"`, "the landing page"},
+		{"/app", `id="gate"`, "the conversational shell"},
+		{"/app/", `id="gate"`, "the conversational shell (trailing slash)"},
+	} {
+		res, err := ts.Client().Get(ts.URL + tc.path)
+		if err != nil {
+			t.Fatalf("get %s: %v", tc.path, err)
+		}
+		body, _ := io.ReadAll(res.Body)
+		res.Body.Close()
+		if res.StatusCode != http.StatusOK {
+			t.Errorf("%s: status %d, want 200 — %s is not being served", tc.path, res.StatusCode, tc.what)
+			continue
+		}
+		if !strings.Contains(string(body), tc.wants) {
+			t.Errorf("%s did not serve %s (looked for %q)", tc.path, tc.what, tc.wants)
+		}
+	}
+}

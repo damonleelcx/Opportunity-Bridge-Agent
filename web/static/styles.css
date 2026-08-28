@@ -13,108 +13,10 @@
  *     label — a window terminal in daylight loses hue before it loses text.
  */
 
-/* Light is the default, and it is the default HERE rather than only in app.js.
-   A theme decided by a script paints the other one first on every load, and the
-   people this is for open it on borrowed and public machines whose OS setting is
-   not theirs. So bare :root — what the document has before any script runs, and
-   what it keeps unless somebody chooses otherwise — is light. Following the OS
-   is now an explicit opt-in and carries data-theme="system".
-   Why, and the encoding change it forced: docs/14-interface.md, "Theme". */
-:root, :root[data-theme="light"] { color-scheme: light; }
-:root[data-theme="dark"] { color-scheme: dark; }
-:root[data-theme="system"] { color-scheme: light dark; }
-
-:root {
-
-  --bg: #f4f6fa;
-  --surface: #ffffff;
-  --surface-2: #f8fafc;
-  --line: #e2e8f0;
-  --line-soft: #f1f5f9;
-
-  --brand: #0284c7;
-  --brand-hover: #0369a1;
-  --brand-soft: #f0f9ff;
-  --brand-border: #e0f2fe;
-  --brand-ink: #ffffff;
-
-  --ink-900: #0f172a;
-  --ink-700: #1e293b;
-  --ink-500: #64748b;
-  --ink-400: #94a3b8;
-
-  --ok: #059669; --ok-soft: #ecfdf5; --ok-border: #d1fae5;
-  --warn: #b45309; --warn-soft: #fffbeb; --warn-border: #fde68a;
-  --stop: #dc2626; --stop-soft: #fef2f2; --stop-border: #fecaca;
-
-  --av-bg: #e0f2fe; --av-glow: #ffffff; --av-ink: #0284c7; --av-water: #7dd3fc;
-
-  --r-xs: 8px; --r-sm: 12px; --r: 16px; --r-lg: 22px;
-  --fs: 15px;
-  --mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
-  --shadow-sm: 0 1px 2px rgba(15, 23, 42, .05);
-  --shadow: 0 4px 14px rgba(15, 23, 42, .07);
-}
-
-/* Dark tokens live in one block, applied twice: once for the OS preference — and
-   only for readers who asked to follow it — and once for an explicit dark choice.
-   Defining a colour ONLY inside a media query is how a theme toggle ends up
-   half-working. */
-@media (prefers-color-scheme: dark) {
-  :root[data-theme="system"] {
-    --bg: #0b1017;
-    --surface: #111823;
-    --surface-2: #161f2c;
-    --line: #24303f;
-    --line-soft: #1b2532;
-
-    --brand: #38bdf8;
-    --brand-hover: #7dd3fc;
-    --brand-soft: #10202e;
-    --brand-border: #1c3a4f;
-    --brand-ink: #06131d;
-
-    --ink-900: #e8eef6;
-    --ink-700: #cdd7e3;
-    --ink-500: #93a1b3;
-    --ink-400: #6c7c90;
-
-    --ok: #34d399; --ok-soft: #0e2a20; --ok-border: #1c4636;
-    --warn: #fbbf24; --warn-soft: #2a2110; --warn-border: #4a3a12;
-    --stop: #f87171; --stop-soft: #2b1414; --stop-border: #4d2020;
-
-    --av-bg: #14293b; --av-glow: #1b3448; --av-ink: #7dd3fc; --av-water: #3c5f7d;
-    --shadow-sm: 0 1px 2px rgba(0, 0, 0, .4);
-    --shadow: 0 6px 18px rgba(0, 0, 0, .45);
-  }
-}
-
-:root[data-theme="dark"] {
-  --bg: #0b1017;
-  --surface: #111823;
-  --surface-2: #161f2c;
-  --line: #24303f;
-  --line-soft: #1b2532;
-
-  --brand: #38bdf8;
-  --brand-hover: #7dd3fc;
-  --brand-soft: #10202e;
-  --brand-border: #1c3a4f;
-  --brand-ink: #06131d;
-
-  --ink-900: #e8eef6;
-  --ink-700: #cdd7e3;
-  --ink-500: #93a1b3;
-  --ink-400: #6c7c90;
-
-  --ok: #34d399; --ok-soft: #0e2a20; --ok-border: #1c4636;
-  --warn: #fbbf24; --warn-soft: #2a2110; --warn-border: #4a3a12;
-  --stop: #f87171; --stop-soft: #2b1414; --stop-border: #4d2020;
-
-  --av-bg: #14293b; --av-glow: #1b3448; --av-ink: #7dd3fc; --av-water: #3c5f7d;
-  --shadow-sm: 0 1px 2px rgba(0, 0, 0, .4);
-  --shadow: 0 6px 18px rgba(0, 0, 0, .45);
-}
+/* The tokens — colours, radii, the type scale and all three themes — live in
+   tokens.css, because the landing page at `/` paints from the same set, and a
+   colour defined in two files is a colour that drifts. This document links
+   tokens.css first; everything below here is the app shell's own layout. */
 
 body.large-text { --fs: 19px; }
 
@@ -127,8 +29,7 @@ body {
   display: flex;
   background: var(--bg);
   color: var(--ink-700);
-  font: var(--fs)/1.65 -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC",
-        "Hiragino Sans GB", "Noto Sans SC", "Microsoft YaHei", Roboto, sans-serif;
+  font: var(--fs)/1.65 var(--font);
   -webkit-font-smoothing: antialiased;
 }
 
@@ -517,35 +418,9 @@ button, select, textarea, input { font: inherit; color: inherit; }
 }
 .mascot-line { margin: 14px 0 0; font-size: .8em; line-height: 1.7; color: var(--ink-500); font-style: italic; }
 
-/* ── 阿桥 ──────────────────────────────────────────────────────────────── */
-.oba-avatar { width: 100%; height: 100%; display: block; }
-.av-bg { fill: var(--av-bg); }
-.av-glow { fill: var(--av-glow); opacity: .55; }
-.av-ink { fill: var(--av-ink); }
-.av-line { fill: none; stroke: var(--av-ink); stroke-width: 2.6; stroke-linecap: round; stroke-linejoin: round; }
-.av-thin { stroke: var(--av-water); stroke-width: 1.8; }
-.av-water { opacity: .8; }
-.av-mouth { transition: d .18s ease; }
-.av-walker { fill: var(--av-ink); opacity: 0; }
-.av-ears { opacity: 0; stroke: var(--av-ink); }
-
-.mood-thinking .av-walker { opacity: 1; animation: av-walk 1.9s ease-in-out infinite; }
-@keyframes av-walk {
-  0% { transform: translateX(0); opacity: 0 }
-  12% { opacity: 1 } 88% { opacity: 1 }
-  100% { transform: translateX(22px); opacity: 0 }
-}
-.mood-listening .av-ears { opacity: 1; animation: av-listen 1.4s ease-in-out infinite; }
-@keyframes av-listen { 0%,100% { opacity: .35 } 50% { opacity: 1 } }
-
-/* It does not smile while refusing; the arch flattens instead. The ink stays its
-   normal colour — greying the mark reads as "broken", and it is not broken. */
-.mood-serious .av-bg { fill: var(--surface-2); }
-.mood-serious .av-glow { opacity: .3; }
+/* 阿桥's face is in avatar.css — the landing page draws the same mark. */
 
 @media (prefers-reduced-motion: reduce) {
-  .mood-thinking .av-walker { opacity: 1; animation: none; transform: translateX(12px); }
-  .mood-listening .av-ears { opacity: 1; animation: none; }
   .ocard, .btn, .icon-btn { transition: none; }
 }
 

@@ -313,3 +313,162 @@ func section(t *testing.T, src, decl string) string {
 	}
 	return src[start : start+len(decl)+end]
 }
+
+// ── the landing page at `/` ────────────────────────────────────────────────
+//
+// Three fences, and they share a shape: each guards a failure that is invisible
+// to whoever introduces it and visible only to a reader they will never meet.
+
+// Every string the landing page asks for exists in both languages.
+//
+// A missing key does not throw. `t()` falls back to the key itself, so the front
+// page renders "home.hero.title" as its headline — in one language only, which
+// is exactly the language the author was not reading. This is the first page a
+// stranger sees, and half of them read the other column of that table.
+//
+// The check is structural rather than semantic: it splits STRINGS into its two
+// locale blocks and asserts the key appears in each. It cannot tell whether the
+// translation is any good, only that one is there — which is the failure worth
+// catching automatically.
+func TestLandingPageStringsExistInBothLanguages(t *testing.T) {
+	html := asset(t, "index.html")
+	i18n := asset(t, "i18n.js")
+
+	zh, en := localeBlocks(t, i18n)
+
+	keys := regexp.MustCompile(`data-i18n(?:-aria|-title|-ph)?="([^"]+)"`).FindAllStringSubmatch(html, -1)
+	if len(keys) == 0 {
+		t.Fatal("the landing page carries no data-i18n keys; this fence no longer guards anything")
+	}
+	seen := map[string]bool{}
+	for _, m := range keys {
+		key := m[1]
+		if seen[key] {
+			continue
+		}
+		seen[key] = true
+		quoted := `"` + key + `":`
+		if !strings.Contains(zh, quoted) {
+			t.Errorf("%s has no zh-CN string: the landing page will render the key itself", key)
+		}
+		if !strings.Contains(en, quoted) {
+			t.Errorf("%s has no English string: the landing page will render the key itself", key)
+		}
+	}
+}
+
+// The Chinese written into the landing page's markup is the Chinese in the table.
+//
+// The page ships its default language as real text in the HTML, so it reads
+// correctly before any script runs. That leaves two copies of every Chinese
+// string, and editing only the markup produces a page that looks right until
+// somebody touches the language control — at which point setLocale sweeps
+// textContent and the older wording from the table snaps back over the newer
+// wording on screen. Nothing throws; it just quietly un-edits itself.
+//
+// Escaped or multi-line values are skipped rather than guessed at: this compares
+// literal source text, and a false red here would be worse than a small gap.
+func TestLandingPageMarkupAgreesWithTheChineseTable(t *testing.T) {
+	html := asset(t, "index.html")
+	zh, _ := localeBlocks(t, asset(t, "i18n.js"))
+
+	node := regexp.MustCompile(`data-i18n="(home\.[^"]+)"[^>]*>([^<]*)<`)
+	matches := node.FindAllStringSubmatch(html, -1)
+	if len(matches) == 0 {
+		t.Fatal("no landing-page text nodes found; this fence no longer guards anything")
+	}
+	checked := 0
+	for _, m := range matches {
+		key, text := m[1], m[2]
+		if strings.ContainsAny(text, "\"\\\n") || text == "" {
+			continue
+		}
+		checked++
+		if !strings.Contains(zh, `"`+key+`": "`+text+`",`) {
+			t.Errorf("%s reads %q in the markup but the zh-CN table says something else; "+
+				"the first language switch will replace what the page shows", key, text)
+		}
+	}
+	if checked == 0 {
+		t.Fatal("every text node was skipped; this fence checked nothing")
+	}
+	t.Logf("%d landing-page text nodes matched the zh-CN table", checked)
+}
+
+// The landing page loads nothing over the network.
+//
+// The whole deployability claim — that this binary runs at a service window on a
+// closed network — rests on it. A CDN stylesheet, a Google font or a remote image
+// works perfectly on the machine of whoever added it and leaves the people this
+// is for looking at unstyled text, with no error to tell them why. The mockup
+// this was built from does load all three; see docs/14-interface.md.
+//
+// Links a person clicks are fine and are not what this checks: it looks only at
+// subresources the document fetches on its own.
+func TestLandingPageFetchesNothingFromTheNetwork(t *testing.T) {
+	html := asset(t, "index.html")
+
+	for _, pat := range []struct{ re, what string }{
+		{`<link[^>]+href="(?:https?:)?//`, "a stylesheet or icon from another origin"},
+		{`\ssrc="(?:https?:)?//`, "a script or image from another origin"},
+		{`@import\s+url\(\s*["']?(?:https?:)?//`, "an imported stylesheet from another origin"},
+	} {
+		if regexp.MustCompile(pat.re).MatchString(html) {
+			t.Errorf("the landing page loads %s: it will render unstyled on a closed network", pat.what)
+		}
+	}
+	for _, css := range []string{"home.css", "tokens.css", "avatar.css"} {
+		if strings.Contains(asset(t, css), "://") {
+			t.Errorf("%s references another origin", css)
+		}
+	}
+}
+
+// Nothing on the landing page is hidden unless the script is known to be running.
+//
+// The reveal-on-scroll animation hides sections and an observer puts them back.
+// If the hiding rule is ever written without the `html.js` guard, then a reader
+// whose script was blocked, delayed or broken gets a column of empty space —
+// and the author, whose script ran, sees nothing wrong. `js` is stamped on
+// <html> by an inline script in the head, so it is only ever present when the
+// script actually arrived.
+func TestLandingPageHidesNothingWithoutJavaScript(t *testing.T) {
+	css := asset(t, "home.css")
+
+	found := false
+	for _, line := range strings.Split(css, "\n") {
+		if !strings.Contains(line, ".reveal") || !strings.Contains(line, "opacity: 0") {
+			continue
+		}
+		found = true
+		if !strings.HasPrefix(strings.TrimSpace(line), "html.js ") {
+			t.Errorf("`%s` hides content without the html.js guard: a reader whose script "+
+				"never arrives gets a blank page", strings.TrimSpace(line))
+		}
+	}
+	if !found {
+		t.Skip("nothing on the landing page is hidden for the animation; this fence has nothing to guard")
+	}
+	if !strings.Contains(asset(t, "index.html"), `classList.add("js")`) {
+		t.Error(`nothing stamps "js" on <html>, so html.js .reveal never matches and the ` +
+			`animation can never reveal anything`)
+	}
+}
+
+// localeBlocks splits the STRINGS table into its zh-CN half and its English
+// half. Structural, on purpose: the alternative is executing the module, and
+// there is no JavaScript runtime in this test suite.
+func localeBlocks(t *testing.T, i18n string) (zh, en string) {
+	t.Helper()
+	zhStart := strings.Index(i18n, `"zh-CN": {`)
+	enStart := strings.Index(i18n, "\n  en: {")
+	if zhStart < 0 || enStart < 0 || enStart < zhStart {
+		t.Fatal("the STRINGS table no longer has a zh-CN block followed by an en block; " +
+			"this fence cannot tell the two languages apart any more")
+	}
+	enEnd := strings.Index(i18n[enStart:], "\n};")
+	if enEnd < 0 {
+		t.Fatal("could not find the end of the STRINGS table")
+	}
+	return i18n[zhStart:enStart], i18n[enStart : enStart+enEnd]
+}
