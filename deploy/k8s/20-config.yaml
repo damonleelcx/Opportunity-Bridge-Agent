@@ -34,3 +34,18 @@ data:
   # read what it is actually running. The key itself arrives via the
   # opportunity-bridge-model Secret; without it the lookup is off and says so.
   OBA_SEARCH_PROVIDER: "bocha"
+  # Read-aloud voice. Neither of these is a secret: the voice id is the public
+  # model id from its fish.audio URL, and the backbone is a published name. The
+  # key itself arrives via the opportunity-bridge-model Secret; without it the
+  # browser reads answers in its own voice and startup says so.
+  #
+  # The voice is "cute japanese girl". Named here rather than defaulted in code
+  # for the same reason the model ids are: a deployment should be readable as
+  # what it is actually running.
+  OBA_TTS_VOICE_ID: "df5c6c19dca944918dcbd6f1368fd02f"
+  # s2.1-pro-free bills nothing. It is ALSO the backbone whose published terms
+  # say requests may be used to improve model quality, and what this sends is the
+  # answer — a person's city, their employment situation, the benefit they are
+  # claiming. Switching to s2.1-pro costs about $0.018 an answer and is the lever
+  # if that trade stops being acceptable. See docs/17-read-aloud.md.
+  OBA_TTS_MODEL: "s2.1-pro-free"
