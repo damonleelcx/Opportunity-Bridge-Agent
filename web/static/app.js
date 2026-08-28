@@ -6,10 +6,11 @@
 //   1. No CDN. The mockup loads Tailwind, Font Awesome and Google Fonts over the
 //      network. This binary serves every byte it needs, because a service window
 //      on a closed network is a real deployment target.
-//   2. The mascot is the inline 阿桥 mark, not a hosted illustration. It keeps
-//      the mood states — in particular `serious`, which stops it smiling while
-//      the agent is refusing — and it adds no external dependency. Dropping an
-//      image into web/static/ and pointing at it is a one-line change.
+//   2. Two faces, on purpose. The illustrated 阿桥 greets from the overview panel
+//      and the sign-in gate, served out of web/static/ rather than the mockup's
+//      storage bucket, so rule 1 still holds. The inline mark (avatar.js) is what
+//      sits beside every message, because it is the one with the mood states — in
+//      particular `serious`, which stops it smiling while the agent is refusing.
 //
 // The interface still shows its machinery, but no longer in the way: tool calls,
 // advisory findings and the trace fold into one collapsed "系统运行详情" per turn,
@@ -88,8 +89,9 @@ function wire() {
   $("#locale").addEventListener("change", async (e) => {
     setLocale(e.target.value);
     localStorage.setItem("oba.locale", e.target.value);
-    // The gate's submit and switch labels are set in code, so setLocale's sweep
-    // over [data-i18n] does not reach them.
+    // The gate's heading, submit and switch labels are set in code, because each
+    // is one of two strings depending on the mode, so setLocale's sweep over
+    // [data-i18n] does not reach them.
     if (!$("#gate").hidden) setGateMode(state.gateMode);
     paintIcons();
     buildRoleSelect();
@@ -1035,6 +1037,11 @@ function setGateMode(mode) {
   $("#gateInviteField").hidden = !up;
   $("#gateInvite").required = up;
   $("#gatePass").setAttribute("autocomplete", up ? "new-password" : "current-password");
+  // The heading says which of the two things this form is. It used to be pinned
+  // to "先登录" by data-i18n, so somebody who tapped 去注册 was still being told to
+  // sign in while filling in an invite code — the one screen where being sure
+  // what you are doing matters most, since the wrong guess loses what you typed.
+  $("#gateTitle").textContent = t(up ? "gate.titleSignUp" : "gate.title");
   $("#gateSubmit").textContent = t(up ? "gate.signUp" : "gate.signIn");
   $("#gateSwitch").textContent = t(up ? "gate.toSignIn" : "gate.toSignUp");
   gateError("");
