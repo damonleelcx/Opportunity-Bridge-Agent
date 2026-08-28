@@ -1,0 +1,12 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: opportunity-bridge
+  namespace: opportunity-bridge
+spec:
+  selector:
+    app.kubernetes.io/name: opportunity-bridge
+  ports:
+    - name: http
+      port: 8787
+      targetPort: http

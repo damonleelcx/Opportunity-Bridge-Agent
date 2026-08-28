@@ -1,0 +1,23 @@
+# Every knob the process reads. Nothing here is a secret; the model credential
+# comes from the ExternalSecret next door.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: opportunity-bridge-config
+  namespace: opportunity-bridge
+data:
+  OBA_ADDR: ":8787"
+  OBA_BACKEND: "deepseek"
+  OBA_REPLY_LANGUAGE: "zh-CN"
+  OBA_CORPUS_DIR: "/app/data"
+  OBA_STATE_PATH: "/app/state/oba.json"
+  # Model ids follow OBA_BACKEND; set explicitly here so a deployment reads what
+  # it is actually running without anyone having to know the default table.
+  OBA_AGENT_MODEL: "deepseek-v4-pro"
+  OBA_CLASSIFIER_MODEL: "deepseek-v4-flash"
+  # Budgets. Lower than the local defaults on purpose: this endpoint is public,
+  # and every iteration is somebody's tokens.
+  OBA_MAX_ITERATIONS: "6"
+  OBA_MAX_TOOL_CALLS: "12"
+  OBA_MAX_WALLCLOCK_SEC: "150"
+  OBA_K_ANONYMITY: "5"

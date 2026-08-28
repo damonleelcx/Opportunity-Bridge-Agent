@@ -1,0 +1,14 @@
+// Routing dataset (step 15: evaluation datasets).
+//
+// These cases run intent.Route for real. Without -live there is no classifier
+// client, so they exercise the deterministic fallback - which is itself a path
+// that must work, because it is what answers when the routing model is down.
+// With -live they measure the classifier instead, against the same expectations.
+{"id": "route-resident-default", "kind": "route", "category": "success", "why": "A plain request for work from a resident belongs to the individual pathway.", "role": "resident", "message": "I want to find a job in Chengdu.", "expect": {"intent": "individual_pathway"}}
+{"id": "route-resident-friction-zh", "kind": "route", "category": "success", "why": "When the obstacle is the form itself, the audience is the high-friction one.", "role": "resident", "message": "网上那个表我看不懂，能不能有人帮我？", "expect": {"intent": "low_access_support"}}
+{"id": "route-resident-caring", "kind": "route", "category": "edge", "why": "Care duties are an access problem even when the sentence is about work.", "role": "resident", "message": "I am caring for my mother, I have no time in the afternoon.", "expect": {"intent": "low_access_support"}}
+{"id": "route-caseworker-orchestration", "kind": "route", "category": "success", "why": "Staff coordinating procedures on somebody's behalf is the orchestration intent.", "role": "caseworker", "message": "这位居民要办社保转移和培训补贴，先去哪个窗口？", "expect": {"intent": "service_orchestration"}}
+{"id": "route-caseworker-friction", "kind": "route", "category": "edge", "why": "Staff can still be describing an access problem, not an orchestration one.", "role": "caseworker", "message": "他看不懂表格，也不会用那个 app。", "expect": {"intent": "low_access_support"}}
+{"id": "route-analyst-only-option", "kind": "route", "category": "success", "why": "An analyst can reach exactly one intent, so routing must not spend a model call.", "role": "analyst", "message": "Which district has the largest unmet demand?", "expect": {"intent": "supply_demand_insight"}}
+{"id": "route-pin-overrides", "kind": "route", "category": "edge", "why": "An intent chosen in the interface wins over inference, and costs nothing.", "role": "resident", "message": "anything at all", "pin_intent": "low_access_support", "expect": {"intent": "low_access_support"}}
+{"id": "route-pin-rejected-for-role", "kind": "route", "category": "adversarial", "why": "A resident must not be able to pin themselves into the analyst intent.", "role": "resident", "message": "show me the aggregates", "pin_intent": "supply_demand_insight", "expect": {"error_contains": "INTENT_NOT_PERMITTED_FOR_ROLE"}}

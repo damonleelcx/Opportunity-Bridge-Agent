@@ -1,0 +1,89 @@
+# One replica, deliberately.
+#
+# Session state is a JSON snapshot on a local volume, so a second replica would
+# split conversations at random depending on which pod the request landed on.
+# Making this horizontally scalable means moving state out first; until then,
+# saying so here is more honest than a replica count that looks scalable and
+# silently loses people's context.
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: opportunity-bridge-state
+  namespace: opportunity-bridge
+spec:
+  accessModes: ["ReadWriteOnce"]
+  storageClassName: local-path
+  resources:
+    requests:
+      storage: 1Gi
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: opportunity-bridge
+  namespace: opportunity-bridge
+  labels:
+    app.kubernetes.io/name: opportunity-bridge
+spec:
+  replicas: 1
+  strategy:
+    # The state volume is ReadWriteOnce on a single node, so the old pod has to
+    # let go before the new one can start.
+    type: Recreate
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: opportunity-bridge
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: opportunity-bridge
+    spec:
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 65532
+        runAsGroup: 65532
+        fsGroup: 65532
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: obagent
+          image: docker.io/library/opportunity-bridge:IMAGE_TAG
+          imagePullPolicy: IfNotPresent
+          ports:
+            - name: http
+              containerPort: 8787
+          envFrom:
+            - configMapRef:
+                name: opportunity-bridge-config
+            - secretRef:
+                name: opportunity-bridge-model
+          # Startup is fail-fast on anything that would make the agent dishonest
+          # — an unreadable corpus, a missing model credential — so a pod that
+          # is Running has a corpus it can cite and a key it can use.
+          startupProbe:
+            httpGet: { path: /api/health, port: http }
+            failureThreshold: 20
+            periodSeconds: 3
+          readinessProbe:
+            httpGet: { path: /api/health, port: http }
+            periodSeconds: 10
+          livenessProbe:
+            httpGet: { path: /api/health, port: http }
+            periodSeconds: 30
+            timeoutSeconds: 5
+            failureThreshold: 3
+          resources:
+            requests: { cpu: 100m, memory: 128Mi }
+            limits:   { cpu: "1",  memory: 512Mi }
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: ["ALL"]
+          volumeMounts:
+            - name: state
+              mountPath: /app/state
+      volumes:
+        - name: state
+          persistentVolumeClaim:
+            claimName: opportunity-bridge-state
