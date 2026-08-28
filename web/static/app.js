@@ -45,6 +45,7 @@ const state = {
 
 async function boot() {
   setLocale(localStorage.getItem("oba.locale") || "zh-CN");
+  syncPlaceholder();
   $("#locale").value = locale();
   $("#favicon").href = faviconDataURI();
   paintIcons();
@@ -94,6 +95,7 @@ function wire() {
   $("#locale").addEventListener("change", async (e) => {
     setLocale(e.target.value);
     localStorage.setItem("oba.locale", e.target.value);
+    syncPlaceholder(); // setLocale's [data-i18n-ph] sweep just overwrote it
     // The gate's heading, submit and switch labels are set in code, because each
     // is one of two strings depending on the mode, so setLocale's sweep over
     // [data-i18n] does not reach them.
@@ -108,6 +110,12 @@ function wire() {
   });
   $("#role").addEventListener("change", (e) => newSession(e.target.value));
   $("#newSession").addEventListener("click", () => newSession($("#role").value));
+
+  wireDrawers();
+
+  // The narrow placeholder has to be re-applied whenever the viewport crosses
+  // the breakpoint, not only at load: a phone rotated to landscape crosses it.
+  NARROW.addEventListener("change", syncPlaceholder);
   $("#intentPick").addEventListener("change", (e) => { state.pinnedIntent = e.target.value; });
 
   $("#composer").addEventListener("submit", (e) => { e.preventDefault(); send($("#input").value); });
@@ -243,7 +251,10 @@ async function refreshSessions() {
     // instead of being cut to a fixed character count with no way to read it.
     b.title = label;
     b.innerHTML = `<span class="ico">${icon("chat")}</span><span class="session-label">${esc(label)}</span>`;
-    b.addEventListener("click", () => openSession(s.id));
+    // Picking a conversation is the drawer's whole purpose, so it closes
+    // itself. Leaving it open would park the list on top of the answer the
+    // reader just asked to see.
+    b.addEventListener("click", () => { closeDrawers(); openSession(s.id); });
     box.append(b);
   }
   if (list.length > shown.length) {
@@ -1044,6 +1055,69 @@ function brandMood(mood) {
   for (const slot of [$("#brandAvatar"), $("#gateAvatar")]) {
     setMood(slot, mood, t("a11y.avatar"));
   }
+}
+
+// The composer's placeholder teaches what to say — worth a full example sentence
+// on a desktop, unreadable on a phone. At 375px it wraps to four lines inside a
+// one-line box and is clipped mid-word, which is the first thing a reader sees.
+// The examples are not lost: the quickstart chips under the greeting carry the
+// same sentences, and they are tappable rather than only readable.
+const NARROW = window.matchMedia("(max-width: 900px)");
+
+function syncPlaceholder() {
+  $("#input").placeholder = t(NARROW.matches ? "composer.placeholderShort" : "composer.placeholder");
+}
+
+// ── drawers ────────────────────────────────────────────────────────────────
+//
+// On a narrow screen the sidebar and 我的概览 sit off-canvas and slide over the
+// conversation. Both keep their markup and their desktop layout; only where they
+// are positioned changes, which is why this is a class on <body> rather than a
+// second set of components.
+//
+// One at a time. Two drawers open at once on a 375px screen leaves a sliver of
+// conversation between them, and the scrim would then have to belong to both.
+const DRAWERS = {
+  nav: { cls: "nav-open", btn: "#navToggle" },
+  overview: { cls: "overview-open", btn: "#overviewToggle" },
+};
+
+function openDrawer(name) {
+  closeDrawers({ keepFocus: true });
+  const d = DRAWERS[name];
+  document.body.classList.add(d.cls);
+  $(d.btn).setAttribute("aria-expanded", "true");
+  $("#scrim").hidden = false;
+}
+
+// keepFocus is for the close that happens on the way to opening the other one:
+// pulling focus back to a button that is about to be superseded is worse than
+// leaving it where it is.
+function closeDrawers({ keepFocus = false } = {}) {
+  let closed = null;
+  for (const [name, d] of Object.entries(DRAWERS)) {
+    if (document.body.classList.contains(d.cls)) closed = name;
+    document.body.classList.remove(d.cls);
+    $(d.btn).setAttribute("aria-expanded", "false");
+  }
+  $("#scrim").hidden = true;
+  if (closed && !keepFocus) $(DRAWERS[closed].btn).focus();
+}
+
+function wireDrawers() {
+  for (const [name, d] of Object.entries(DRAWERS)) {
+    $(d.btn).addEventListener("click", () => {
+      const open = document.body.classList.contains(d.cls);
+      if (open) closeDrawers(); else openDrawer(name);
+    });
+  }
+  $("#scrim").addEventListener("click", () => closeDrawers());
+  // Escape is the only way out for somebody on a keyboard who opened a drawer
+  // and does not want to tab through all of it to reach the scrim, which is not
+  // focusable and should not be.
+  document.addEventListener("keydown", (e) => {
+    if (e.key === "Escape") closeDrawers();
+  });
 }
 
 // Three states, not two: light (the default), dark, and following the OS.

@@ -19,6 +19,8 @@ const P = {
   user: '<path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/>',
   route: '<circle cx="6" cy="19" r="3"/><circle cx="18" cy="5" r="3"/><path d="M9 19h5a4 4 0 0 0 0-8h-4a4 4 0 0 1 0-8h5"/>',
   arrow: '<path d="m9 18 6-6-6-6"/>',
+  menu: '<path d="M3 6h18M3 12h18M3 18h18"/>',
+  close: '<path d="M18 6 6 18M6 6l12 12"/>',
   eye: '<path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/>',
   // The struck-through eye, not a closed one: at 16px a closed eye reads as a
   // smudge, while the stroke across it stays legible as "not shown".
