@@ -8,6 +8,7 @@ import (
 
 	"github.com/damonleelcx/Opportunity-Bridge-Agent/internal/domain"
 	"github.com/damonleelcx/Opportunity-Bridge-Agent/internal/guardrail"
+	"github.com/damonleelcx/Opportunity-Bridge-Agent/internal/livesource"
 	"github.com/damonleelcx/Opportunity-Bridge-Agent/internal/obs"
 	"github.com/damonleelcx/Opportunity-Bridge-Agent/internal/retrieval"
 	"github.com/damonleelcx/Opportunity-Bridge-Agent/internal/store"
@@ -162,7 +163,11 @@ func profileUpsert() Tool {
 func opportunitySearch() Tool {
 	return Tool{
 		Name: "opportunity_search",
-		Description: "Search real listings: jobs, training courses, entrepreneurship support and subsidies. " +
+		Description: "Search jobs, training courses, entrepreneurship support and subsidies. " +
+			"When the asked city has no named local listings, this ALSO looks the city up outside the corpus " +
+			"and returns live_results: the city's own official public-employment-service site, and — where a " +
+			"search backend is configured — current leads found on the web. Live results are marked and carry " +
+			"a caveat; present them as leads to check, with their URL, never as verified openings. " +
 			"THE INDEX IS IN CHINESE — search with Chinese keywords (数控, 养老护理, 培训补贴, 社保), " +
 			"not English ones. Results come in two scopes: records with scope \"national\" apply anywhere in " +
 			"the country and are returned whatever city is asked for; the rest are local listings for cities " +
@@ -213,8 +218,32 @@ func opportunitySearch() Tool {
 					"why_this_ranked": h.Reasons, "matched_terms": h.Matched, "score": h.Score,
 				})
 			}
+			// When the corpus has no NAMED local listing for this city, look the
+			// city up outside it. The national framework already applies
+			// everywhere; what was missing was anywhere concrete to go.
+			var live []livesource.Result
+			var liveErrs []error
+			askedCity := retrieval.NormalizeCity(city)
+			if askedCity != "" && countLocal(results) == 0 && env.Live != nil {
+				if chain, ok := env.Live.(livesource.Chain); ok {
+					live, liveErrs = chain.LookupAll(ctx, livesource.Query{
+						City: askedCity, Keyword: argStr(a, "query"), Limit: 5,
+					})
+				} else {
+					r, err := env.Live.Lookup(ctx, livesource.Query{
+						City: askedCity, Keyword: argStr(a, "query"), Limit: 5,
+					})
+					live = r
+					if err != nil {
+						liveErrs = append(liveErrs, err)
+					}
+				}
+				env.Rec.Info(obs.RetrievalQueried, "live lookup",
+					map[string]any{"city": askedCity, "results": len(live), "failures": len(liveErrs)})
+			}
+
 			outcome := "matched"
-			if len(hits) == 0 {
+			if len(hits) == 0 && len(live) == 0 {
 				outcome = "no_match"
 			}
 			sig := &domain.DemandSignal{
@@ -223,7 +252,17 @@ func opportunitySearch() Tool {
 				Cohort: firstCohort(q.Cohorts), Outcome: outcome,
 			}
 			var findings []guardrail.Finding
-			if len(hits) == 0 {
+			for _, e := range liveErrs {
+				// A source that failed is not a source that found nothing. Saying
+				// so keeps "there is nothing" from covering for "I could not look".
+				findings = append(findings, guardrail.Finding{
+					Guard: "livesource", Code: "LIVE_LOOKUP_FAILED", Severity: guardrail.Advisory,
+					Message: "A live lookup failed: " + e.Error(),
+					Remedy: "Say that the live check could not run, so the absence of local listings is " +
+						"unconfirmed rather than established. The national programmes still stand.",
+				})
+			}
+			if len(hits) == 0 && len(live) == 0 {
 				findings = append(findings, guardrail.Finding{
 					Guard: "coverage", Code: "NO_RESULTS", Severity: guardrail.Advisory,
 					Message: fmt.Sprintf("No named employer or course in this corpus for %q. "+
@@ -239,7 +278,8 @@ func opportunitySearch() Tool {
 			return Result{
 				Content: map[string]any{
 					"results": results, "count": len(results),
-					"asked_city":                 retrieval.NormalizeCity(city),
+					"asked_city":                 askedCity,
+					"live_results":               live,
 					"cities_with_local_listings": env.Corpus.Cities(),
 					"national_hotlines":          map[string]string{"人社": "12333", "政务": "12345"},
 					"note": "Only these records may be named in the answer; cite each by id. " +
@@ -249,9 +289,12 @@ func opportunitySearch() Tool {
 						"who asked about a different city.",
 				},
 				Meta: map[string]any{
-					"result_count": len(results),
-					"asked_city":   retrieval.NormalizeCity(city),
-					"local_hits":   countLocal(results),
+					"result_count":     len(results) + len(live),
+					"asked_city":       askedCity,
+					"asked_city_names": retrieval.CityNames(askedCity),
+					"local_hits":       countLocal(results),
+					"live_ids":         liveIDs(live),
+					"live_failures":    len(liveErrs),
 				},
 				Findings: findings,
 				Signal:   sig,
@@ -1111,6 +1154,17 @@ func criterionKeywords(text string) []string {
 		if strings.Contains(low, kw) {
 			out = append(out, kw)
 		}
+	}
+	return out
+}
+
+// liveIDs lists the ids a live lookup produced this turn, so the
+// invented-identifier check can accept them: they are not in the corpus, but
+// they did come back from a tool with a URL attached.
+func liveIDs(live []livesource.Result) []string {
+	out := make([]string, 0, len(live))
+	for _, r := range live {
+		out = append(out, r.ID)
 	}
 	return out
 }

@@ -9,6 +9,7 @@ import (
 	"github.com/damonleelcx/Opportunity-Bridge-Agent/internal/config"
 	"github.com/damonleelcx/Opportunity-Bridge-Agent/internal/corpus"
 	"github.com/damonleelcx/Opportunity-Bridge-Agent/internal/eval"
+	"github.com/damonleelcx/Opportunity-Bridge-Agent/internal/livesource"
 )
 
 // TestShippedDatasets runs the evaluation suite as an ordinary Go test, so the
@@ -55,7 +56,12 @@ func TestShippedDatasets(t *testing.T) {
 		}
 	}
 
-	report := (&eval.Runner{Corpus: c, Cfg: cfg}).Run(context.Background(), cases)
+	dir, err := livesource.LoadDirectory(cfg.CorpusDir)
+	if err != nil {
+		t.Fatalf("directory: %v", err)
+	}
+	report := (&eval.Runner{Corpus: c, Cfg: cfg, Live: livesource.Chain{dir}}).
+		Run(context.Background(), cases)
 	if report.Passed != report.Total {
 		t.Errorf("%d of %d cases failed:\n%s", report.Total-report.Passed, report.Total, report.Text())
 	}

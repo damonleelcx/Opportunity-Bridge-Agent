@@ -12,6 +12,7 @@ import (
 	"github.com/damonleelcx/Opportunity-Bridge-Agent/internal/corpus"
 	"github.com/damonleelcx/Opportunity-Bridge-Agent/internal/domain"
 	"github.com/damonleelcx/Opportunity-Bridge-Agent/internal/guardrail"
+	"github.com/damonleelcx/Opportunity-Bridge-Agent/internal/livesource"
 	"github.com/damonleelcx/Opportunity-Bridge-Agent/internal/obs"
 	"github.com/damonleelcx/Opportunity-Bridge-Agent/internal/retrieval"
 	"github.com/damonleelcx/Opportunity-Bridge-Agent/internal/store"
@@ -41,6 +42,9 @@ type Env struct {
 	Index   *retrieval.Index
 	Session *store.Session
 	Rec     *obs.Recorder
+	// Live looks things up outside the corpus. Nil is legitimate and means the
+	// corpus is all there is.
+	Live livesource.Provider
 	// Approvals holds approval ids granted for this run, keyed by id. A tool
 	// with RiskIrreversible executes only if one of these matches its own name
 	// and an exact hash of its arguments.

@@ -202,6 +202,7 @@ internal/agent ─── the loop: understand → plan → act → verify → re
 | `web/static/avatar.js` | 阿桥's face — inline SVG, four moods |
 | `docs/` | one page per build step, mapped in [docs/README.md](docs/README.md) |
 | `deploy/` | Dockerfile inputs, k8s manifests, and the two idempotent scripts |
+| `data/service_directory.json` | 31 official public-employment destinations, each URL verified |
 
 ## Runtime
 

@@ -51,6 +51,27 @@ func NormalizeCity(in string) string {
 	return strings.TrimSpace(in)
 }
 
+// CityNames returns every spelling of a city this build recognises, canonical
+// first. An English-language answer writes "Chengdu" where the corpus says
+// 成都; a check that only knows the canonical form would call that a miss.
+func CityNames(city string) []string {
+	canonical := NormalizeCity(city)
+	if canonical == "" {
+		return nil
+	}
+	out := []string{canonical}
+	seen := map[string]bool{strings.ToLower(canonical): true}
+	for alias, target := range cityAliases {
+		if target != canonical || seen[strings.ToLower(alias)] {
+			continue
+		}
+		seen[strings.ToLower(alias)] = true
+		out = append(out, alias)
+	}
+	sort.Strings(out[1:])
+	return out
+}
+
 // Query is a retrieval request. Filters are hard: they cut the candidate set
 // before scoring, so a city filter can never be out-ranked by a good text match
 // in the wrong city.

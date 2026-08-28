@@ -314,3 +314,40 @@ func TestBlockedAnswerIsExplainedInTheAnswerLanguage(t *testing.T) {
 		t.Errorf("the same finding was listed twice:\n%s", res.Answer)
 	}
 }
+
+// A redraft that still fails used to go out as though it had passed. The
+// verifiers had already caught the fragments reported from the live deployment;
+// what went wrong is that nobody was told. The answer still goes out — it is
+// usually most of an answer — but it now says so.
+func TestUnresolvedFailuresAreDisclosedToTheReader(t *testing.T) {
+	// Both drafts are a bare fragment: no citation, no next step.
+	h := newHarness(t, domain.RoleResident, llm.Script{Turns: []llm.ScriptedTurn{
+		{ToolCalls: calls("opportunity_search", map[string]any{"query": "养老 护理", "city": "成都"})},
+		{Text: "（接上面）先这样。"},
+		{Text: "不存也没关系。"},
+	}}, domain.ConsentStoreProfile)
+	if err := h.st.MutateSession(h.ses.ID, func(s *store.Session) error {
+		s.Locale = "zh-CN"
+		return nil
+	}); err != nil {
+		t.Fatal(err)
+	}
+	res := h.run(t, "成都的养老护理岗", intent.IndividualPathway)
+
+	if !res.Redrafted {
+		t.Fatal("the failing draft was not redrafted")
+	}
+	if !strings.Contains(res.Answer, "没完全通过") {
+		t.Errorf("a still-failing answer went out with no disclosure:\n%s", res.Answer)
+	}
+	// The content is still delivered — most of an answer beats a refusal — and
+	// the reader is given somewhere to go.
+	if !strings.Contains(res.Answer, "12333") {
+		t.Errorf("the disclosure did not offer a way out:\n%s", res.Answer)
+	}
+	for _, f := range res.Findings {
+		if f.Code == "UNRESOLVED_AFTER_REDRAFT" {
+			t.Error("the disclosure must not itself be reported as a finding")
+		}
+	}
+}

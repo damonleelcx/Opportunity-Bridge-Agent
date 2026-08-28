@@ -97,7 +97,7 @@ var (
 	// Every id prefix the corpus uses. `nat` was added with the national layer;
 	// leaving it out here made a correctly-cited answer look uncited, which
 	// forced a redraft and produced a worse answer than the one it replaced.
-	refToken     = regexp.MustCompile(`\b(?:job|trn|ent|sub|kb|nat)-\d{3}\b`)
+	refToken     = regexp.MustCompile(`\b(?:job|trn|ent|sub|kb|nat|live)-\d{3}\b`)
 	sourceToken  = regexp.MustCompile(`\bSAMPLE/[A-Za-z0-9_\-/]+`)
 	phoneToken   = regexp.MustCompile(`\b\d{3,4}-\d{4}-\d{4}\b|\b\d{3,4}-\d{7,8}\b|\b1[3-9]\d{9}\b|\b(?:12333|12345)\b`)
 	urlToken     = regexp.MustCompile(`https?://\S+`)
@@ -277,6 +277,7 @@ func verifyAnswersTheCity(in VerifyInput) []Finding {
 	// employer and a street, and demanding the city name on top would be
 	// pedantry that costs a redraft.
 	var city string
+	var names []string
 	var national, local int
 	for _, c := range in.ToolCalls {
 		if c.Name != "opportunity_search" || c.Err != "" {
@@ -285,13 +286,27 @@ func verifyAnswersTheCity(in VerifyInput) []Finding {
 		if v, _ := c.Meta["asked_city"].(string); v != "" {
 			city = v
 		}
+		if v, _ := c.Meta["asked_city_names"].([]string); len(v) > 0 {
+			names = v
+		}
 		n, _ := metaInt(c, "result_count")
 		l, _ := metaInt(c, "local_hits")
 		national += n - l
 		local += l
 	}
-	if city == "" || local > 0 || national == 0 || strings.Contains(in.Answer, city) {
+	if city == "" || local > 0 || national == 0 {
 		return nil
+	}
+	// Any spelling counts: an English answer writes "Chengdu" where the corpus
+	// says 成都, and that is the city being named, not a miss.
+	if len(names) == 0 {
+		names = []string{city}
+	}
+	low := strings.ToLower(in.Answer)
+	for _, n := range names {
+		if strings.Contains(low, strings.ToLower(n)) {
+			return nil
+		}
 	}
 	return []Finding{{
 		Guard: "verify", Code: "CITY_NOT_ANSWERED", Severity: Repair,

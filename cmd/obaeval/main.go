@@ -20,6 +20,7 @@ import (
 	"github.com/damonleelcx/Opportunity-Bridge-Agent/internal/config"
 	"github.com/damonleelcx/Opportunity-Bridge-Agent/internal/corpus"
 	"github.com/damonleelcx/Opportunity-Bridge-Agent/internal/eval"
+	"github.com/damonleelcx/Opportunity-Bridge-Agent/internal/livesource"
 	"github.com/damonleelcx/Opportunity-Bridge-Agent/internal/llm"
 )
 
@@ -62,7 +63,14 @@ func run(args []string, jsonOut string, live bool, timeout time.Duration) error 
 		cases = append(cases, cs...)
 	}
 
-	runner := &eval.Runner{Corpus: c, Cfg: cfg}
+	dir, err := livesource.LoadDirectory(cfg.CorpusDir)
+	if err != nil {
+		return err
+	}
+	// The directory is deterministic and needs no network, so cases run against
+	// exactly what the deployment uses. Web search is not added here: an eval
+	// suite whose results depend on the live web is not a suite.
+	runner := &eval.Runner{Corpus: c, Cfg: cfg, Live: livesource.Chain{dir}}
 	if live {
 		// Routing is measured against whichever provider this deployment
 		// actually uses, so the number means something for this deployment.

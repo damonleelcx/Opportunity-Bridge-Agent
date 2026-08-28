@@ -53,6 +53,13 @@ type Config struct {
 	// DeepSeekBaseURL allows pointing at a proxy or a regional endpoint.
 	DeepSeekBaseURL string
 
+	// Live lookup. The directory ships enabled and needs nothing. Web search is
+	// what actually returns employers and courses nationwide, and it needs a
+	// key — off by default rather than silently degrading.
+	SearchAPIKey    string
+	SearchAPIURL    string
+	SearchKeyHeader string
+
 	// ReplyLanguage is the language the agent writes its answers in.
 	// "zh-CN" | "en" | "match" (mirror whatever the person wrote in).
 	// A session may override it; see prompt.ContextLayer.
@@ -106,8 +113,11 @@ func Load() (Config, error) {
 		// Chinese by default: this serves people navigating Chinese public
 		// services, and the surrounding prompt being written in English is an
 		// artefact of the code, not a signal about who is reading the answer.
-		ReplyLanguage: env("OBA_REPLY_LANGUAGE", "zh-CN"),
-		EnvFile:       envResult,
+		ReplyLanguage:   env("OBA_REPLY_LANGUAGE", "zh-CN"),
+		SearchAPIKey:    env("OBA_SEARCH_API_KEY", ""),
+		SearchAPIURL:    env("OBA_SEARCH_API_URL", ""),
+		SearchKeyHeader: env("OBA_SEARCH_KEY_HEADER", ""),
+		EnvFile:         envResult,
 	}
 	c.Warnings = append(c.Warnings, envResult.Warnings...)
 	if !knownBackend {

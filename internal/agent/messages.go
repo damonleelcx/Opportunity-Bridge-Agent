@@ -29,6 +29,7 @@ const (
 	msgBlockFooter    msgKey = "block.footer"
 	msgAnswerEmpty    msgKey = "answer.empty"
 	msgIntentDisabled msgKey = "intent.disabled"
+	msgUnresolved     msgKey = "verify.unresolved"
 )
 
 var messages = map[string]map[msgKey]string{
@@ -52,6 +53,8 @@ var messages = map[string]map[msgKey]string{
 			"Please tell me the city and what you are trying to sort out, or ask for a person to take over.",
 		msgIntentDisabled: "This kind of request (%s) is not switched on in this deployment yet. " +
 			"Nothing was done. A member of staff can help in the meantime.",
+		msgUnresolved: "\n\n(I checked this answer against my own rules and it still does not pass: %s. " +
+			"It is the best I produced — ask me to say it again, or call 12333 and ask for a person.)",
 	},
 	"zh-CN": {
 		msgStopIterations: "走了 %d 步还没办完，我先停下来了。上面是已经找到的部分。" +
@@ -69,6 +72,8 @@ var messages = map[string]map[msgKey]string{
 		msgAnswerEmpty: "这次我没能给出答案，也什么都没做。" +
 			"你告诉我城市和想办的事，或者让我找个人来接手。",
 		msgIntentDisabled: "这类请求（%s）在这个部署里还没开通，什么都没做。这期间可以找工作人员帮忙。",
+		msgUnresolved: "\n\n（这条回答我自己按规矩检查过，还是没完全通过：%s。这是我这次能写出的最好版本——" +
+			"你可以让我重说一遍，或者直接打 12333 找人。）",
 	},
 }
 

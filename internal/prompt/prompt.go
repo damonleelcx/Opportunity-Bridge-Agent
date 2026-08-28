@@ -336,11 +336,18 @@ func ContextLayer(o Options) string {
 		}
 	}
 	if len(o.Corrections) > 0 {
-		b.WriteString("\nYOUR PREVIOUS DRAFT FAILED THESE CHECKS - FIX AND ANSWER AGAIN\n")
+		b.WriteString("\nYOUR PREVIOUS DRAFT FAILED THESE CHECKS\n")
 		for _, c := range o.Corrections {
 			fmt.Fprintf(&b, "- %s\n", c)
 		}
-		b.WriteString("Do not apologise or mention the redraft. Just give the corrected answer.\n")
+		// The failed draft is dropped from the history before this request, so
+		// the reader will see ONLY what comes back now. A model that writes just
+		// the fix — "（接上面）…" — leaves them with a fragment and no answer,
+		// which is worse than the draft that was rejected.
+		b.WriteString("WRITE THE WHOLE ANSWER AGAIN, FROM THE BEGINNING. The reader will see only " +
+			"this version; the draft above was never sent and they have not read it. Do not write a " +
+			"continuation, a patch or a note about the correction — no 「接上面」, no 「补充」. " +
+			"Produce a complete, standalone answer that fixes the points above.\n")
 	}
 	return b.String()
 }
