@@ -96,6 +96,10 @@ eval-report: ## Run the suite and write the full machine-readable report
 	@mkdir -p $(BIN)
 	go run ./cmd/obaeval -json $(BIN)/eval-report.json
 
+.PHONY: drill
+drill: ## Break each intent rule on purpose and check its fence goes red
+	./scripts/mutation-drill.sh
+
 .PHONY: check
 check: ## fmt check, vet, test - what CI runs
 	@test -z "$$(gofmt -l . | grep -v '^$$')" || { echo "gofmt needed:"; gofmt -l .; exit 1; }

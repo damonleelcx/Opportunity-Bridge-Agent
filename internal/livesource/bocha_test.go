@@ -33,12 +33,31 @@ type bochaServer struct {
 	*httptest.Server
 	mu      sync.Mutex
 	windows []string
+	queries []string
 }
 
 func (s *bochaServer) asked() []string {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	out := append([]string(nil), s.windows...)
+	sort.Strings(out)
+	return out
+}
+
+// searched returns the DISTINCT query strings sent, sorted. One query is sent
+// per intent and repeated once per freshness window, so the distinct set is what
+// says which questions were actually asked.
+func (s *bochaServer) searched() []string {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	seen := map[string]bool{}
+	var out []string
+	for _, q := range s.queries {
+		if !seen[q] {
+			seen[q] = true
+			out = append(out, q)
+		}
+	}
 	sort.Strings(out)
 	return out
 }
@@ -55,12 +74,14 @@ func newBochaServer(t *testing.T, status int, bodyFor func(window string) []byte
 		}
 		var req struct {
 			Freshness string `json:"freshness"`
+			Query     string `json:"query"`
 		}
 		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 			t.Errorf("request body was not JSON: %v", err)
 		}
 		s.mu.Lock()
 		s.windows = append(s.windows, req.Freshness)
+		s.queries = append(s.queries, req.Query)
 		s.mu.Unlock()
 		w.WriteHeader(status)
 		w.Write(bodyFor(req.Freshness))
@@ -133,7 +154,10 @@ func TestBochaAsksEveryFreshnessWindow(t *testing.T) {
 		t.Fatal(err)
 	}
 	got := srv.asked()
-	want := []string{"noLimit", "oneMonth", "oneWeek"}
+	// Two intents when nothing narrows the lookup, so every window is asked
+	// twice: the query string differs per intent, so one intent's results cannot
+	// stand in for the other's.
+	want := []string{"noLimit", "noLimit", "oneMonth", "oneMonth", "oneWeek", "oneWeek"}
 	if strings.Join(got, ",") != strings.Join(want, ",") {
 		t.Fatalf("windows asked = %v, want %v", got, want)
 	}
@@ -390,31 +414,246 @@ func TestBochaDropsHiringForWorkThatWasNotAskedAbout(t *testing.T) {
 	}
 }
 
-// The agent sends the trade, not the intent, so the word that makes this a
-// search about WORK has to be added. It must not be added twice when the caller
-// already said it.
-func TestBochaAsksAboutWorkEvenWhenTheCallerDidNot(t *testing.T) {
-	for _, tc := range []struct{ keyword, want string }{
-		{"保洁", "深圳 保洁 招聘"},
-		{"保洁 招聘", "深圳 保洁 招聘"},
-		{"", "深圳 招聘"},
+// The agent sends the trade, not the intent, so the word that says what KIND of
+// thing is wanted has to be added — and it has to be the RIGHT word. Before
+// intents existed it was always 招聘, so somebody asking where to learn a trade
+// had their search turned into a search for jobs.
+//
+// It must not be added twice when the caller already said it, in either
+// vocabulary.
+func TestBochaAsksForTheRightThingPerIntent(t *testing.T) {
+	work := []livesource.Intent{livesource.IntentWork}
+	training := []livesource.Intent{livesource.IntentTraining}
+	for _, tc := range []struct {
+		name    string
+		keyword string
+		intents []livesource.Intent
+		want    []string
+	}{
+		{"nothing narrows it: ask both", "保洁", nil, []string{"深圳 保洁 培训", "深圳 保洁 招聘"}},
+		{"work only", "保洁", work, []string{"深圳 保洁 招聘"}},
+		{"training only", "养老护理", training, []string{"深圳 养老护理 培训"}},
+		{"no trade named", "", training, []string{"深圳 培训"}},
+		{"caller already said 招聘", "保洁 招聘", work, []string{"深圳 保洁 招聘"}},
+		{"caller already said 培训", "养老护理 培训", training, []string{"深圳 养老护理 培训"}},
+		{"caller said 招生, which is the same ask", "焊工 招生", training, []string{"深圳 焊工 招生"}},
 	} {
-		var got string
-		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			var req struct {
-				Query string `json:"query"`
+		t.Run(tc.name, func(t *testing.T) {
+			srv := newBochaServer(t, http.StatusOK, fixedBody(page()))
+			_, err := bocha(srv.URL).Lookup(context.Background(), livesource.Query{
+				City: "深圳", Keyword: tc.keyword, Intents: tc.intents,
+			})
+			if err != nil {
+				t.Fatal(err)
 			}
-			json.NewDecoder(r.Body).Decode(&req)
-			got = req.Query
-			w.Write([]byte(`{"code":200,"data":{"webPages":{"value":[]}}}`))
-		}))
-		if _, err := bocha(srv.URL).
-			Lookup(context.Background(), livesource.Query{City: "深圳", Keyword: tc.keyword}); err != nil {
+			got := srv.searched()
+			if strings.Join(got, "|") != strings.Join(tc.want, "|") {
+				t.Fatalf("searched for %v, want %v", got, tc.want)
+			}
+		})
+	}
+}
+
+// ---------------------------------------------------------------------------
+// Fences for docs/bugfix/2026-08-28-live-search-never-looked-for-training.md
+// ---------------------------------------------------------------------------
+
+// mixedPage is one job advert and one course advert, both in the right city and
+// both about the same trade. Which of the two comes back is the whole question
+// this change answers, so every fence below reads from the same body.
+const mixedPage = `{"code":200,"data":{"webPages":{"value":[
+ {"name":"深圳养老护理员招聘 月薪6000","url":"https://example.com/job","snippet":"深圳养老护理岗位","siteName":"鱼泡","datePublished":"2026-08-20T00:00:00+08:00"},
+ {"name":"深圳养老护理员证培训班招生","url":"https://example.com/course","snippet":"深圳养老护理培训 学费可申请补贴","siteName":"某技工学校","datePublished":"2026-08-18T00:00:00+08:00"}
+]}}}`
+
+// The defect itself: somebody asking where to LEARN a trade got recruitment
+// adverts, because the only question the web was ever asked was 招聘.
+func TestBochaReturnsCoursesForATrainingLookup(t *testing.T) {
+	srv := newBochaServer(t, http.StatusOK, fixedBody([]byte(mixedPage)))
+	res, err := bocha(srv.URL).Lookup(context.Background(), livesource.Query{
+		City: "深圳", Keyword: "养老护理",
+		Intents: []livesource.Intent{livesource.IntentTraining},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(res) != 1 {
+		t.Fatalf("got %d results, want only the course: %+v", len(res), res)
+	}
+	if !strings.Contains(res[0].Title, "培训") {
+		t.Fatalf("a training lookup returned something that is not a course: %q", res[0].Title)
+	}
+	if res[0].Intent != livesource.IntentTraining {
+		t.Fatalf("intent = %q, want training; the caveat and the answer both read this",
+			res[0].Intent)
+	}
+}
+
+// The mirror image, and the reason this is an intent rather than a wider word
+// list: widening recruitmentWords to accept 培训 would have fixed the case above
+// by handing every job seeker course adverts instead.
+func TestBochaDoesNotOfferCoursesToSomebodyLookingForWork(t *testing.T) {
+	srv := newBochaServer(t, http.StatusOK, fixedBody([]byte(mixedPage)))
+	res, err := bocha(srv.URL).Lookup(context.Background(), livesource.Query{
+		City: "深圳", Keyword: "养老护理",
+		Intents: []livesource.Intent{livesource.IntentWork},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(res) != 1 {
+		t.Fatalf("got %d results, want only the job: %+v", len(res), res)
+	}
+	if !strings.Contains(res[0].Title, "招聘") || res[0].Intent != livesource.IntentWork {
+		t.Fatalf("a work lookup returned %q as %q", res[0].Title, res[0].Intent)
+	}
+}
+
+// Asked for both, both come back, each labelled as what it is — a person who
+// has not said whether they want a job or a course is entitled to see both.
+func TestBochaReturnsBothWhenNothingNarrowsTheLookup(t *testing.T) {
+	srv := newBochaServer(t, http.StatusOK, fixedBody([]byte(mixedPage)))
+	res, err := bocha(srv.URL).Lookup(context.Background(), livesource.Query{
+		City: "深圳", Keyword: "养老护理",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(res) != 2 {
+		t.Fatalf("got %d results, want the job and the course: %+v", len(res), res)
+	}
+	seen := map[livesource.Intent]string{}
+	for _, r := range res {
+		seen[r.Intent] = r.Title
+	}
+	if len(seen) != 2 {
+		t.Fatalf("both results were labelled the same way: %+v", seen)
+	}
+}
+
+// The frauds are different, so the warning has to be. A course sold on credit
+// with a promised certificate — 培训贷 — is the danger on one side; a "job" that
+// asks for a deposit is the danger on the other. Warning about the wrong one is
+// worse than not warning.
+func TestBochaWarnsAboutTheFraudThatMatchesTheIntent(t *testing.T) {
+	srv := newBochaServer(t, http.StatusOK, fixedBody([]byte(mixedPage)))
+	res, err := bocha(srv.URL).Lookup(context.Background(), livesource.Query{
+		City: "深圳", Keyword: "养老护理",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := map[livesource.Intent]string{
+		livesource.IntentWork:     "押金",
+		livesource.IntentTraining: "培训贷",
+	}
+	for _, r := range res {
+		if r.Caveat == "" {
+			t.Fatalf("%q shipped without a caveat", r.Title)
+		}
+		if !strings.Contains(r.Caveat, want[r.Intent]) {
+			t.Errorf("%s result carries the wrong warning: %q", r.Intent, r.Caveat)
+		}
+	}
+	if res[0].Caveat == res[1].Caveat {
+		t.Fatal("both results carry the same warning; the intent is not reaching the reader")
+	}
+}
+
+// The trade filter must keep working once 培训 is a word the caller says.
+//
+// If the intent vocabulary stayed in the needle list, ANY course page would
+// satisfy "is this about what they asked for" simply by being a course page,
+// and somebody who wants to learn 养老护理 would be sent to a 保安 course.
+func TestBochaKeepsTheTradeFilterWhenTheQuerySaysTraining(t *testing.T) {
+	body := `{"code":200,"data":{"webPages":{"value":[
+	 {"name":"深圳保安员培训班招生","url":"https://example.com/guard","snippet":"深圳保安培训报名","siteName":"某校","datePublished":"2026-08-22T00:00:00+08:00"},
+	 {"name":"深圳养老护理员培训班招生","url":"https://example.com/care","snippet":"深圳养老护理培训报名","siteName":"某校","datePublished":"2026-08-21T00:00:00+08:00"}
+	]}}}`
+	srv := newBochaServer(t, http.StatusOK, fixedBody([]byte(body)))
+	res, err := bocha(srv.URL).Lookup(context.Background(), livesource.Query{
+		City: "深圳", Keyword: "养老护理 培训",
+		Intents: []livesource.Intent{livesource.IntentTraining},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(res) != 1 || !strings.Contains(res[0].Title, "养老护理") {
+		t.Fatalf("the unrelated course was not dropped: %+v", res)
+	}
+}
+
+// A real turn sent query="数控 培训 转岗 流水线", where only 数控 names the work.
+// Requiring every word meant requiring a course page to also say 转岗 and
+// 流水线, which no course page does — so the lookup returned nothing, and
+// nothing reads to the person as "there is nothing in your city".
+func TestBochaMultiWordQueriesDoNotReturnNothing(t *testing.T) {
+	body := `{"code":200,"data":{"webPages":{"value":[
+	 {"name":"成都数控编程培训班招生简章","url":"https://example.com/cnc","snippet":"成都数控培训 六周开班 学费可补贴","siteName":"某技工学校","datePublished":"2026-08-19T00:00:00+08:00"}
+	]}}}`
+	srv := newBochaServer(t, http.StatusOK, fixedBody([]byte(body)))
+	res, err := bocha(srv.URL).Lookup(context.Background(), livesource.Query{
+		City: "成都", Keyword: "数控 培训 转岗 流水线",
+		Intents: []livesource.Intent{livesource.IntentTraining},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(res) != 1 {
+		t.Fatalf("the course was dropped for not repeating every word of the query: %+v", res)
+	}
+}
+
+// A page that both intents accept must be labelled the same way on every run.
+// Draining a channel would make the label depend on which goroutine finished
+// first, so two identical turns could carry two different fraud warnings.
+func TestBochaLabelsTheSamePageTheSameWayEveryTime(t *testing.T) {
+	body := `{"code":200,"data":{"webPages":{"value":[
+	 {"name":"深圳技工学校招生 毕业推荐岗位 月薪6000","url":"https://example.com/both","snippet":"深圳招生 培训 岗位","siteName":"某校","datePublished":"2026-08-17T00:00:00+08:00"}
+	]}}}`
+	srv := newBochaServer(t, http.StatusOK, fixedBody([]byte(body)))
+	first := ""
+	for i := 0; i < 25; i++ {
+		res, err := bocha(srv.URL).Lookup(context.Background(), livesource.Query{City: "深圳"})
+		if err != nil {
 			t.Fatal(err)
 		}
-		srv.Close()
-		if got != tc.want {
-			t.Errorf("keyword %q produced query %q, want %q", tc.keyword, got, tc.want)
+		if len(res) != 1 {
+			t.Fatalf("run %d returned %d results", i, len(res))
+		}
+		if first == "" {
+			first = string(res[0].Intent)
+		}
+		if got := string(res[0].Intent); got != first {
+			t.Fatalf("run %d labelled the same page %q, earlier runs said %q", i, got, first)
+		}
+	}
+}
+
+// The mapping from what the corpus was asked for onto what the web can be asked
+// for. Subsidy and entrepreneurship have no row on purpose: they are
+// administered by an authority rather than advertised as pages somebody can turn
+// up to, and the honest live answer for them is the official directory entry.
+// Asking only for those must WIDEN to everything searchable, never silence the
+// lookup — silence reaches the person as "there is nothing in your city".
+func TestIntentsForMapsCorpusKindsOntoSearchableIntents(t *testing.T) {
+	both := []livesource.Intent{livesource.IntentWork, livesource.IntentTraining}
+	for _, tc := range []struct {
+		kinds []string
+		want  []livesource.Intent
+	}{
+		{[]string{"training"}, []livesource.Intent{livesource.IntentTraining}},
+		{[]string{"job"}, []livesource.Intent{livesource.IntentWork}},
+		{[]string{"job", "training"}, both},
+		{nil, both},
+		{[]string{"subsidy"}, both},
+		{[]string{"entrepreneurship"}, both},
+		{[]string{"subsidy", "training"}, []livesource.Intent{livesource.IntentTraining}},
+		{[]string{"nonsense"}, both},
+	} {
+		got := livesource.IntentsFor(tc.kinds)
+		if fmt.Sprint(got) != fmt.Sprint(tc.want) {
+			t.Errorf("IntentsFor(%v) = %v, want %v", tc.kinds, got, tc.want)
 		}
 	}
 }

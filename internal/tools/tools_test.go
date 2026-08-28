@@ -3,14 +3,19 @@ package tools
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"io"
 	"log/slog"
+	"net/http"
+	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/damonleelcx/Opportunity-Bridge-Agent/internal/config"
 	"github.com/damonleelcx/Opportunity-Bridge-Agent/internal/corpus"
 	"github.com/damonleelcx/Opportunity-Bridge-Agent/internal/domain"
+	"github.com/damonleelcx/Opportunity-Bridge-Agent/internal/livesource"
 	"github.com/damonleelcx/Opportunity-Bridge-Agent/internal/obs"
 	"github.com/damonleelcx/Opportunity-Bridge-Agent/internal/retrieval"
 	"github.com/damonleelcx/Opportunity-Bridge-Agent/internal/store"
@@ -331,6 +336,115 @@ func TestConsentRequestStillAsksWhenNotGranted(t *testing.T) {
 	}
 	if res.Consent.Scope != domain.ConsentStoreProfile {
 		t.Errorf("card scope %q, want store_profile", res.Consent.Scope)
+	}
+}
+
+// recordingLive is a live provider that answers nothing and remembers what it
+// was asked. What reaches it is the whole point of the fences below.
+type recordingLive struct{ got []livesource.Query }
+
+func (r *recordingLive) Name() string { return "recording" }
+func (r *recordingLive) Lookup(_ context.Context, q livesource.Query) ([]livesource.Result, error) {
+	r.got = append(r.got, q)
+	return nil, nil
+}
+
+// Fence for docs/bugfix/2026-08-28-live-search-never-looked-for-training.md:
+// the kinds the caller asked the corpus for must reach the live lookup.
+//
+// This is the wire that did not exist. livesource could be taught to search for
+// courses and it would still never do so, because opportunity_search built its
+// live Query from the city and the keyword alone — so the web was asked about
+// 招聘 whatever the person wanted. A unit test inside livesource cannot catch
+// that: every one of them passes an intent by hand.
+func TestOpportunitySearchTellsTheLiveLookupWhatKindWasAskedFor(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		args string
+		want []livesource.Intent
+	}{
+		{"a training question searches the web for courses",
+			`{"query":"养老护理","city":"佛山","kinds":["training"]}`,
+			[]livesource.Intent{livesource.IntentTraining}},
+		{"a job question still searches for work only",
+			`{"query":"焊工","city":"佛山","kinds":["job"]}`,
+			[]livesource.Intent{livesource.IntentWork}},
+		{"asking for everything asks the web for everything",
+			`{"query":"焊工","city":"佛山"}`,
+			[]livesource.Intent{livesource.IntentWork, livesource.IntentTraining}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			env := testEnv(t, domain.RoleResident)
+			live := &recordingLive{}
+			env.Live = live
+
+			if _, err := Default().Call(context.Background(), env, allowAll,
+				"opportunity_search", json.RawMessage(tc.args)); err != nil {
+				t.Fatalf("opportunity_search: %v", err)
+			}
+			if len(live.got) != 1 {
+				t.Fatalf("the live provider was called %d times, want once — "+
+					"佛山 has no local listings, so the lookup must run", len(live.got))
+			}
+			if fmt.Sprint(live.got[0].Intents) != fmt.Sprint(tc.want) {
+				t.Fatalf("live lookup asked for %v, want %v",
+					live.got[0].Intents, tc.want)
+			}
+		})
+	}
+}
+
+// The whole wire, end to end: a training question in a city the corpus does not
+// cover comes back with a course, labelled as one, carrying the course warning.
+//
+// Every other fence for this tests one link. This one runs the real chain — the
+// tool builds the query, IntentsFor maps the kinds, Bocha shapes the search and
+// judges the pages — against a stub standing in for the vendor. It is the
+// closest thing to an end-to-end run that works without a search key, and it is
+// what would have caught the original defect on its own: each link was
+// individually fine and the chain still could not return a course.
+func TestATrainingQuestionOutsideTheCorpusComesBackWithACourse(t *testing.T) {
+	// Both pages are in the right city and about the right trade. Which one
+	// survives is decided entirely by the intent.
+	const body = `{"code":200,"data":{"webPages":{"value":[
+	 {"name":"佛山养老护理员招聘 月薪6000","url":"https://example.com/job","snippet":"佛山养老护理岗位","siteName":"鱼泡","datePublished":"2026-08-20T00:00:00+08:00"},
+	 {"name":"佛山养老护理员证培训班招生","url":"https://example.com/course","snippet":"佛山养老护理培训 学费可申请补贴","siteName":"某技工学校","datePublished":"2026-08-18T00:00:00+08:00"}
+	]}}}`
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_, _ = w.Write([]byte(body))
+	}))
+	defer srv.Close()
+
+	b := livesource.NewBocha(srv.URL, "test-key")
+	b.Now = func() time.Time { return time.Date(2026, 8, 28, 12, 0, 0, 0, time.UTC) }
+
+	env := testEnv(t, domain.RoleResident)
+	env.Live = livesource.Chain{b}
+
+	res, err := Default().Call(context.Background(), env, allowAll, "opportunity_search",
+		json.RawMessage(`{"query":"养老护理","city":"佛山","kinds":["training"]}`))
+	if err != nil {
+		t.Fatalf("opportunity_search: %v", err)
+	}
+	live, _ := res.Content.(map[string]any)["live_results"].([]livesource.Result)
+	if len(live) != 1 {
+		t.Fatalf("got %d live results, want the course only: %+v", len(live), live)
+	}
+	got := live[0]
+	if !strings.Contains(got.Title, "培训") {
+		t.Errorf("a training question returned %q", got.Title)
+	}
+	if got.Intent != livesource.IntentTraining {
+		t.Errorf("intent = %q, want training", got.Intent)
+	}
+	if !strings.Contains(got.Caveat, "培训贷") {
+		t.Errorf("the course carries the job-scam warning instead of the course one: %q", got.Caveat)
+	}
+	// The id has to be citable this turn, or the invented-identifier check
+	// rejects the very lead the lookup just produced.
+	ids, _ := res.Meta["live_ids"].([]string)
+	if len(ids) != 1 || ids[0] != got.ID {
+		t.Errorf("live_ids = %v, but the result is %q", ids, got.ID)
 	}
 }
 

@@ -530,9 +530,12 @@ function opportunityList(r) {
 // 2018 — and the reader is the one deciding whether it is worth the journey.
 function liveCard(x) {
   const directory = x.kind === "directory";
+  // A course and an opening are both "web leads", and telling them apart from
+  // the title alone is work the reader should not have to do — the lookup
+  // already knows which it asked for and says so in `intent`.
   const badge = directory
     ? `<span class="pill pill-free">${esc(t("card.liveDirectory"))}</span>`
-    : `<span class="pill">${esc(t("card.liveListing"))}</span>`;
+    : `<span class="pill">${esc(t(x.intent === "training" ? "card.liveCourse" : "card.liveListing"))}</span>`;
 
   const when = directory
     ? x.verified_at && t("card.liveVerified") + x.verified_at
