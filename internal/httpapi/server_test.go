@@ -36,6 +36,14 @@ func newServerNoInvites(t *testing.T) *httptest.Server {
 }
 
 func newServerWith(t *testing.T, script llm.Script, tweak func(*config.Config)) *httptest.Server {
+	return newServerTweaking(t, script, tweak, nil)
+}
+
+// newServerTweaking also allows reaching the assembled Server, for the parts
+// that are wired in at startup rather than configured — the speech provider is
+// the first of them.
+func newServerTweaking(t *testing.T, script llm.Script, tweak func(*config.Config),
+	tweakSrv func(*httpapi.Server)) *httptest.Server {
 	t.Helper()
 	c, err := corpus.Load("../../data")
 	if err != nil {
@@ -62,6 +70,9 @@ func newServerWith(t *testing.T, script llm.Script, tweak func(*config.Config)) 
 	srv := &httpapi.Server{Agent: ag, Store: st, Cfg: cfg, Web: os.DirFS("../../web/static"), Log: slog.New(slog.NewTextHandler(io.Discard, nil))}
 	// TLS, not plain http: see signedIn for why the Secure cookie flag makes
 	// this the honest harness rather than a fussy one.
+	if tweakSrv != nil {
+		tweakSrv(srv)
+	}
 	ts := httptest.NewTLSServer(srv.Routes())
 	t.Cleanup(ts.Close)
 	return ts

@@ -30,6 +30,7 @@ import (
 	"github.com/damonleelcx/Opportunity-Bridge-Agent/internal/llm"
 	"github.com/damonleelcx/Opportunity-Bridge-Agent/internal/retrieval"
 	"github.com/damonleelcx/Opportunity-Bridge-Agent/internal/store"
+	"github.com/damonleelcx/Opportunity-Bridge-Agent/internal/tts"
 	"github.com/damonleelcx/Opportunity-Bridge-Agent/web"
 )
 
@@ -94,7 +95,8 @@ func run(addrOverride string, log *slog.Logger) error {
 	if err != nil {
 		return fmt.Errorf("WEB_ASSETS_MISSING: %w", err)
 	}
-	srv := &httpapi.Server{Agent: ag, Store: st, Cfg: cfg, Web: webFS, Log: log}
+	srv := &httpapi.Server{Agent: ag, Store: st, Cfg: cfg, Web: webFS, Log: log,
+		TTS: speechProvider(cfg, log)}
 
 	httpSrv := &http.Server{
 		Addr:              cfg.Addr,
@@ -176,6 +178,31 @@ func buildLiveSource(cfg config.Config, log *slog.Logger) (livesource.Chain, err
 	log.Info("live web search enabled",
 		"provider", string(cfg.SearchProvider), "regions_in_directory", dir.Regions())
 	return chain, nil
+}
+
+// speechProvider builds the read-aloud vendor, or nil when it is not configured.
+//
+// Off by default and loud about it, exactly like live web search above: a
+// deployment with no key still reads answers aloud, in the browser's own voice,
+// and the log says which of the two is happening. Silence about it would leave
+// "we configured a voice and it is not being used" indistinguishable from "we
+// never configured one".
+func speechProvider(cfg config.Config, log *slog.Logger) tts.Provider {
+	if cfg.TTSAPIKey == "" {
+		log.Info("vendor read-aloud is OFF: no OBA_TTS_API_KEY. "+
+			"Answers are still read aloud, using the browser's own built-in voice",
+			"code", "TTS_DISABLED")
+		return nil
+	}
+	p := tts.NewFish(cfg.TTSAPIURL, cfg.TTSAPIKey, cfg.TTSVoiceID, cfg.TTSModel, log)
+	// The backbone is logged because one of them is free and the others bill,
+	// and the difference is a header nobody sees. A deployment that has
+	// accidentally switched to the paid model should be able to find that out
+	// from its own startup line rather than from an invoice.
+	log.Info("vendor read-aloud enabled",
+		"provider", p.Name(), "voice_id", cfg.TTSVoiceID, "model", p.Model,
+		"free_model", p.Model == tts.DefaultFishModel)
+	return p
 }
 
 // runImport moves an existing JSON state file into postgres, once.
