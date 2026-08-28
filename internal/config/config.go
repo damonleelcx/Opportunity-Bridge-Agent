@@ -40,6 +40,13 @@ type Config struct {
 	EnabledIntents []string
 
 	// Storage. Empty means memory-only; the app still works, it just forgets.
+	//
+	// DatabaseURL, when set, is the durable home and StatePath is ignored. It is
+	// the selector as well as the address: one variable decides the backend, so
+	// there is no combination of settings whose meaning has to be worked out.
+	// Which one is in use is logged at startup, because "I thought it was
+	// writing to postgres" is the belief this must never leave intact.
+	DatabaseURL   string
 	DataDir       string
 	StatePath     string
 	CorpusDir     string
@@ -113,6 +120,7 @@ func Load() (Config, error) {
 		MaxOutputTokens: int64(envInt("OBA_MAX_OUTPUT_TOKENS", 120000)),
 		MaxRetries:      envInt("OBA_MAX_RETRIES", 2),
 		KAnonymityFloor: envInt("OBA_K_ANONYMITY", 5),
+		DatabaseURL:     env("OBA_DATABASE_URL", ""),
 		DataDir:         env("OBA_DATA_DIR", "data"),
 		StatePath:       env("OBA_STATE_PATH", ""),
 		CorpusDir:       env("OBA_CORPUS_DIR", ""),

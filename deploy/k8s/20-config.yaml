@@ -10,7 +10,15 @@ data:
   OBA_BACKEND: "deepseek"
   OBA_REPLY_LANGUAGE: "zh-CN"
   OBA_CORPUS_DIR: "/app/data"
-  OBA_STATE_PATH: "/app/state/oba.json"
+  # EMPTY ON PURPOSE, and not simply deleted: the image sets this variable
+  # itself, so removing the line here would leave the image's default in place
+  # and the process would log that it is ignoring a path — every start, forever.
+  # Empty means "there is no file backend", which is the truth: OBA_DATABASE_URL
+  # is set below via its Secret, and postgres is the durable home.
+  #
+  # The volume stays mounted for now. It still holds the pre-migration
+  # oba.json, which is the only copy of this data that predates the database.
+  OBA_STATE_PATH: ""
   # Model ids follow OBA_BACKEND; set explicitly here so a deployment reads what
   # it is actually running without anyone having to know the default table.
   OBA_AGENT_MODEL: "deepseek-v4-pro"

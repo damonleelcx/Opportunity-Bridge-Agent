@@ -45,6 +45,43 @@ demo: ## Run offline against the scripted backend - no API key, no network
 .PHONY: test
 test: ## Run every test, including the evaluation suite
 	go test ./...
+	@echo
+	@echo "NOTE: the postgres backend was NOT covered by this run (its tests skip"
+	@echo "      without a database). Run 'make test-pg' to cover it."
+
+# Postgres tests need a real postgres, because a store tested against a
+# stand-in proves that the stand-in works. This starts one, runs them, and
+# leaves it running so a second run is fast; 'make test-pg-down' removes it.
+#
+# The port is chosen at run time rather than fixed. A fixed one was tried and
+# collided with an unrelated ssh tunnel already listening on it, so the tests
+# authenticated against somebody else's database and failed in a way that
+# looked like a bug in this code.
+PG_TEST_CONTAINER ?= oba-test-pg
+PG_TEST_IMAGE     ?= postgres:17
+
+.PHONY: test-pg
+test-pg: ## Run the store tests against a real postgres in a container
+	@port=$$(./scripts/free-port.sh) ; \
+	 if [ -z "$$(docker ps -q -f name=^$(PG_TEST_CONTAINER)$$)" ]; then \
+	   echo "starting $(PG_TEST_CONTAINER) on port $$port" ; \
+	   docker rm -f $(PG_TEST_CONTAINER) >/dev/null 2>&1 || true ; \
+	   docker run -d --name $(PG_TEST_CONTAINER) -e POSTGRES_PASSWORD=obatest \
+	     -e POSTGRES_USER=oba -e POSTGRES_DB=oba -p $$port:5432 $(PG_TEST_IMAGE) >/dev/null ; \
+	 else \
+	   port=$$(docker port $(PG_TEST_CONTAINER) 5432/tcp | head -1 | sed 's/.*://') ; \
+	   echo "reusing $(PG_TEST_CONTAINER) on port $$port" ; \
+	 fi ; \
+	 for i in $$(seq 1 40); do \
+	   docker exec $(PG_TEST_CONTAINER) pg_isready -U oba -d oba >/dev/null 2>&1 && break ; \
+	   sleep 1 ; \
+	 done ; \
+	 OBA_TEST_DATABASE_URL="postgres://oba:obatest@localhost:$$port/oba?sslmode=disable" \
+	   go test ./internal/store/ -count=1
+
+.PHONY: test-pg-down
+test-pg-down: ## Remove the postgres test container
+	docker rm -f $(PG_TEST_CONTAINER) >/dev/null 2>&1 || true
 
 .PHONY: eval
 eval: ## Run the evaluation datasets and print the reliability report

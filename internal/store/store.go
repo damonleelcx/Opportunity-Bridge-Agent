@@ -8,12 +8,26 @@
 //	Long-term memory       - profile, case tasks, consent, demand signals.
 //	                         Consent-scoped and survives the session.
 //
-// Persistence is a snapshot to one JSON file. It is an enhancement, never a
-// dependency: a failed load starts empty with a warning, and a failed write logs
-// and continues, so the main path never breaks because a disk did.
+// Persistence has two backends and exactly one is in use at a time.
+//
+//	postgres  the durable home in a real deployment (OpenPostgres). Chosen
+//	          because the previous one — a JSON file on a node-local volume with
+//	          no backup — had exactly one copy of every conversation.
+//	JSON file the local-development and test backend (New). Unchanged.
+//
+// Reads never touch either: the snapshot is held in memory and loaded once at
+// start, which is why the read path is identical under both.
+//
+// A failed WRITE logs and continues under both, so the main path never breaks
+// because a disk or a database did; the turn is still answered, and what is
+// lost is the memory of it. A failed LOAD differs by backend, and deliberately:
+// an unreadable file starts empty with a warning, while an unreadable database
+// refuses to start, because Save() makes the database match the snapshot and an
+// empty snapshot would sweep away the records it failed to read.
 package store
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"log/slog"
@@ -107,33 +121,98 @@ type Store struct {
 	mu   sync.RWMutex
 	s    snapshot
 	path string
-	log  *slog.Logger
+	// db, when set, is the durable home instead of path. Exactly one of the two
+	// is ever in use: a store that wrote to both would have two answers to
+	// "what happened", and the wrong one would win on the next restart.
+	db  *pgBackend
+	log *slog.Logger
+	// loadErr carries a failure out of load(), which has no return value
+	// because the file backend has nothing to report. See load().
+	loadErr error
 }
 
 func New(path string, log *slog.Logger) *Store {
+	return newStore(path, nil, log)
+}
+
+// OpenPostgres returns a store whose durable home is postgres.
+//
+// It returns an error rather than falling back to a file, and that is the point:
+// a deployment configured for a database it cannot reach must not come up
+// quietly writing somewhere else. The operator believes their data is in
+// postgres; a silent fallback makes that belief false and nothing says so.
+func OpenPostgres(ctx context.Context, dsn string, log *slog.Logger) (*Store, error) {
+	if log == nil {
+		log = slog.Default()
+	}
+	db, err := openPG(ctx, dsn, log)
+	if err != nil {
+		return nil, err
+	}
+	st := newStore("", db, log)
+	if st.loadErr != nil {
+		db.Close()
+		return nil, fmt.Errorf("STATE_LOAD_FAILED: refusing to start on a database that "+
+			"cannot be read, because the first write would sweep it: %w", st.loadErr)
+	}
+	return st, nil
+}
+
+// newSnapshot is an empty store. Every map is non-nil, because a nil map here
+// panics on the first write rather than on the first read, which puts the
+// failure a long way from its cause.
+func newSnapshot() snapshot {
+	return snapshot{
+		Sessions:  map[string]*Session{},
+		Profiles:  map[string]*domain.Profile{},
+		Tasks:     map[string]*domain.CaseTask{},
+		Consent:   map[string]map[domain.ConsentScope]domain.ConsentGrant{},
+		Approvals: map[string]*PendingApproval{},
+		Accounts:  map[string]*Account{},
+		SignIns:   map[string]*SignIn{},
+	}
+}
+
+func newStore(path string, db *pgBackend, log *slog.Logger) *Store {
 	if log == nil {
 		log = slog.Default()
 	}
 	st := &Store{
 		path: path,
+		db:   db,
 		log:  log,
-		s: snapshot{
-			Sessions:  map[string]*Session{},
-			Profiles:  map[string]*domain.Profile{},
-			Tasks:     map[string]*domain.CaseTask{},
-			Consent:   map[string]map[domain.ConsentScope]domain.ConsentGrant{},
-			Approvals: map[string]*PendingApproval{},
-			Accounts:  map[string]*Account{},
-			SignIns:   map[string]*SignIn{},
-		},
+		s:    newSnapshot(),
 	}
 	st.load()
 	return st
 }
 
+// Close releases the database connections, if there are any.
+func (s *Store) Close() {
+	if s.db != nil {
+		s.db.Close()
+	}
+}
+
 // load is deliberately forgiving. A corrupt or absent state file must not stop
 // the service from answering the next person's question.
 func (s *Store) load() {
+	if s.db != nil {
+		// Postgres is NOT forgiving here, unlike the file below. An empty start
+		// against a database that actually holds records would present every
+		// signed-up person with a service that has forgotten them, and the
+		// first write would then sweep their rows away — Save() makes the
+		// database match the snapshot, and the snapshot would be empty.
+		// Refusing to come up is the recoverable failure; this is why load
+		// reports an error at all.
+		s.loadErr = s.db.Load(context.Background(), &s.s)
+		if s.loadErr == nil {
+			s.log.Info("state loaded from postgres", "code", "STATE_LOADED",
+				"sessions", len(s.s.Sessions), "accounts", len(s.s.Accounts),
+				"profiles", len(s.s.Profiles), "tasks", len(s.s.Tasks))
+		}
+		return
+	}
 	if s.path == "" {
 		return
 	}
@@ -177,6 +256,17 @@ func (s *Store) load() {
 
 // persist writes a snapshot. Callers hold the write lock.
 func (s *Store) persist() {
+	if s.db != nil {
+		// ERROR, not WARN. With the file backend a failed write meant the next
+		// restart forgot the last turn. It means the same thing here, but the
+		// database is now the only copy, so this line is the only warning
+		// anybody gets that a person's record did not survive.
+		if err := s.db.Save(context.Background(), &s.s); err != nil {
+			s.log.Error("state not written to postgres; this turn will not survive a restart",
+				"code", "STATE_WRITE_FAILED", "error", err)
+		}
+		return
+	}
 	if s.path == "" {
 		return
 	}
