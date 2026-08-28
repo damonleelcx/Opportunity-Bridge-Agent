@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"strings"
+	"sync"
 	"testing"
 
 	"github.com/damonleelcx/Opportunity-Bridge-Agent/internal/livesource"
@@ -90,12 +91,17 @@ func TestWebSearchIsInertWithoutAKey(t *testing.T) {
 }
 
 func TestWebSearchParsesResultsAndKeepsTheCaveat(t *testing.T) {
-	var gotQuery, gotKey string
+	var mu sync.Mutex
+	var queries []string
+	var gotKey string
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		gotQuery = r.URL.Query().Get("q")
+		mu.Lock()
+		queries = append(queries, r.URL.Query().Get("q"))
 		gotKey = r.Header.Get("X-Subscription-Token")
+		mu.Unlock()
 		_ = json.NewEncoder(w).Encode(map[string]any{"web": map[string]any{"results": []map[string]string{
-			{"title": "深圳市公共就业服务中心 招聘信息", "url": "https://hrss.sz.gov.cn/x", "description": "岗位信息"},
+			{"title": "深圳市养老护理员招聘", "url": "https://hrss.sz.gov.cn/x", "description": "深圳养老护理岗位 月薪6000"},
+			{"title": "深圳养老护理员培训班招生", "url": "https://hrss.sz.gov.cn/y", "description": "深圳养老护理培训 学费可补贴"},
 			{"title": "no url", "url": "", "description": "dropped"},
 		}}})
 	}))
@@ -111,16 +117,48 @@ func TestWebSearchParsesResultsAndKeepsTheCaveat(t *testing.T) {
 	}
 	// Steered at official sources: this product sends people to counters, and a
 	// random aggregator's listing is not something to put in front of somebody.
-	for _, want := range []string{"深圳", "养老护理", "公共就业服务"} {
-		if !strings.Contains(gotQuery, want) {
-			t.Errorf("query %q is missing %q", gotQuery, want)
+	// One search per intent, each steered at the bodies that publish that kind of
+	// thing — vacancies and course catalogues are not the same list.
+	joined := strings.Join(queries, " || ")
+	for _, want := range []string{"深圳 养老护理 招聘", "公共就业服务", "深圳 养老护理 培训", "职业技能培训"} {
+		if !strings.Contains(joined, want) {
+			t.Errorf("queries %q are missing %q", joined, want)
 		}
 	}
-	if len(res) != 1 {
-		t.Fatalf("%d results — a result without a page must be dropped", len(res))
+	if len(res) != 2 {
+		t.Fatalf("%d results — want the job and the course, with the page-less one dropped: %+v",
+			len(res), res)
 	}
-	if res[0].Caveat == "" || res[0].Kind != livesource.KindListing {
-		t.Errorf("a live lead shipped without its caveat: %+v", res[0])
+	seen := map[livesource.Intent]bool{}
+	for _, r := range res {
+		if r.Caveat == "" || r.Kind != livesource.KindListing {
+			t.Errorf("a live lead shipped without its caveat: %+v", r)
+		}
+		seen[r.Intent] = true
+	}
+	if !seen[livesource.IntentWork] || !seen[livesource.IntentTraining] {
+		t.Errorf("results were not labelled work and training: %+v", res)
+	}
+}
+
+// Brave gets the same three filters Bocha has. Without the intent filter the
+// LABEL on a result — and so the fraud warning attached to it — would be
+// whichever query happened to return the page rather than what the page is.
+func TestWebSearchDropsPagesThatDoNotMatchTheIntent(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_ = json.NewEncoder(w).Encode(map[string]any{"web": map[string]any{"results": []map[string]string{
+			{"title": "深圳养老护理行业协会年度报告", "url": "https://example.com/report", "description": "深圳养老护理行业发展"},
+		}}})
+	}))
+	defer srv.Close()
+
+	res, err := livesource.NewWebSearch(srv.URL, "k", "").
+		Lookup(context.Background(), livesource.Query{City: "深圳", Keyword: "养老护理"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(res) != 0 {
+		t.Fatalf("a page that is neither a vacancy nor a course was returned as a lead: %+v", res)
 	}
 }
 

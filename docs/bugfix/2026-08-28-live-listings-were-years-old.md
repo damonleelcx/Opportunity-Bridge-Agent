@@ -66,6 +66,12 @@ Three rules now, each guarding a different failure:
 | `isRecruitment` | insurance news, medical advertising, procurement notices |
 | `mentionsAll` | current hiring for work nobody asked about (school librarians, for a cleaner) |
 
+> **Later change.** `mentionsAll` is now `mentionsAny`, and the intent filter is
+> now per-intent rather than always `isRecruitment`. Both rules still guard the
+> failures named here — with a single keyword "any" and "all" are the same rule —
+> but a multi-word query no longer has to appear on the page word for word. See
+> [2026-08-28-live-search-never-looked-for-training.md](2026-08-28-live-search-never-looked-for-training.md).
+
 ## Verified live
 
 Same code, two real turns through the running agent:
@@ -110,7 +116,7 @@ worse than the date.
 | `TestBochaSurvivesOneFailedWindowButNotAll` | partial failure answers; total failure errors |
 | `TestBochaDropsPagesThatAreNotAboutHiring` | procurement notices and industry reports |
 | `TestBochaDropsHiringForWorkThatWasNotAskedAbout` | right city, right intent, wrong trade |
-| `TestBochaAsksAboutWorkEvenWhenTheCallerDidNot` | `招聘` is added, and not twice |
+| `TestBochaAsksForTheRightThingPerIntent` | the right term is added, and not twice (renamed from `TestBochaAsksAboutWorkEvenWhenTheCallerDidNot` when training became a second intent) |
 
 **One of these was a fake fence when first written.**
 `TestBochaDropsPagesThatAreNotAboutHiring` passed with `isRecruitment` deleted,

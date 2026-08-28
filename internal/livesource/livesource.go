@@ -48,6 +48,13 @@ type Result struct {
 	Region  string `json:"region"`
 	Summary string `json:"summary,omitempty"`
 
+	// Intent says whether this is work or training, and is empty on a directory
+	// entry, which is neither. It is carried rather than left for the reader to
+	// infer because two things downstream depend on it: the caveat attached
+	// below warns about a different fraud for each, and the answer has to be
+	// able to say "this is a course" without guessing from a page title.
+	Intent Intent `json:"intent,omitempty"`
+
 	// URL is the real page. A result without one is not returned: an
 	// unverifiable "listing" is exactly what this product must not produce.
 	URL string `json:"url"`
@@ -73,6 +80,14 @@ type Query struct {
 	City    string
 	Keyword string
 	Limit   int
+	// Intents is what to look for: work, training, or both. Empty means both —
+	// see Query.intents. It is a set rather than one value because "search
+	// everything" is a real call the agent makes, and for that call a course and
+	// an opening are both answers.
+	//
+	// The Directory provider ignores it: a city's public employment service is
+	// where both the openings and the course catalogue are published.
+	Intents []Intent
 }
 
 // Provider looks things up outside the corpus.

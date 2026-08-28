@@ -166,7 +166,11 @@ func opportunitySearch() Tool {
 		Description: "Search jobs, training courses, entrepreneurship support and subsidies. " +
 			"When the asked city has no named local listings, this ALSO looks the city up outside the corpus " +
 			"and returns live_results: the city's own official public-employment-service site, and — where a " +
-			"search backend is configured — current leads found on the web. Live results are marked and carry " +
+			"search backend is configured — current leads found on the web. A live result's intent field says " +
+			"whether it is work or training, and the two carry DIFFERENT warnings; say which one it is and pass " +
+			"on its caveat. The web is searched for openings and for courses, and kinds steers that: pass " +
+			"kinds=[\"training\"] when the person wants to learn something, or omit kinds to get both. " +
+			"Live results are marked and carry " +
 			"a caveat; present them as leads to check, with their URL, never as verified openings. " +
 			"When a live result has published_at, SAY that date next to it: a job board posting can be a year " +
 			"old, and the reader is the one deciding whether it is worth a journey. " +
@@ -227,21 +231,29 @@ func opportunitySearch() Tool {
 			var liveErrs []error
 			askedCity := retrieval.NormalizeCity(city)
 			if askedCity != "" && countLocal(results) == 0 && env.Live != nil {
+				// The kinds asked for travel with the lookup, because the open web
+				// has to be asked a DIFFERENT question for a course than for an
+				// opening. Without this the live search only ever asked about
+				// 招聘 and threw away anything that did not read as a job advert,
+				// so a training question outside the corpus returned recruitment
+				// adverts or nothing at all — see livesource.Intent and
+				// docs/bugfix/2026-08-28-live-search-never-looked-for-training.md.
+				lq := livesource.Query{
+					City: askedCity, Keyword: argStr(a, "query"), Limit: 5,
+					Intents: livesource.IntentsFor(argStrs(a, "kinds")),
+				}
 				if chain, ok := env.Live.(livesource.Chain); ok {
-					live, liveErrs = chain.LookupAll(ctx, livesource.Query{
-						City: askedCity, Keyword: argStr(a, "query"), Limit: 5,
-					})
+					live, liveErrs = chain.LookupAll(ctx, lq)
 				} else {
-					r, err := env.Live.Lookup(ctx, livesource.Query{
-						City: askedCity, Keyword: argStr(a, "query"), Limit: 5,
-					})
+					r, err := env.Live.Lookup(ctx, lq)
 					live = r
 					if err != nil {
 						liveErrs = append(liveErrs, err)
 					}
 				}
 				env.Rec.Info(obs.RetrievalQueried, "live lookup",
-					map[string]any{"city": askedCity, "results": len(live), "failures": len(liveErrs)})
+					map[string]any{"city": askedCity, "results": len(live),
+						"failures": len(liveErrs), "intents": intentNames(lq.Intents)})
 			}
 
 			outcome := "matched"
@@ -1185,6 +1197,18 @@ func criterionKeywords(text string) []string {
 		if strings.Contains(low, kw) {
 			out = append(out, kw)
 		}
+	}
+	return out
+}
+
+// intentNames renders the live intents for the record, so an operator reading
+// the log can tell whether a turn asked the web about work, about courses, or
+// about both. A lookup that searched for the wrong thing and a lookup that found
+// nothing look identical without it.
+func intentNames(in []livesource.Intent) []string {
+	out := make([]string, 0, len(in))
+	for _, i := range in {
+		out = append(out, string(i))
 	}
 	return out
 }

@@ -141,12 +141,19 @@ type bochaResponse struct {
 	} `json:"data"`
 }
 
-// Lookup asks every freshness window, merges what comes back, and answers
-// newest-first.
+// Lookup asks every freshness window for every intent, merges what comes back,
+// and answers newest-first.
 //
-// The windows are queried CONCURRENTLY. Run in sequence they would add their
+// The requests are made CONCURRENTLY. Run in sequence they would add their
 // latencies together inside a turn that also has to call a model twice, and the
-// slowest of three is a much better bill than the sum of three.
+// slowest of six is a much better bill than the sum of six.
+//
+// Why the fan-out is a cross product and not a loop over windows alone: the
+// query string itself differs per intent — "成都 数控 招聘" and "成都 数控 培训"
+// are different searches returning different pages — so an intent cannot be
+// served by filtering another intent's results. Each request is filtered against
+// the intent that asked for it, which is what keeps a job seeker from being
+// handed course adverts when both were asked for.
 func (b *Bocha) Lookup(ctx context.Context, q Query) ([]Result, error) {
 	if !b.Configured() {
 		return nil, nil // not switched on; not a failure
@@ -159,36 +166,54 @@ func (b *Bocha) Lookup(ctx context.Context, q Query) ([]Result, error) {
 	if limit <= 0 || limit > 10 {
 		limit = 5
 	}
+	intents := q.intents()
 	// The caller's own words, kept separately from the query we send, because
-	// they are also what a result has to be ABOUT to be returned.
+	// they are also what a result has to be ABOUT to be returned. The intent
+	// vocabulary is taken out — see tradeNeedles for why leaving it in would
+	// make the trade filter vacuous.
 	terms := strings.TrimSpace(q.Keyword)
-	needles := strings.Fields(terms)
-	// Over-fetch per window, because the city filter and the age cutoff both
+	needles := tradeNeedles(terms, intents)
+	// Over-fetch per request, because the city filter and the age cutoff both
 	// discard. Asking for exactly `limit` and then filtering would quietly return
 	// fewer results than the caller asked for.
 	fetch := limit * 4
 	if fetch > 20 {
 		fetch = 20
 	}
-	query := recruitmentQuery(city, terms)
 
-	type outcome struct {
+	type ask struct {
+		intent Intent
 		window string
-		hits   []bochaHit
-		err    error
+		query  string
 	}
-	out := make(chan outcome, len(bochaWindows))
+	asks := make([]ask, 0, len(intents)*len(bochaWindows))
+	for _, in := range intents {
+		query := intentQuery(city, terms, in)
+		for _, w := range bochaWindows {
+			asks = append(asks, ask{intent: in, window: w, query: query})
+		}
+	}
+
+	// Answers land in a slice indexed by request rather than in a channel, so
+	// they are read back in a FIXED order. Dedup keeps whichever copy it sees
+	// first, so draining a channel would make "which intent is this result
+	// labelled" depend on which goroutine happened to finish first — an answer
+	// that changes between identical turns.
+	type outcome struct {
+		hits []bochaHit
+		err  error
+	}
+	outs := make([]outcome, len(asks))
 	var wg sync.WaitGroup
-	for _, w := range bochaWindows {
+	for i, a := range asks {
 		wg.Add(1)
-		go func(window string) {
+		go func(i int, a ask) {
 			defer wg.Done()
-			hits, err := b.fetchWindow(ctx, query, window, fetch)
-			out <- outcome{window: window, hits: hits, err: err}
-		}(w)
+			hits, err := b.fetchWindow(ctx, a.query, a.window, fetch)
+			outs[i] = outcome{hits: hits, err: err}
+		}(i, a)
 	}
 	wg.Wait()
-	close(out)
 
 	var firstErr error
 	failed := 0
@@ -196,15 +221,17 @@ func (b *Bocha) Lookup(ctx context.Context, q Query) ([]Result, error) {
 	merged := make([]Result, 0, fetch)
 	cutoff := b.now().Add(-maxListingAge)
 
-	for o := range out {
+	for i, a := range asks {
+		o := outs[i]
 		if o.err != nil {
 			failed++
 			if firstErr == nil {
 				firstErr = o.err
 			}
-			// One window failing is survivable; saying nothing about it is not.
-			b.log().Warn("one search window failed; the answer is built from the rest",
-				"code", "SEARCH_WINDOW_FAILED", "window", o.window, "error", o.err)
+			// One request failing is survivable; saying nothing about it is not.
+			b.log().Warn("one search request failed; the answer is built from the rest",
+				"code", "SEARCH_WINDOW_FAILED", "window", a.window,
+				"intent", string(a.intent), "error", o.err)
 			continue
 		}
 		for _, r := range o.hits {
@@ -215,7 +242,7 @@ func (b *Bocha) Lookup(ctx context.Context, q Query) ([]Result, error) {
 				continue // the windows overlap; the same posting must appear once
 			}
 			text := r.Name + " " + r.Snippet + " " + r.Summary + " " + r.URL + " " + r.SiteName
-			if !mentionsCity(city, text) || !isRecruitment(text) || !mentionsAll(text, needles) {
+			if !mentionsCity(city, text) || !matchesIntent(text, a.intent) || !mentionsAny(text, needles) {
 				continue
 			}
 			published, ok := publishedTime(r.DatePublished)
@@ -227,28 +254,27 @@ func (b *Bocha) Lookup(ctx context.Context, q Query) ([]Result, error) {
 			}
 			seen[r.URL] = true
 			merged = append(merged, Result{
-				Kind: KindListing, Region: city,
+				Kind: KindListing, Region: city, Intent: a.intent,
 				Title:     collapse(r.Name),
 				Summary:   collapse(firstNonEmpty(r.Summary, r.Snippet)),
 				URL:       r.URL,
 				Source:    sourceLabel(r.SiteName),
 				Published: publishedOn(r.DatePublished),
-				Caveat: "这是网上搜到的线索，不是本系统核实过的岗位，发布网站多为商业招聘平台。" +
-					"点开先看发布日期和单位名称；凡是先收费、先交押金、先办贷款的，都不要答应。" +
-					"拿不准就打 12333 核一下再跑一趟。",
+				Caveat:    intentProfiles[a.intent].Caveat,
 			})
 		}
 	}
 
-	// Every window failed, so this is a failed lookup and must not be reported as
-	// an empty city. One or two failing still yields an answer.
-	if failed == len(bochaWindows) {
+	// Every request failed, so this is a failed lookup and must not be reported
+	// as an empty city. One or two failing still yields an answer.
+	if failed == len(asks) {
 		return nil, firstErr
 	}
 
-	// Newest first. This is the point of the whole change: the reader was being
-	// shown a 2020 posting above a current one because the API's own ordering is
-	// by relevance, and relevance has no opinion about whether a job still exists.
+	// Newest first. This is the point of the 2026-08-28 change: the reader was
+	// being shown a 2020 posting above a current one because the API's own
+	// ordering is by relevance, and relevance has no opinion about whether a job
+	// still exists.
 	sort.SliceStable(merged, func(i, j int) bool {
 		return merged[i].Published > merged[j].Published // ISO dates sort as strings; "" sorts last
 	})
@@ -347,62 +373,40 @@ func publishedTime(s string) (time.Time, bool) {
 	return time.Time{}, false
 }
 
-// recruitmentQuery makes sure the search is actually asking about work.
-//
-// The agent passes the trade, not the intent: a real turn sent query="保洁",
-// so the search was literally "深圳 保洁". What came back was a cosmetic-surgery
-// advertisement, two insurance stories and a cleaning-services procurement
-// notice — all in 深圳, all recent, none of them a job. `noLimit` had been
-// concealing this, because its relevance ranking happens to favour job boards.
-//
-// Measured 2026-08-28 on "深圳 保洁": 4 of 20 results looked like recruitment.
-// With 招聘 appended: 16 of 17.
-func recruitmentQuery(city, terms string) string {
-	q := strings.TrimSpace(city + " " + terms)
-	if !isRecruitment(q) {
-		q += " 招聘"
-	}
-	return q
-}
-
-// recruitmentWords are the words a page about hiring uses. A page that uses none
-// of them is not a job advertisement, whatever it is about.
-//
-// A list rather than a cleverer relevance model because the failure it prevents
-// is gross, not subtle — insurance news and medical advertising scored highly on
-// "深圳 保洁" simply by being about 深圳 — and because a list can be read and
-// corrected by somebody who knows the domain and not this code.
-var recruitmentWords = []string{
-	"招聘", "急聘", "诚聘", "招工", "招人", "用工", "直聘",
-	"求职", "人才网", "兼职", "岗位", "职位",
-	"月薪", "薪资", "工资", "待遇", "包吃住", "日结", "周结", "月结",
-}
-
-func isRecruitment(text string) bool {
-	for _, w := range recruitmentWords {
-		if strings.Contains(text, w) {
-			return true
-		}
-	}
-	return false
-}
-
-// mentionsAll requires the result to be about what was actually asked for.
+// mentionsAny requires the result to be about what was actually asked for.
 //
 // Without it, "深圳 保洁 招聘" returns current recruitment drives for school
 // librarians and administrators: in the right city, genuinely about hiring, and
 // nothing to do with the work the person came here for. Recency cannot make an
 // irrelevant lead worth a journey.
 //
-// An empty needle list imposes nothing, so a caller who named no trade still
-// gets the city's recruitment pages.
-func mentionsAll(text string, needles []string) bool {
+// ── Why ANY and not ALL, which is what this used to require ─────────────────
+//
+// The agent does not send a trade, it sends a bag of words: a real turn sent
+// query="数控 培训 转岗 流水线", where only 数控 names the work and the rest is
+// context about the person's past. Requiring all four meant requiring a course
+// page to also say 转岗 and 流水线, which no course page does — so the lookup
+// returned nothing, and nothing reads to the person as "there is nothing in your
+// city". Zero results is not precision; it is this module's own failure mode.
+//
+// The case the ALL rule was actually written for is unaffected: with one needle,
+// any and all are the same rule, and the librarian postings it rejects are
+// rejected identically. What changes is only the multi-word query, where the
+// choice was never between precise and loose but between loose and empty.
+//
+// Intent vocabulary has already been removed by tradeNeedles, so 培训 cannot be
+// the word that satisfies this for a course page. An empty needle list imposes
+// nothing: a caller who named no trade still gets the city's pages.
+func mentionsAny(text string, needles []string) bool {
+	if len(needles) == 0 {
+		return true
+	}
 	for _, n := range needles {
-		if !strings.Contains(text, n) {
-			return false
+		if strings.Contains(text, n) {
+			return true
 		}
 	}
-	return true
+	return false
 }
 
 // mentionsCity keeps a result only if it actually concerns the city that was

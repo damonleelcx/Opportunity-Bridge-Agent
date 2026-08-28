@@ -61,6 +61,34 @@ func TestOpportunityPanelConsultsLiveResultsBeforeSayingNothingMatched(t *testin
 	}
 }
 
+// A live lead says whether it is a job or a course.
+//
+// The lookup already knows — it asked the web a different question for each —
+// and the two carry different warnings. Rendering both under one badge puts the
+// reader back to guessing from a page title, which is what the intent field
+// exists to stop. See docs/bugfix/2026-08-28-live-search-never-looked-for-training.md
+func TestLiveCardTellsACourseFromAnOpening(t *testing.T) {
+	src := asset(t, "app.js")
+
+	start := strings.Index(src, "function liveCard(")
+	if start < 0 {
+		t.Fatal("liveCard is gone; this fence no longer guards anything")
+	}
+	end := strings.Index(src[start:], "\nfunction ")
+	if end < 0 {
+		t.Fatal("could not find the end of liveCard")
+	}
+	body := src[start : start+end]
+
+	if !strings.Contains(body, "x.intent") {
+		t.Error("liveCard never reads x.intent: a course and an opening render " +
+			"under the same badge, and the reader is back to guessing from the title")
+	}
+	if !strings.Contains(body, "card.liveCourse") {
+		t.Error("liveCard has no course badge to render")
+	}
+}
+
 // Every string the interface can render must exist in every language.
 //
 // A missing key does not fail loudly — it renders as the key itself or as
