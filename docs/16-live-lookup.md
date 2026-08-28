@@ -45,7 +45,7 @@ until a key is set, and that is deliberate rather than an oversight:
 
 ```bash
 OBA_SEARCH_API_KEY=...          # Brave Search by default
-OBA_SEARCH_API_URL=...          # any API with Brave's response shape (Serper, …)
+OBA_SEARCH_API_URL=...          # only an API answering Brave's exact shape
 OBA_SEARCH_KEY_HEADER=...       # default X-Subscription-Token
 ```
 

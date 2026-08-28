@@ -47,6 +47,7 @@ var verifiers = map[string]Verifier{
 	"citations_present":          verifyCitationsPresent,
 	"no_eligibility_verdict":     verifyNoEligibilityVerdict,
 	"actionable_next_step":       verifyActionableNextStep,
+	"next_step_is_tracked":       verifyNextStepIsTracked,
 	"no_invented_identifiers":    verifyNoInventedIdentifiers,
 	"plain_language":             verifyPlainLanguage,
 	"offline_route_present":      verifyOfflineRoute,
@@ -230,6 +231,55 @@ func verifyActionableNextStep(in VerifyInput) []Finding {
 		Guard: "verify", Code: "NO_NEXT_STEP", Severity: Repair,
 		Message: "The answer gives no way to act: no link, no phone number, no service window, and no task created.",
 		Remedy:  "End with exactly one next action and attach its channel: a link, a phone number, or an address with opening hours.",
+	}}
+}
+
+// verifyNextStepIsTracked: when a turn found something real to act on, the step
+// it hands the person must exist as a record, not only as a sentence.
+//
+// Why this is a separate check from actionable_next_step: that one is satisfied
+// by a phone number appearing anywhere in the text, and Go's || short-circuits,
+// so its "or a task was created" arm was never reached once an answer mentioned
+// 12333 - which every good answer does. The result was an "Open tasks" panel
+// that stayed empty for ever while the product told the reader "every step
+// agreed here is tracked". The panel is fed by case_task_create; nothing
+// required it to be called. See
+// docs/bugfix/2026-08-28-subject-identity-and-tracked-steps.md
+//
+// It fires narrowly on purpose. Only a turn that retrieved a NAMED programme can
+// be expected to track anything: a clarifying question, a refusal, or a search
+// that found nothing must not be forced to invent a task. It reads corpus_hits
+// rather than result_count for that reason - result_count folds in the live
+// directory, whose answer is "your region's portal is here", and a website is
+// not a step with an owner. Updating an existing task
+// counts, and so does a handoff or a filing, both of which create one
+// themselves - so a conversation that keeps circling one step produces one
+// record, not one per turn.
+func verifyNextStepIsTracked(in VerifyInput) []Finding {
+	found := false
+	for _, c := range in.ToolCalls {
+		if c.Name != "opportunity_search" || c.Err != "" {
+			continue
+		}
+		if n, ok := metaInt(c, "corpus_hits"); ok && n > 0 {
+			found = true
+			break
+		}
+	}
+	if !found {
+		return nil
+	}
+	if ranTool(in, "case_task_create", "case_task_update", "handoff_to_human",
+		"application_submit", "document_prepare") {
+		return nil
+	}
+	return []Finding{{
+		Guard: "verify", Code: "NEXT_STEP_NOT_TRACKED", Severity: Repair,
+		Message: "This turn found something the person can act on, but the step was left in the text only: " +
+			"nothing was recorded, so it will not be there when they come back.",
+		Remedy: "Record the one next step with case_task_create - the opportunity id as linked_ref, an owner, " +
+			"and the channel you just gave them. If that step is already tracked, call case_task_update on it " +
+			"instead of creating a second one. Then answer as you were going to.",
 	}}
 }
 

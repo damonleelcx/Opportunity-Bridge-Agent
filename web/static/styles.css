@@ -164,8 +164,11 @@ button, select, textarea, input { font: inherit; color: inherit; }
 }
 .session:hover { background: var(--surface-2); }
 .session.is-active { background: var(--brand-soft); border-color: var(--brand-border); color: var(--brand); font-weight: 600; }
-.session .ico { font-size: .95em; }
-.session span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.session .ico { font-size: .95em; flex: 0 0 auto; }
+/* min-width:0 is what actually lets a flex child shrink below its text, so the
+   ellipsis appears instead of the title pushing the row wider than the rail. */
+.session-label { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.session-more { margin: 8px 0 0; padding: 0 12px; font-size: .74em; color: var(--ink-400); line-height: 1.5; }
 
 .sidebar-foot { padding: 14px; border-top: 1px solid var(--line-soft); display: flex; flex-direction: column; gap: 6px; }
 .setting {
@@ -205,6 +208,12 @@ button, select, textarea, input { font: inherit; color: inherit; }
 .flag {
   font-size: .72em; padding: 3px 9px; border-radius: 999px;
   background: var(--warn-soft); color: var(--warn); border: 1px solid var(--warn-border);
+}
+/* A capability this instance does not have, stated plainly. Muted rather than
+   amber: it is not a warning about the data being wrong, it is a limit on what
+   can be looked up - and two amber pills side by side read as one alarm. */
+.flag-off {
+  background: var(--surface-2); color: var(--ink-400); border-color: var(--line);
 }
 .icon-btn {
   width: 34px; height: 34px; border-radius: var(--r-xs); cursor: pointer;

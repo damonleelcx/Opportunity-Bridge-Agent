@@ -285,3 +285,77 @@ func TestArgumentlessToolsHaveAnEmptyRequiredArray(t *testing.T) {
 		}
 	}
 }
+
+// ---------------------------------------------------------------------------
+// Regression fences for docs/bugfix/2026-08-28-consent-asked-twice.md
+//
+// A person granted "keep what you tell me", and was immediately shown the same
+// card again. Both cards said "granted" because they clicked both. Reverting
+// either rule below turns one of these tests red.
+
+// Fence 1: the tool must read the store before it raises a card. Without this
+// check the tool always returns a prompt, and the follow-up turn that granting
+// sends ("I have granted store_profile, please continue") produces a second,
+// identical card.
+func TestConsentRequestRaisesNoCardWhenAlreadyGranted(t *testing.T) {
+	env := testEnv(t, domain.RoleResident, domain.ConsentStoreProfile)
+	r := Default()
+
+	res, err := r.Call(context.Background(), env, allowAll, "consent_request",
+		json.RawMessage(`{"scope":"store_profile","why":"to match without retyping"}`))
+	if err != nil {
+		t.Fatalf("consent_request on a held scope: %v", err)
+	}
+	if res.Consent != nil {
+		t.Errorf("a card was raised for a permission already granted; the person is asked twice")
+	}
+	if got, _ := res.Meta["already_granted"].(bool); !got {
+		t.Errorf("the model was not told the permission is already held: %+v", res.Meta)
+	}
+}
+
+// Fence 2: the same call on a scope that is NOT held must still raise a card.
+// A short-circuit that swallows every request would "fix" the duplicate by
+// removing the feature.
+func TestConsentRequestStillAsksWhenNotGranted(t *testing.T) {
+	env := testEnv(t, domain.RoleResident)
+	r := Default()
+
+	res, err := r.Call(context.Background(), env, allowAll, "consent_request",
+		json.RawMessage(`{"scope":"store_profile","why":"to match without retyping"}`))
+	if err != nil {
+		t.Fatalf("consent_request: %v", err)
+	}
+	if res.Consent == nil {
+		t.Fatal("no card was raised for a permission that is not held; it can never be granted")
+	}
+	if res.Consent.Scope != domain.ConsentStoreProfile {
+		t.Errorf("card scope %q, want store_profile", res.Consent.Scope)
+	}
+}
+
+// Fence 3 for docs/bugfix/2026-08-28-subject-identity-and-tracked-steps.md:
+// opportunity_search must report corpus hits separately from live-directory
+// results. next_step_is_tracked reads corpus_hits, and folding the two together
+// is what made it demand a task for a city whose only "result" was a website.
+func TestOpportunitySearchSeparatesCorpusHitsFromLiveResults(t *testing.T) {
+	env := testEnv(t, domain.RoleResident)
+	r := Default()
+
+	res, err := r.Call(context.Background(), env, allowAll, "opportunity_search",
+		json.RawMessage(`{"query":"养老 护理","city":"成都"}`))
+	if err != nil {
+		t.Fatalf("opportunity_search: %v", err)
+	}
+	hits, ok := res.Meta["corpus_hits"].(int)
+	if !ok {
+		t.Fatalf("corpus_hits missing from Meta: %+v", res.Meta)
+	}
+	if hits == 0 {
+		t.Fatal("the sample corpus has Chengdu care jobs; corpus_hits should not be zero")
+	}
+	total, _ := res.Meta["result_count"].(int)
+	if total < hits {
+		t.Errorf("result_count %d is below corpus_hits %d; the two are being confused", total, hits)
+	}
+}

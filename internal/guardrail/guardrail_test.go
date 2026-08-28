@@ -359,3 +359,76 @@ func TestAnswerIsWrittenForTheCityThatWasSearched(t *testing.T) {
 		t.Errorf("an answer full of local detail was flagged: %v", got)
 	}
 }
+
+// ---------------------------------------------------------------------------
+// Regression fences for docs/bugfix/2026-08-28-subject-identity-and-tracked-steps.md
+//
+// The "Open tasks" panel stayed empty for ever while the interface promised
+// "every step agreed here is tracked". actionable_next_step was supposed to
+// cover this, but Go's || short-circuits: any answer containing a phone number
+// satisfied it before the "or a task was created" arm was ever evaluated, and
+// every good answer contains 12333.
+
+// Fence: a turn that found a named programme and recorded nothing must be sent
+// back. Note the phone number in the answer - that is precisely what used to
+// make this pass.
+func TestNextStepMustBeRecordedNotJustWritten(t *testing.T) {
+	in := guardrail.VerifyInput{
+		Answer: "job-002 fits. Call 028-5550-2244, Mon-Fri 09:00-17:00.",
+		ToolCalls: []guardrail.ToolCallRecord{
+			{Name: "opportunity_search", Meta: map[string]any{"corpus_hits": 4, "result_count": 4}},
+		},
+	}
+	if got := codes(t, []string{"next_step_is_tracked"}, in); got["NEXT_STEP_NOT_TRACKED"] == "" {
+		t.Error("a step handed over in text only was accepted; it will not be there when they come back")
+	}
+	// The old check, on the same input, is satisfied by the phone number alone.
+	// Keeping this assertion here is the point: it documents why the new check
+	// had to be separate rather than an extra arm on the old one.
+	if got := codes(t, []string{"actionable_next_step"}, in); len(got) != 0 {
+		t.Errorf("actionable_next_step changed meaning: %v", got)
+	}
+}
+
+// Fence: recording it satisfies the check, and so does updating a step that is
+// already tracked - otherwise a conversation circling one step would create a
+// new task every turn.
+func TestRecordingOrUpdatingTheStepSatisfiesTheCheck(t *testing.T) {
+	for _, tool := range []string{"case_task_create", "case_task_update", "handoff_to_human", "application_submit"} {
+		in := guardrail.VerifyInput{
+			Answer: "job-002 fits. Call 028-5550-2244.",
+			ToolCalls: []guardrail.ToolCallRecord{
+				{Name: "opportunity_search", Meta: map[string]any{"corpus_hits": 4}},
+				{Name: tool},
+			},
+		}
+		if got := codes(t, []string{"next_step_is_tracked"}, in); len(got) != 0 {
+			t.Errorf("%s did not satisfy the check: %v", tool, got)
+		}
+	}
+}
+
+// Fence: a city the corpus does not cover must NOT be asked to track anything.
+// The live directory answers "your region's portal is here", which lands in
+// result_count but not in corpus_hits; reading result_count made this fire on
+// an answer whose only concrete thing was a website.
+func TestNoTrackingDemandedWhenOnlyTheDirectoryAnswered(t *testing.T) {
+	in := guardrail.VerifyInput{
+		Answer: "Nothing named in Shenzhen is in my data. The official portal is live-001; call 12333.",
+		ToolCalls: []guardrail.ToolCallRecord{
+			{Name: "opportunity_search", Meta: map[string]any{"corpus_hits": 0, "result_count": 2}},
+		},
+	}
+	if got := codes(t, []string{"next_step_is_tracked"}, in); len(got) != 0 {
+		t.Errorf("a city with no coverage was asked to track a website: %v", got)
+	}
+}
+
+// Fence: a turn that retrieved nothing - a clarifying question, a refusal - is
+// never asked to invent a task.
+func TestNoTrackingDemandedWithoutRetrieval(t *testing.T) {
+	in := guardrail.VerifyInput{Answer: "Which city are you in?"}
+	if got := codes(t, []string{"next_step_is_tracked"}, in); len(got) != 0 {
+		t.Errorf("a clarifying question was asked to create a task: %v", got)
+	}
+}

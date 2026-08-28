@@ -95,6 +95,30 @@ The sentences the **agent** writes are localised in Go
 reasons, the empty-answer fallback, the staged-rollout refusal. Those appear at
 the worst moments of a turn, which is where being unreadable costs the most.
 
+## The conversation list
+
+The sidebar lists conversations, not sessions. The distinction matters because
+the client creates a session on page load, before anybody has spoken, so a naive
+listing showed one row per browser reload — see
+[bugfix/2026-08-28-session-list.md](bugfix/2026-08-28-session-list.md).
+
+The rules live in `store.SessionSummaries`, on the server, so that any client
+asking `GET /api/sessions` gets the same answer:
+
+- a session nobody has spoken in is not listed (it is still stored, and still
+  readable by id — this hides, it does not delete);
+- rows are ordered by last activity, so carrying on an old conversation brings
+  it back to the top;
+- each row carries the opening line as its title, clipped by rune, and a count
+  of user turns — and no transcript, because the client refetches this list
+  after every turn.
+
+The client never labels a row with an internal id. A conversation opened with
+nothing legible gets a said-so label in the reader's language. The list is capped
+at 50 rows and says how many older ones are not shown, rather than truncating
+silently. Clicking a row while an answer is streaming aborts that turn; the
+server still finishes and persists it, so the answer is there when you go back.
+
 ## Kept from before
 
 Streaming SSE, the approval gate showing the exact arguments, the consent card,

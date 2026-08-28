@@ -28,6 +28,7 @@ const state = {
   intents: [],
   pinnedIntent: "",
   busy: false,
+  abort: null, // AbortController for the turn in flight, so switching conversation can end it
   speak: false,
   showTech: false,
 };
@@ -50,6 +51,9 @@ async function boot() {
   }
   $("#sampleFlag").title = t("banner.sampleTitle2");
   $("#sampleFlag").hidden = !state.meta.corpus_is_sample;
+  // A lookup that cannot run must not read as an absence of opportunities.
+  $("#liveFlag").title = t("banner.liveOffTitle");
+  $("#liveFlag").hidden = state.meta.live_search_enabled !== false;
   buildRoleSelect();
   wire();
   await newSession($("#role").value);
@@ -76,6 +80,7 @@ function wire() {
     brandMood("calm");
     await loadIntents();
     await renderOverview();
+    await refreshSessions();
     if (state.session) state.session.locale = e.target.value;
   });
   $("#role").addEventListener("change", (e) => newSession(e.target.value));
@@ -119,8 +124,33 @@ function wire() {
 
 // ── sessions ───────────────────────────────────────────────────────────────
 
+// The person behind the conversations. A session is one conversation; the
+// subject is who it is about, and the profile, the consents and the open tasks
+// all hang off the subject rather than off the session.
+//
+// Why this is stored: boot() opens a session on every page load, and the server
+// mints a fresh subject whenever one is not supplied. So a reload used to make
+// the reader a brand-new person - the overview panel, the granted permissions
+// and every tracked task started again from nothing, while the consent card was
+// promising "so you do not have to type it again next time". Carrying the id
+// makes that promise true. It is an opaque server-issued id, not personal data.
+// See docs/bugfix/2026-08-28-subject-identity-and-tracked-steps.md
+const SUBJECT_KEY = "oba.subject";
+
+function rememberedSubject() {
+  try { return localStorage.getItem(SUBJECT_KEY) || ""; } catch { return ""; }
+}
+
+function rememberSubject(id) {
+  if (!id) return;
+  try { localStorage.setItem(SUBJECT_KEY, id); } catch { /* private mode: this session only */ }
+}
+
 async function newSession(role) {
-  state.session = await api("POST", "/api/sessions", { role, locale: locale() });
+  abortTurn();
+  state.session = await api("POST", "/api/sessions",
+    { role, locale: locale(), subject_id: rememberedSubject() });
+  rememberSubject(state.session.subject_id);
   state.pinnedIntent = "";
   $("#transcript").innerHTML = "";
   crumb(null);
@@ -173,21 +203,63 @@ const INTENT_LABELS = {
 };
 const intentLabel = (id) => (INTENT_LABELS[locale()] || INTENT_LABELS["zh-CN"])[id] || id;
 
+// The list is capped so that a long-running kiosk does not render hundreds of
+// rows, but the cap is stated rather than applied silently: SESSION_LIST_MAX
+// rows plus a line saying how many older ones are not shown.
+const SESSION_LIST_MAX = 50;
+
 async function refreshSessions() {
   const list = await api("GET", "/api/sessions");
   const box = $("#sessions");
+  const shown = list.slice(0, SESSION_LIST_MAX);
+
+  // Re-render only when something actually changed. refreshSessions runs after
+  // every turn, and rebuilding the DOM unconditionally threw away keyboard
+  // focus and the sidebar's scroll position each time.
+  // The locale is part of the signature: the list carries localised strings
+  // ("untitled", "N older not shown"), so switching language has to repaint it.
+  const sig = JSON.stringify([locale(), state.session?.id, shown.map((s) => [s.id, s.title, s.turns]), list.length]);
+  if (box.dataset.sig === sig) return;
+  box.dataset.sig = sig;
+
   box.innerHTML = "";
-  for (const s of list.slice(0, 14)) {
+  for (const s of shown) {
+    // A conversation whose opening message was only punctuation or whitespace
+    // still exists; it gets a said-so label rather than a raw internal id,
+    // which told the reader nothing.
+    const label = s.title || t("sessions.untitled");
     const b = document.createElement("button");
+    b.type = "button";
     b.className = "session" + (s.id === state.session?.id ? " is-active" : "");
-    const first = (s.history || []).find((h) => h.role === "user");
-    b.innerHTML = `<span class="ico">${icon("chat")}</span><span>${esc(first ? clip(first.text, 30) : s.id)}</span>`;
+    if (s.id === state.session?.id) b.setAttribute("aria-current", "page");
+    // The row ellipsises in CSS, so the full opening line lives in the tooltip
+    // instead of being cut to a fixed character count with no way to read it.
+    b.title = label;
+    b.innerHTML = `<span class="ico">${icon("chat")}</span><span class="session-label">${esc(label)}</span>`;
     b.addEventListener("click", () => openSession(s.id));
     box.append(b);
+  }
+  if (list.length > shown.length) {
+    const more = document.createElement("p");
+    more.className = "session-more";
+    more.textContent = t("sessions.more").replace("{n}", list.length - shown.length);
+    box.append(more);
+  }
+  if (!list.length) {
+    const empty = document.createElement("p");
+    empty.className = "session-more";
+    empty.textContent = t("sessions.empty");
+    box.append(empty);
   }
 }
 
 async function openSession(id) {
+  if (id === state.session?.id && !state.busy) return;
+  // Switching away mid-answer used to leave the turn streaming into a transcript
+  // that had already been replaced: the answer was written into detached nodes
+  // and vanished with no explanation. Abort it instead. The server finishes and
+  // persists the turn regardless, so coming back shows the answer.
+  abortTurn();
   const d = await api("GET", `/api/sessions/${id}`);
   state.session = d.session;
   $("#role").value = d.session.role;
@@ -266,9 +338,22 @@ const show = (el) => { el.hidden = false; };
 
 // ── sending ────────────────────────────────────────────────────────────────
 
+// abortTurn ends the turn in flight, if any. Called when the reader navigates
+// away from the conversation that turn belongs to.
+function abortTurn() {
+  if (!state.abort) return;
+  state.abort.abort();
+  state.abort = null;
+}
+
 async function send(text) {
   text = (text || "").trim();
   if (!text || state.busy || !state.session) return;
+  // The turn belongs to this conversation. Everything below writes to the
+  // screen only while that is still the conversation on screen.
+  const sid = state.session.id;
+  const ctl = new AbortController();
+  state.abort = ctl;
   $("#input").value = "";
   $("#input").style.height = "auto";
   for (const s of document.querySelectorAll(".suggest")) { s.innerHTML = ""; s.hidden = true; }
@@ -282,6 +367,7 @@ async function send(text) {
   try {
     const res = await fetch(`/api/sessions/${state.session.id}/messages`, {
       method: "POST",
+      signal: ctl.signal,
       headers: { "Content-Type": "application/json" },
       // The locale rides on every message: choosing a language in the sidebar
       // must change the next answer, not the next conversation.
@@ -304,7 +390,14 @@ async function send(text) {
           break;
         case "tool_start":
           status(t("status.working"), "busy");
-          if (ev.args) techItem(turn, `→ ${term("tool", ev.tool, ev.tool)} · ${ev.tool}`, ev.args);
+          // Rendered unconditionally. This used to be guarded on ev.args, which
+          // worked only because the stream carried a second, argument-less
+          // tool_start for every call and this was how they were told apart.
+          // With that duplicate gone the guard would mean something else
+          // entirely: a tool invoked with no arguments would vanish from the
+          // trace without a word. A call with no arguments still happened.
+          // See docs/bugfix/2026-08-28-duplicate-tool-start-events.md
+          techItem(turn, `→ ${term("tool", ev.tool, ev.tool)} · ${ev.tool}`, ev.args ?? {});
           break;
         case "tool_result": renderToolResult(turn, ev); break;
         case "guardrail": case "verify": finding(turn, ev.finding); break;
@@ -316,13 +409,22 @@ async function send(text) {
       }
     }
   } catch (e) {
-    notice(turn, "block", t("status.failed"), String(e?.message || e));
-    if (turn.typing) { turn.typing = false; turn.bubble.textContent = ""; }
+    // An abort is the reader leaving this conversation, not a failure. Reporting
+    // it would put an error into a transcript nobody is looking at any more.
+    if (e?.name !== "AbortError") {
+      notice(turn, "block", t("status.failed"), String(e?.message || e));
+      if (turn.typing) { turn.typing = false; turn.bubble.textContent = ""; }
+    }
   } finally {
+    if (state.abort === ctl) state.abort = null;
     setBusy(false);
     status("");
-    await renderOverview();
-    await refreshSessions();
+    // Only repaint if this is still the conversation on screen; otherwise the
+    // panels would be redrawn for the one the reader just left.
+    if (state.session?.id === sid) {
+      await renderOverview();
+      await refreshSessions();
+    }
   }
 }
 

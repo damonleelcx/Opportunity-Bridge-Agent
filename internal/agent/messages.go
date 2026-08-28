@@ -86,13 +86,14 @@ var messages = map[string]map[msgKey]string{
 // verifier shows up in English rather than silently showing nothing.
 var blockReasons = map[string]map[string]string{
 	"zh-CN": {
-		"INVENTED_IDENTIFIER": "回答里出现了语料库中不存在的编号。有人可能拿着它跑一趟窗口。",
-		"COHORT_DOWNRANKING":  "回答把你的身份当成了「别去试」的理由。身份只用来多给支持，不用来减少选择。",
-		"CONSENT_MISSING":     "这一轮动了居民的记录，但档案里没有「让工作人员查看」的授权。",
-		"SILENT_CLOSURE":      "有一条任务在没有任何凭据的情况下被标成了已完成。",
-		"PII_IN_AGGREGATE":    "回答里出现了个人身份信息。这一类问题只谈群体，不谈具体的人。",
-		"INTERNAL_ID_LEAKED":  "回答里出现了内部记录编号，可以被反查到具体的人。",
-		"UNSOURCED_AGGREGATE": "回答给了数字，但这些数字没有经过匿名下限的处理。",
+		"INVENTED_IDENTIFIER":   "回答里出现了语料库中不存在的编号。有人可能拿着它跑一趟窗口。",
+		"COHORT_DOWNRANKING":    "回答把你的身份当成了「别去试」的理由。身份只用来多给支持，不用来减少选择。",
+		"CONSENT_MISSING":       "这一轮动了居民的记录，但档案里没有「让工作人员查看」的授权。",
+		"SILENT_CLOSURE":        "有一条任务在没有任何凭据的情况下被标成了已完成。",
+		"PII_IN_AGGREGATE":      "回答里出现了个人身份信息。这一类问题只谈群体，不谈具体的人。",
+		"INTERNAL_ID_LEAKED":    "回答里出现了内部记录编号，可以被反查到具体的人。",
+		"UNSOURCED_AGGREGATE":   "回答给了数字，但这些数字没有经过匿名下限的处理。",
+		"NEXT_STEP_NOT_TRACKED": "这一轮找到了能办的事，但没有把它记进「进行中任务」，你下次回来就看不到了。",
 	},
 }
 

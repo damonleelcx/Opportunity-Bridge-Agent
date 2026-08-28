@@ -203,6 +203,12 @@ func (a *Agent) Run(ctx context.Context, in Input) (Result, error) {
 		toolRecords []guardrail.ToolCallRecord
 		pending     []store.PendingApproval
 		consents    []tools.ConsentPrompt
+		// seenConsent keeps one turn from raising the same permission card
+		// twice. Two places can raise one: the consent_request tool, and the
+		// gate in registry.Call when a tool needs a scope that is not held. A
+		// turn that does both asked the same question twice on one screen.
+		// See docs/bugfix/2026-08-28-consent-asked-twice.md
+		seenConsent = map[string]bool{}
 		usage       llm.Usage
 		corrections []string
 		redrafts    int
@@ -256,8 +262,18 @@ func (a *Agent) Run(ctx context.Context, in Input) (Result, error) {
 				emit(Event{Kind: EvText, Text: e.Text})
 			case llm.EventThinkingDelta:
 				emit(Event{Kind: EvThinking, Text: e.Text})
-			case llm.EventToolUse:
-				emit(Event{Kind: EvToolStart, Tool: e.ToolName})
+				// llm.EventToolUse is deliberately NOT turned into an EvToolStart
+				// here. It fires when the model announces a tool, which is before
+				// the budget check and before the refusal check - so a tool that is
+				// about to be blocked, or a response that is about to be refused,
+				// used to emit "tool_start" for a call that never started. It also
+				// carries no arguments and no tool-use id, so a client had no way to
+				// pair it with the real one emitted at the call site below, and the
+				// stream carried two tool_start events for every one tool_result.
+				// The signal it bought was a status flip a few tens of milliseconds
+				// earlier - the only thing between here and the call site is the
+				// remainder of this same response stream.
+				// See docs/bugfix/2026-08-28-duplicate-tool-start-events.md
 			}
 		})
 		if err != nil {
@@ -386,7 +402,8 @@ func (a *Agent) Run(ctx context.Context, in Input) (Result, error) {
 				emit(Event{Kind: EvApproval, Approval: &ap})
 				stop = StopAwaitingApproval
 			}
-			if res.Consent != nil {
+			if res.Consent != nil && !seenConsent[string(res.Consent.Scope)] {
+				seenConsent[string(res.Consent.Scope)] = true
 				consents = append(consents, *res.Consent)
 				cp := *res.Consent
 				emit(Event{Kind: EvConsent, Consent: &cp})

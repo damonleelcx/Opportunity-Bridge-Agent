@@ -18,9 +18,15 @@ import (
 // government site is fragile and unwelcome, and a lookup that silently degrades
 // is worse than one that says it is not switched on.
 //
-// The wire shape is Brave Search's (`web.results[]` with `title`, `url`,
-// `description`), which Serper and several others also emit, so pointing
-// OBA_SEARCH_API_URL elsewhere is usually enough.
+// The wire shape is Brave Search's specifically: a GET with query parameters,
+// answering `web.results[]` with `title`, `url`, `description`. Pointing
+// OBA_SEARCH_API_URL at a different vendor only works if that vendor answers
+// the same shape to the same request. Serper does NOT - it takes a POST with a
+// JSON body and answers `organic[]` with `title`, `link`, `snippet` - and the
+// failure is silent: the decode succeeds, `web` is absent, and the lookup
+// returns no results with no error, so "there is nothing here" ends up covering
+// for "I could not read the answer". Anything that is not Brave-shaped needs
+// its own Provider, which is a small file, not a change to the agent.
 //
 // What it does NOT do is decide the results are true. Everything it returns
 // carries the fetched URL and a caveat, and the agent is instructed to present

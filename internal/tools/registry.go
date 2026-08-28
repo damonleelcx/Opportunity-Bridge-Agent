@@ -269,9 +269,15 @@ func consentPromptFor(scope domain.ConsentScope) *ConsentPrompt {
 	case domain.ConsentStoreProfile:
 		return &ConsentPrompt{
 			Scope: scope, Title: "Keep what you tell me",
-			Plain:     "May I save your skills, your city and what you told me about your situation?",
-			WhatFor:   "So you do not have to type it again next time, and so matching can use it.",
-			Retention: "Kept until you ask me to delete it. You can see everything I hold and correct it.",
+			Plain:   "May I save your skills, your city and what you told me about your situation?",
+			WhatFor: "So you do not have to type it again next time, and so matching can use it.",
+			// Why the device sentence: what is stored server-side is keyed by a
+			// subject id the client carries. Clearing browser data loses the id,
+			// and with it the way back to the record - so "kept until you ask me
+			// to delete it" on its own was a promise the system cannot keep.
+			// See docs/bugfix/2026-08-28-subject-identity-and-tracked-steps.md
+			Retention: "Kept until you ask me to delete it, and you can see everything I hold and correct it. " +
+				"It is tied to this device: if you clear your browser data, I will not recognise you next time.",
 		}
 	case domain.ConsentShareCaseworker:
 		return &ConsentPrompt{

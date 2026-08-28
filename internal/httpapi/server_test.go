@@ -60,6 +60,15 @@ func TestConversationStreamsAndTracks(t *testing.T) {
 			Name  string          `json:"name"`
 			Input json.RawMessage `json:"input"`
 		}{{Name: "opportunity_search", Input: json.RawMessage(`{"query":"养老 护理 白班","city":"成都"}`)}}},
+		// Recording the step is part of the flow this test streams, not an extra:
+		// individual_pathway's next_step_is_tracked verifier requires a turn that
+		// found a named programme to leave a record of the step it hands over.
+		// Without this the draft is sent back for a redraft, the script runs out,
+		// and the stream carries no final event - which is what this test caught.
+		{ToolCalls: []struct {
+			Name  string          `json:"name"`
+			Input json.RawMessage `json:"input"`
+		}{{Name: "case_task_create", Input: json.RawMessage(`{"domain":"employment","title":"Ask the Qingyang day centre about the day-shift care post (job-002)","owner":"resident","linked_ref":"job-002","channel_phone":"028-5550-2244","channel_window":"12 Shudu Ave, Qingyang","channel_hours":"Mon-Fri 09:00-17:00"}`)}}},
 		{Text: "job-002 fits. Call 028-5550-2244, or the Qingyang window at 12 Shudu Ave, Mon-Fri 09:00-17:00."},
 	}})
 	defer srv.Close()

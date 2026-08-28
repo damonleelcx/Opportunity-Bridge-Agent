@@ -135,7 +135,8 @@ var registry = []Intent{
 			"application_submit", "handoff_to_human", "accessibility_set", "consent_request",
 		},
 		Verifiers: []string{"citations_present", "no_eligibility_verdict", "actionable_next_step",
-			"no_invented_identifiers", "no_false_reassurance", "reply_language", "answers_the_city"},
+			"next_step_is_tracked", "no_invented_identifiers", "no_false_reassurance", "reply_language",
+			"answers_the_city"},
 		RequiredScope: []domain.ConsentScope{domain.ConsentStoreProfile},
 		MaxIterations: 8,
 		MaxToolCalls:  14,
@@ -148,7 +149,11 @@ Sequence: understand -> plan -> act -> verify -> respond.
 - For each recommendation give: what it is, why it fits this person's own words,
   the published criteria with met / unmet / unknown, and how to actually do it.
 - "Unknown" is a normal answer. Say which document would settle it.
-- Draft materials in full, in the chat, before any submission is proposed.`,
+- Draft materials in full, in the chat, before any submission is proposed.
+- The next step you hand them must also be RECORDED, not just written: call
+  case_task_create with the opportunity id, an owner and the channel. What is
+  only in the text is gone when they close the tab. If it is already tracked,
+  update that task rather than creating a second one.`,
 	},
 	{
 		ID:       LowAccessSupport,

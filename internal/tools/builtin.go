@@ -289,7 +289,14 @@ func opportunitySearch() Tool {
 						"who asked about a different city.",
 				},
 				Meta: map[string]any{
-					"result_count":     len(results) + len(live),
+					"result_count": len(results) + len(live),
+					// corpus_hits counts only NAMED records - a programme with an
+					// id, criteria and a channel. result_count folds in the live
+					// directory, which returns "here is your region's portal":
+					// a real destination, but not a step anybody can be held to.
+					// next_step_is_tracked reads this one so that a city with no
+					// coverage is not asked to track a website.
+					"corpus_hits":      len(results),
 					"asked_city":       askedCity,
 					"asked_city_names": retrieval.CityNames(askedCity),
 					"local_hits":       countLocal(results),
@@ -865,6 +872,28 @@ func consentRequest() Tool {
 		}, "scope", "why"),
 		Run: func(ctx context.Context, env Env, a map[string]any) (Result, error) {
 			scope := domain.ConsentScope(argStr(a, "scope"))
+			// Why this check: a permission that is already held must not be asked
+			// for again. The gate in registry.Call reads the store before it
+			// raises a card; this tool did not, so a granted scope produced a
+			// second, identical card. Granting sends a follow-up turn
+			// ("I have granted X, please continue"), so the model saw the topic
+			// raised again and asked again - the person was shown the same
+			// question twice and could not tell the two cards apart.
+			// See docs/bugfix/2026-08-28-consent-asked-twice.md
+			if g := env.Store.Consent(env.Session.SubjectID, scope); g.Granted {
+				env.Rec.Info(obs.ConsentChecked, "consent already held; no card raised",
+					map[string]any{"scope": string(scope)})
+				return Result{
+					Content: map[string]any{
+						"scope": scope, "already_granted": true,
+						"granted_at": g.GrantedAt,
+						"note": "This permission is already held, so no card was shown and none is needed. " +
+							"Do NOT ask for it again: asking for something already given reads as not having " +
+							"listened. Use it and get on with the answer.",
+					},
+					Meta: map[string]any{"consent_requested": string(scope), "already_granted": true},
+				}, nil
+			}
 			prompt := consentPromptFor(scope)
 			prompt.WhatFor = argStr(a, "why")
 			env.Rec.Info(obs.ConsentChecked, "consent requested", map[string]any{"scope": string(scope)})

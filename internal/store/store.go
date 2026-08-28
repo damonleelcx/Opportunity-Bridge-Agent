@@ -20,6 +20,7 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
+	"strings"
 	"sync"
 	"time"
 
@@ -214,15 +215,91 @@ func (s *Store) Session(id string) (*Session, bool) {
 	return cloneSession(ses), true
 }
 
-func (s *Store) Sessions() []*Session {
+// SessionSummary is the conversation list's view of a session: enough to label
+// one and pick it, and no transcript.
+//
+// Why not just return []*Session: the client refetches the list after every
+// turn, and a Session carries its whole history, so listing shipped every
+// message of every conversation on every turn - a payload that grows without
+// bound, and a disclosure a picker never needed.
+type SessionSummary struct {
+	ID        string      `json:"id"`
+	Role      domain.Role `json:"role"`
+	Locale    string      `json:"locale,omitempty"`
+	Intent    string      `json:"intent,omitempty"`
+	Title     string      `json:"title"` // first thing the person said; "" if they said nothing legible
+	Turns     int         `json:"turns"` // user turns, so the client need not carry history to count them
+	CreatedAt time.Time   `json:"created_at"`
+	UpdatedAt time.Time   `json:"updated_at"`
+}
+
+// sessionTitleRunes caps the title at a length that is generous for a tooltip
+// and still bounded. The row itself ellipsises in CSS; this only stops one
+// pasted essay from dominating the list payload.
+const sessionTitleRunes = 80
+
+// SessionSummaries lists the conversations somebody actually started, most
+// recently active first.
+//
+// Two rules here rather than in the client, so every client gets the same
+// answer. Both fix what the sidebar was showing - see
+// docs/bugfix/2026-08-28-session-list.md:
+//
+//  1. A session nobody has spoken in is not a conversation. The web client
+//     creates a session on page load and on every role change, so each reload
+//     minted an empty shell that then sat in the list for ever labelled with its
+//     raw internal id (ses_0018). Filtering here means those shells are invisible
+//     no matter which client asks.
+//  2. Order by last activity, not by creation. Sorting on CreatedAt buried a
+//     conversation you had just carried on underneath newer, idler ones.
+//
+// The shells are still stored; this hides them, it does not delete them. If that
+// growth needs collecting, that is a separate decision about deleting data.
+func (s *Store) SessionSummaries() []SessionSummary {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
-	out := make([]*Session, 0, len(s.s.Sessions))
+	out := make([]SessionSummary, 0, len(s.s.Sessions))
 	for _, ses := range s.s.Sessions {
-		out = append(out, cloneSession(ses))
+		title, turns := "", 0
+		for _, h := range ses.History {
+			if h.Role != "user" {
+				continue
+			}
+			turns++
+			if title == "" {
+				title = clipRunes(collapseSpace(h.Text), sessionTitleRunes)
+			}
+		}
+		if turns == 0 {
+			continue
+		}
+		out = append(out, SessionSummary{
+			ID: ses.ID, Role: ses.Role, Locale: ses.Locale, Intent: ses.Intent,
+			Title: title, Turns: turns,
+			CreatedAt: ses.CreatedAt, UpdatedAt: ses.UpdatedAt,
+		})
 	}
-	sort.Slice(out, func(i, j int) bool { return out[i].CreatedAt.After(out[j].CreatedAt) })
+	sort.Slice(out, func(i, j int) bool {
+		if out[i].UpdatedAt.Equal(out[j].UpdatedAt) {
+			return out[i].ID > out[j].ID
+		}
+		return out[i].UpdatedAt.After(out[j].UpdatedAt)
+	})
 	return out
+}
+
+// collapseSpace flattens a multi-line message into one label line. A pasted
+// message with newlines in it must not become a tall, ragged row.
+func collapseSpace(s string) string { return strings.Join(strings.Fields(s), " ") }
+
+// clipRunes cuts by rune, not by byte. Cutting Chinese by byte splits a
+// character and produces a replacement glyph in the middle of a title.
+func clipRunes(s string, n int) string {
+	r := []rune(s)
+	if len(r) <= n {
+		return s
+	}
+	return string(r[:n]) + "\u2026"
 }
 
 // MutateSession applies fn under the write lock and persists. Returning an
