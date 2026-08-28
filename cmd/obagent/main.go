@@ -143,15 +143,24 @@ func buildLiveSource(cfg config.Config, log *slog.Logger) (livesource.Chain, err
 		return nil, err
 	}
 	chain := livesource.Chain{dir}
-	if cfg.SearchAPIKey != "" {
-		chain = append(chain, livesource.NewWebSearch(cfg.SearchAPIURL, cfg.SearchAPIKey, cfg.SearchKeyHeader))
-		log.Info("live web search enabled", "regions_in_directory", dir.Regions())
-	} else {
+	if cfg.SearchAPIKey == "" {
 		log.Warn("live web search is OFF: no OBA_SEARCH_API_KEY. "+
 			"Cities outside the corpus get the official directory and the national programmes, "+
 			"but no current openings or courses",
 			"code", "LIVE_SEARCH_DISABLED", "regions_in_directory", dir.Regions())
+		return chain, nil
 	}
+	// The provider is chosen by name, never inferred from the endpoint: the two
+	// vendors answer different shapes, and guessing wrong returns nothing rather
+	// than failing. config.Validate has already rejected any other value.
+	switch cfg.SearchProvider {
+	case config.SearchBrave:
+		chain = append(chain, livesource.NewWebSearch(cfg.SearchAPIURL, cfg.SearchAPIKey, cfg.SearchKeyHeader))
+	default:
+		chain = append(chain, livesource.NewBocha(cfg.SearchAPIURL, cfg.SearchAPIKey))
+	}
+	log.Info("live web search enabled",
+		"provider", string(cfg.SearchProvider), "regions_in_directory", dir.Regions())
 	return chain, nil
 }
 

@@ -114,3 +114,29 @@ func checkModelBelongs(b Backend, field, model string) (warn string, err error) 
 	return fmt.Sprintf("%s=%q is not a model id this build was written against; "+
 		"proceeding anyway. Known ids for %s: %s", field, model, b, strings.Join(spec.Known, ", ")), nil
 }
+
+// SearchProvider names the web-search vendor the live lookup uses.
+//
+// Why an enum and not just an endpoint URL: these vendors do not share a wire
+// shape. Bocha takes a POST with a bearer token and answers
+// `data.webPages.value[]`; Brave takes a GET with a subscription-token header
+// and answers `web.results[]`. Pointing one at the other's URL decodes cleanly
+// and yields nothing, so the mistake would surface as "there are no jobs in your
+// city" rather than as an error. Naming the vendor makes that unrepresentable.
+type SearchProvider string
+
+const (
+	// SearchBocha (博查) is the default. It indexes the Chinese-language job and
+	// public-service sites this product actually needs; see internal/livesource
+	// for the measurement behind that choice.
+	SearchBocha SearchProvider = "bocha"
+	// SearchBrave is the Brave Search API. Kept because it works and is already
+	// written, but it is not the default: its free tier was withdrawn in
+	// February 2026 and its coverage of Chinese municipal sites is unproven.
+	SearchBrave SearchProvider = "brave"
+)
+
+// SearchProviderNames lists the accepted values, for error messages.
+func SearchProviderNames() []string {
+	return []string{string(SearchBocha), string(SearchBrave)}
+}
