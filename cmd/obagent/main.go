@@ -26,6 +26,7 @@ import (
 	"github.com/damonleelcx/Opportunity-Bridge-Agent/internal/config"
 	"github.com/damonleelcx/Opportunity-Bridge-Agent/internal/corpus"
 	"github.com/damonleelcx/Opportunity-Bridge-Agent/internal/httpapi"
+	"github.com/damonleelcx/Opportunity-Bridge-Agent/internal/livesource"
 	"github.com/damonleelcx/Opportunity-Bridge-Agent/internal/llm"
 	"github.com/damonleelcx/Opportunity-Bridge-Agent/internal/retrieval"
 	"github.com/damonleelcx/Opportunity-Bridge-Agent/internal/store"
@@ -66,9 +67,13 @@ func run(addrOverride string, log *slog.Logger) error {
 		return err
 	}
 
+	live, err := buildLiveSource(cfg, log)
+	if err != nil {
+		return err
+	}
 	ag := &agent.Agent{
 		Cfg: cfg, LLM: client, Store: st, Corpus: c,
-		Index: retrieval.NewIndex(c), Tools: toolsRegistry(),
+		Index: retrieval.NewIndex(c), Tools: toolsRegistry(), Live: live,
 	}
 	webFS, err := fs.Sub(web.Files, "static")
 	if err != nil {
@@ -122,6 +127,31 @@ func run(addrOverride string, log *slog.Logger) error {
 		defer cancel()
 		return httpSrv.Shutdown(shutCtx)
 	}
+}
+
+// buildLiveSource assembles what the agent can consult beyond the corpus.
+//
+// The directory is a hard requirement: without it, a person in a city with no
+// local listings has nowhere concrete to go, which is the gap this exists to
+// close. Web search is added only when a key is present, and its absence is
+// logged rather than hidden — a lookup that quietly does less is how "there is
+// nothing in your city" becomes a lie.
+func buildLiveSource(cfg config.Config, log *slog.Logger) (livesource.Chain, error) {
+	dir, err := livesource.LoadDirectory(cfg.CorpusDir)
+	if err != nil {
+		return nil, err
+	}
+	chain := livesource.Chain{dir}
+	if cfg.SearchAPIKey != "" {
+		chain = append(chain, livesource.NewWebSearch(cfg.SearchAPIURL, cfg.SearchAPIKey, cfg.SearchKeyHeader))
+		log.Info("live web search enabled", "regions_in_directory", dir.Regions())
+	} else {
+		log.Warn("live web search is OFF: no OBA_SEARCH_API_KEY. "+
+			"Cities outside the corpus get the official directory and the national programmes, "+
+			"but no current openings or courses",
+			"code", "LIVE_SEARCH_DISABLED", "regions_in_directory", dir.Regions())
+	}
+	return chain, nil
 }
 
 func buildClient(cfg config.Config) (llm.Client, error) {

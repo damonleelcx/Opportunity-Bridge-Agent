@@ -122,8 +122,17 @@ func (s *Server) meta(w http.ResponseWriter, r *http.Request) {
 		"reply_language":    s.defaultLocale(),
 		"reply_languages":   config.ReplyLanguages,
 		"corpus_is_sample":  true,
-		"disabled_intents":  disabled,
-		"roles":             []string{string(domain.RoleResident), string(domain.RoleCaseworker), string(domain.RoleAnalyst)},
+		// Why this is on /api/meta: with no search key the only live provider is
+		// the directory, which returns the official portal for a region and
+		// never a named employer or course. So a person outside the cities in
+		// the corpus gets the national framework and a website - correct, but it
+		// looks like "there is nothing for you" rather than "this instance
+		// cannot look". The startup log says LIVE_SEARCH_DISABLED; nobody
+		// reading the page can see a log.
+		// See docs/bugfix/2026-08-28-subject-identity-and-tracked-steps.md
+		"live_search_enabled": s.Cfg.SearchAPIKey != "",
+		"disabled_intents":    disabled,
+		"roles":               []string{string(domain.RoleResident), string(domain.RoleCaseworker), string(domain.RoleAnalyst)},
 	})
 }
 
@@ -182,8 +191,10 @@ func (s *Server) createSession(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, ses)
 }
 
+// listSessions backs the conversation picker. It returns summaries, not whole
+// sessions: the picker refetches after every turn and never needed transcripts.
 func (s *Server) listSessions(w http.ResponseWriter, r *http.Request) {
-	writeJSON(w, s.Store.Sessions())
+	writeJSON(w, s.Store.SessionSummaries())
 }
 
 func (s *Server) getSession(w http.ResponseWriter, r *http.Request) {

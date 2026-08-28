@@ -200,6 +200,11 @@ func TestBudgetStopsARunawayLoopWithSomethingReadable(t *testing.T) {
 func TestEveryDecisionIsTraced(t *testing.T) {
 	h := newHarness(t, domain.RoleResident, llm.Script{Turns: []llm.ScriptedTurn{
 		{ToolCalls: calls("opportunity_search", map[string]any{"query": "养老 护理", "city": "成都"})},
+		// individual_pathway requires a turn that found a named programme to leave
+		// a record of the step, not just a sentence - see next_step_is_tracked.
+		{ToolCalls: calls("case_task_create", map[string]any{
+			"domain": "employment", "title": "Ask the Qingyang day centre about job-002",
+			"owner": "resident", "linked_ref": "job-002", "channel_phone": "028-5550-2244"})},
 		{Text: "job-002 fits. Call 028-5550-2244, or the Qingyang window, Mon-Fri 09:00-17:00."},
 	}}, domain.ConsentStoreProfile)
 	res := h.run(t, "成都的养老护理岗", intent.IndividualPathway)
@@ -226,6 +231,11 @@ func TestShortTermMemoryDoesNotReplayToolCalls(t *testing.T) {
 	// are summarised into the context layer instead.
 	h := newHarness(t, domain.RoleResident, llm.Script{Turns: []llm.ScriptedTurn{
 		{ToolCalls: calls("opportunity_search", map[string]any{"query": "养老 护理", "city": "成都"})},
+		// individual_pathway requires a turn that found a named programme to leave
+		// a record of the step, not just a sentence - see next_step_is_tracked.
+		{ToolCalls: calls("case_task_create", map[string]any{
+			"domain": "employment", "title": "Ask the Qingyang day centre about job-002",
+			"owner": "resident", "linked_ref": "job-002", "channel_phone": "028-5550-2244"})},
 		{Text: "job-002 fits. Call 028-5550-2244."},
 		{Text: "As I said, job-002. Call 028-5550-2244, Mon-Fri 09:00-17:00."},
 	}}, domain.ConsentStoreProfile)
@@ -312,5 +322,128 @@ func TestBlockedAnswerIsExplainedInTheAnswerLanguage(t *testing.T) {
 	// rule, not two; repeating it verbatim reads as two separate problems.
 	if strings.Count(res.Answer, "identifiers that are not in the corpus") > 1 {
 		t.Errorf("the same finding was listed twice:\n%s", res.Answer)
+	}
+}
+
+// A redraft that still fails used to go out as though it had passed. The
+// verifiers had already caught the fragments reported from the live deployment;
+// what went wrong is that nobody was told. The answer still goes out — it is
+// usually most of an answer — but it now says so.
+func TestUnresolvedFailuresAreDisclosedToTheReader(t *testing.T) {
+	// Both drafts are a bare fragment: no citation, no next step.
+	h := newHarness(t, domain.RoleResident, llm.Script{Turns: []llm.ScriptedTurn{
+		{ToolCalls: calls("opportunity_search", map[string]any{"query": "养老 护理", "city": "成都"})},
+		{Text: "（接上面）先这样。"},
+		{Text: "不存也没关系。"},
+	}}, domain.ConsentStoreProfile)
+	if err := h.st.MutateSession(h.ses.ID, func(s *store.Session) error {
+		s.Locale = "zh-CN"
+		return nil
+	}); err != nil {
+		t.Fatal(err)
+	}
+	res := h.run(t, "成都的养老护理岗", intent.IndividualPathway)
+
+	if !res.Redrafted {
+		t.Fatal("the failing draft was not redrafted")
+	}
+	if !strings.Contains(res.Answer, "没完全通过") {
+		t.Errorf("a still-failing answer went out with no disclosure:\n%s", res.Answer)
+	}
+	// The content is still delivered — most of an answer beats a refusal — and
+	// the reader is given somewhere to go.
+	if !strings.Contains(res.Answer, "12333") {
+		t.Errorf("the disclosure did not offer a way out:\n%s", res.Answer)
+	}
+	for _, f := range res.Findings {
+		if f.Code == "UNRESOLVED_AFTER_REDRAFT" {
+			t.Error("the disclosure must not itself be reported as a finding")
+		}
+	}
+}
+
+// ---------------------------------------------------------------------------
+// Regression fence for docs/bugfix/2026-08-28-duplicate-tool-start-events.md
+//
+// The stream used to carry two tool_start events for every one tool_result: one
+// from the model's own stream when it announced the tool, one at the call site.
+// Measured on a live turn: 14 against 7. The pair could not be reconciled by any
+// client, because the streamed one carries neither arguments nor a tool-use id.
+func TestOneToolStartPerToolResult(t *testing.T) {
+	h := newHarness(t, domain.RoleResident, llm.Script{Turns: []llm.ScriptedTurn{
+		// Two tools in ONE model response, which is where the duplication was
+		// most visible: the stream announced both, then the loop invoked both.
+		{ToolCalls: append(
+			calls("opportunity_search", map[string]any{"query": "养老 护理", "city": "成都"}),
+			calls("knowledge_search", map[string]any{"query": "失业登记"})...)},
+		{ToolCalls: calls("case_task_create", map[string]any{
+			"domain": "employment", "title": "Ask the Qingyang day centre about job-002",
+			"owner": "resident", "linked_ref": "job-002", "channel_phone": "028-5550-2244"})},
+		{Text: "job-002 fits. Call 028-5550-2244, Mon-Fri 09:00-17:00."},
+	}}, domain.ConsentStoreProfile)
+
+	var starts, results int
+	var argless []string
+	_, err := h.ag.Run(context.Background(), agent.Input{
+		SessionID: h.ses.ID, Message: "成都的养老护理岗", Intent: intent.IndividualPathway,
+		Sink: func(e agent.Event) {
+			switch e.Kind {
+			case agent.EvToolStart:
+				starts++
+				if len(e.Args) == 0 {
+					argless = append(argless, e.Tool)
+				}
+			case agent.EvToolResult:
+				results++
+			}
+		},
+	})
+	if err != nil {
+		t.Fatalf("run: %v", err)
+	}
+	if results == 0 {
+		t.Fatal("no tool ran; this test cannot say anything about pairing")
+	}
+	if starts != results {
+		t.Errorf("%d tool_start events against %d tool_result events; every call must announce itself exactly once", starts, results)
+	}
+	// The surviving emission is the one at the call site, which is the only one
+	// that knows the arguments. An argument-less tool_start is the ghost coming
+	// back: the trace panel has nothing to show for it.
+	if len(argless) > 0 {
+		t.Errorf("tool_start arrived without arguments for %v; the trace panel renders these empty", argless)
+	}
+}
+
+// A tool the budget refuses never runs, so it must not announce that it started.
+// The streamed emission fired before the budget check and claimed otherwise.
+func TestBudgetBlockedToolAnnouncesNoStart(t *testing.T) {
+	same := map[string]any{"query": "养老 护理", "city": "成都"}
+	h := newHarness(t, domain.RoleResident, llm.Script{Turns: []llm.ScriptedTurn{
+		{ToolCalls: calls("opportunity_search", same)},
+		{ToolCalls: calls("opportunity_search", same)}, // identical: the repeat guard trips
+		{ToolCalls: calls("case_task_create", map[string]any{
+			"domain": "employment", "title": "Ask the Qingyang day centre about job-002",
+			"owner": "resident", "linked_ref": "job-002", "channel_phone": "028-5550-2244"})},
+		{Text: "job-002 fits. Call 028-5550-2244."},
+	}}, domain.ConsentStoreProfile)
+
+	var starts, results int
+	_, err := h.ag.Run(context.Background(), agent.Input{
+		SessionID: h.ses.ID, Message: "成都的养老护理岗", Intent: intent.IndividualPathway,
+		Sink: func(e agent.Event) {
+			switch e.Kind {
+			case agent.EvToolStart:
+				starts++
+			case agent.EvToolResult:
+				results++
+			}
+		},
+	})
+	if err != nil {
+		t.Fatalf("run: %v", err)
+	}
+	if starts > results {
+		t.Errorf("%d tool_start against %d tool_result: a call the budget refused was reported as started", starts, results)
 	}
 }

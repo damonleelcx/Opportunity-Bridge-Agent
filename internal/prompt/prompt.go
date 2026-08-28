@@ -134,6 +134,12 @@ workplace injury, withheld documents, coercion, discrimination, or being in
 distress. These are not questions about which program to apply to. Acknowledge
 what they said, call handoff_to_human, and give the channel.
 
+ANSWER FOR THE CITY THEY NAMED
+National programmes are administered locally, so they are available in whatever
+city the person is in. Answer for that city by name, and point at that city's own
+12333. Never open with what you do not have: "这边我没有本地清单" as a first line
+tells somebody there is nothing for them, and that is false.
+
 A PERMISSION REQUEST IS NEVER THE ANSWER
 If a tool needs a permission the person has not given, answer their question with
 everything that does work, and put the request at the end in one or two sentences,
@@ -242,6 +248,8 @@ func verifierPlain(name string) string {
 		return "counts are reported as association, with a confound named."
 	case "no_false_reassurance":
 		return "the answer contains no comfort that is not backed by a fact."
+	case "answers_the_city":
+		return "if you searched for a city, the answer is written for that city and names it."
 	case "reply_language":
 		return "the answer is written in the language stated at the top of this turn's context."
 	}
@@ -268,10 +276,17 @@ func ContextLayer(o Options) string {
 	b.WriteString("\nCURRENT SITUATION\n")
 	fmt.Fprintf(&b, "Acting for: %s (role: %s)\n", audienceOf(o.Intent), o.Session.Role)
 	if len(o.CitiesCovered) > 0 {
-		fmt.Fprintf(&b, "Coverage: national records apply in EVERY city and are always available. "+
-			"Local listings exist only for: %s. Outside those cities, give the national framework and the "+
-			"nationwide numbers (12333 人社热线, 12345 政务热线), say plainly that there is no local listing here, "+
-			"and never invent one.\n", strings.Join(o.CitiesCovered, "、"))
+		fmt.Fprintf(&b, "COVERAGE — read this before you write about a city.\n"+
+			"National programmes are administered locally. When somebody names a city, they ARE available in "+
+			"that city; the standards, the amounts and the counter are set there. So answer for THEIR city: "+
+			"name it, say what they can do there, and point at that city's 12333 (it is a local line — dialling "+
+			"it in 深圳 reaches 深圳).\n"+
+			"Do NOT open with what is missing. A first line like 这边我没有本地清单 tells somebody there is "+
+			"nothing for them, which is false. Lead with what they can actually do.\n"+
+			"Named employers and specific courses exist in this corpus only for: %s. If they asked about a "+
+			"different city, say once — briefly, and not first — that you have no named employer or course "+
+			"there, and never invent one. Do not list the covered cities at them; it is not their city and "+
+			"it does not help.\n", strings.Join(o.CitiesCovered, "、"))
 	}
 	if len(o.Session.AccessNeeds) > 0 {
 		fmt.Fprintf(&b, "Delivery settings in force: %s\n", joinNeeds(o.Session.AccessNeeds))
@@ -321,11 +336,18 @@ func ContextLayer(o Options) string {
 		}
 	}
 	if len(o.Corrections) > 0 {
-		b.WriteString("\nYOUR PREVIOUS DRAFT FAILED THESE CHECKS - FIX AND ANSWER AGAIN\n")
+		b.WriteString("\nYOUR PREVIOUS DRAFT FAILED THESE CHECKS\n")
 		for _, c := range o.Corrections {
 			fmt.Fprintf(&b, "- %s\n", c)
 		}
-		b.WriteString("Do not apologise or mention the redraft. Just give the corrected answer.\n")
+		// The failed draft is dropped from the history before this request, so
+		// the reader will see ONLY what comes back now. A model that writes just
+		// the fix — "（接上面）…" — leaves them with a fragment and no answer,
+		// which is worse than the draft that was rejected.
+		b.WriteString("WRITE THE WHOLE ANSWER AGAIN, FROM THE BEGINNING. The reader will see only " +
+			"this version; the draft above was never sent and they have not read it. Do not write a " +
+			"continuation, a patch or a note about the correction — no 「接上面」, no 「补充」. " +
+			"Produce a complete, standalone answer that fixes the points above.\n")
 	}
 	return b.String()
 }

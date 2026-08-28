@@ -126,3 +126,25 @@ func TestUnroutedIntentCanCallNothing(t *testing.T) {
 		}
 	}
 }
+
+// The verifier exists and passes its own unit tests, and none of that matters
+// unless the intent actually names it: an unwired verifier is silent, which is
+// exactly the state that left the "Open tasks" panel empty.
+// See docs/bugfix/2026-08-28-subject-identity-and-tracked-steps.md
+func TestIndividualPathwayRequiresTheStepToBeRecorded(t *testing.T) {
+	in, ok := intent.Get(intent.IndividualPathway)
+	if !ok {
+		t.Fatal("individual_pathway is not in the registry")
+	}
+	for _, v := range in.Verifiers {
+		if v == "next_step_is_tracked" {
+			// The escape hatch the remedy names must be reachable, or the
+			// redraft is told to call a tool this intent forbids.
+			if !intent.ToolAllowed(intent.IndividualPathway, "case_task_update") {
+				t.Error("the check tells the model to update an existing task, but this intent cannot call case_task_update")
+			}
+			return
+		}
+	}
+	t.Error("individual_pathway does not run next_step_is_tracked; a step handed over in text only goes unrecorded")
+}

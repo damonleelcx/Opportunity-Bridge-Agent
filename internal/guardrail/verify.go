@@ -47,6 +47,7 @@ var verifiers = map[string]Verifier{
 	"citations_present":          verifyCitationsPresent,
 	"no_eligibility_verdict":     verifyNoEligibilityVerdict,
 	"actionable_next_step":       verifyActionableNextStep,
+	"next_step_is_tracked":       verifyNextStepIsTracked,
 	"no_invented_identifiers":    verifyNoInventedIdentifiers,
 	"plain_language":             verifyPlainLanguage,
 	"offline_route_present":      verifyOfflineRoute,
@@ -60,6 +61,7 @@ var verifiers = map[string]Verifier{
 	"no_causal_overreach":        verifyNoCausalOverreach,
 	"no_false_reassurance":       verifyNoFalseReassurance,
 	"reply_language":             verifyReplyLanguage,
+	"answers_the_city":           verifyAnswersTheCity,
 }
 
 // Verify runs the named checks in order and returns every finding.
@@ -96,7 +98,7 @@ var (
 	// Every id prefix the corpus uses. `nat` was added with the national layer;
 	// leaving it out here made a correctly-cited answer look uncited, which
 	// forced a redraft and produced a worse answer than the one it replaced.
-	refToken     = regexp.MustCompile(`\b(?:job|trn|ent|sub|kb|nat)-\d{3}\b`)
+	refToken     = regexp.MustCompile(`\b(?:job|trn|ent|sub|kb|nat|live)-\d{3}\b`)
 	sourceToken  = regexp.MustCompile(`\bSAMPLE/[A-Za-z0-9_\-/]+`)
 	phoneToken   = regexp.MustCompile(`\b\d{3,4}-\d{4}-\d{4}\b|\b\d{3,4}-\d{7,8}\b|\b1[3-9]\d{9}\b|\b(?:12333|12345)\b`)
 	urlToken     = regexp.MustCompile(`https?://\S+`)
@@ -232,6 +234,55 @@ func verifyActionableNextStep(in VerifyInput) []Finding {
 	}}
 }
 
+// verifyNextStepIsTracked: when a turn found something real to act on, the step
+// it hands the person must exist as a record, not only as a sentence.
+//
+// Why this is a separate check from actionable_next_step: that one is satisfied
+// by a phone number appearing anywhere in the text, and Go's || short-circuits,
+// so its "or a task was created" arm was never reached once an answer mentioned
+// 12333 - which every good answer does. The result was an "Open tasks" panel
+// that stayed empty for ever while the product told the reader "every step
+// agreed here is tracked". The panel is fed by case_task_create; nothing
+// required it to be called. See
+// docs/bugfix/2026-08-28-subject-identity-and-tracked-steps.md
+//
+// It fires narrowly on purpose. Only a turn that retrieved a NAMED programme can
+// be expected to track anything: a clarifying question, a refusal, or a search
+// that found nothing must not be forced to invent a task. It reads corpus_hits
+// rather than result_count for that reason - result_count folds in the live
+// directory, whose answer is "your region's portal is here", and a website is
+// not a step with an owner. Updating an existing task
+// counts, and so does a handoff or a filing, both of which create one
+// themselves - so a conversation that keeps circling one step produces one
+// record, not one per turn.
+func verifyNextStepIsTracked(in VerifyInput) []Finding {
+	found := false
+	for _, c := range in.ToolCalls {
+		if c.Name != "opportunity_search" || c.Err != "" {
+			continue
+		}
+		if n, ok := metaInt(c, "corpus_hits"); ok && n > 0 {
+			found = true
+			break
+		}
+	}
+	if !found {
+		return nil
+	}
+	if ranTool(in, "case_task_create", "case_task_update", "handoff_to_human",
+		"application_submit", "document_prepare") {
+		return nil
+	}
+	return []Finding{{
+		Guard: "verify", Code: "NEXT_STEP_NOT_TRACKED", Severity: Repair,
+		Message: "This turn found something the person can act on, but the step was left in the text only: " +
+			"nothing was recorded, so it will not be there when they come back.",
+		Remedy: "Record the one next step with case_task_create - the opportunity id as linked_ref, an owner, " +
+			"and the channel you just gave them. If that step is already tracked, call case_task_update on it " +
+			"instead of creating a second one. Then answer as you were going to.",
+	}}
+}
+
 // verifyNoInventedIdentifiers: every program id or source reference in the
 // answer must exist in the corpus. This is the check that stops a fluent
 // invention from reaching somebody who will act on it.
@@ -260,6 +311,59 @@ func verifyNoInventedIdentifiers(in VerifyInput) []Finding {
 		Message:  "The answer names identifiers that are not in the corpus. Somebody could try to use these at a counter.",
 		Evidence: bad,
 		Remedy:   "Only name programs returned by a search this turn. If nothing matched, say so and offer the human channel.",
+	}}
+}
+
+// verifyAnswersTheCity holds the line that national coverage is coverage.
+//
+// National programmes are administered locally, so somebody in 深圳 can act on
+// them in 深圳. An answer that never names their city — or worse, opens with
+// "这边我没有本地清单" — tells them there is nothing for them, which is false and
+// is exactly the failure this check exists to catch. If a search was run for a
+// city and anything came back, the answer has to be written for that city.
+func verifyAnswersTheCity(in VerifyInput) []Finding {
+	// Only fires when every result was national — that is the case at risk.
+	// Where local listings came back, the answer already names a district, an
+	// employer and a street, and demanding the city name on top would be
+	// pedantry that costs a redraft.
+	var city string
+	var names []string
+	var national, local int
+	for _, c := range in.ToolCalls {
+		if c.Name != "opportunity_search" || c.Err != "" {
+			continue
+		}
+		if v, _ := c.Meta["asked_city"].(string); v != "" {
+			city = v
+		}
+		if v, _ := c.Meta["asked_city_names"].([]string); len(v) > 0 {
+			names = v
+		}
+		n, _ := metaInt(c, "result_count")
+		l, _ := metaInt(c, "local_hits")
+		national += n - l
+		local += l
+	}
+	if city == "" || local > 0 || national == 0 {
+		return nil
+	}
+	// Any spelling counts: an English answer writes "Chengdu" where the corpus
+	// says 成都, and that is the city being named, not a miss.
+	if len(names) == 0 {
+		names = []string{city}
+	}
+	low := strings.ToLower(in.Answer)
+	for _, n := range names {
+		if strings.Contains(low, strings.ToLower(n)) {
+			return nil
+		}
+	}
+	return []Finding{{
+		Guard: "verify", Code: "CITY_NOT_ANSWERED", Severity: Repair,
+		Message: fmt.Sprintf("The search was run for %s and returned programmes that apply there, "+
+			"but the answer never names %s.", city, city),
+		Remedy: fmt.Sprintf("Write the answer for %s. Say what the person can do in %s, name that city's "+
+			"own 12333, and do not open with what the corpus lacks.", city, city),
 	}}
 }
 

@@ -12,6 +12,7 @@ import (
 	"github.com/damonleelcx/Opportunity-Bridge-Agent/internal/domain"
 	"github.com/damonleelcx/Opportunity-Bridge-Agent/internal/guardrail"
 	"github.com/damonleelcx/Opportunity-Bridge-Agent/internal/intent"
+	"github.com/damonleelcx/Opportunity-Bridge-Agent/internal/livesource"
 	"github.com/damonleelcx/Opportunity-Bridge-Agent/internal/llm"
 	"github.com/damonleelcx/Opportunity-Bridge-Agent/internal/obs"
 	"github.com/damonleelcx/Opportunity-Bridge-Agent/internal/prompt"
@@ -30,6 +31,9 @@ type Agent struct {
 	Corpus *corpus.Corpus
 	Index  *retrieval.Index
 	Tools  *tools.Registry
+	// Live is consulted when the corpus has no local listing for a city. Nil is
+	// legitimate: the corpus is then all there is.
+	Live livesource.Provider
 }
 
 // Input is one turn.
@@ -184,7 +188,8 @@ func (a *Agent) Run(ctx context.Context, in Input) (Result, error) {
 
 	env := tools.Env{
 		Cfg: a.Cfg, Store: a.Store, Corpus: a.Corpus, Index: a.Index,
-		Session: ses, Rec: rec, Approvals: map[string]store.PendingApproval{},
+		Session: ses, Rec: rec, Live: a.Live,
+		Approvals: map[string]store.PendingApproval{},
 	}
 	for _, ap := range a.approvedForSession(ses.ID) {
 		env.Approvals[ap.ID] = ap
@@ -198,6 +203,12 @@ func (a *Agent) Run(ctx context.Context, in Input) (Result, error) {
 		toolRecords []guardrail.ToolCallRecord
 		pending     []store.PendingApproval
 		consents    []tools.ConsentPrompt
+		// seenConsent keeps one turn from raising the same permission card
+		// twice. Two places can raise one: the consent_request tool, and the
+		// gate in registry.Call when a tool needs a scope that is not held. A
+		// turn that does both asked the same question twice on one screen.
+		// See docs/bugfix/2026-08-28-consent-asked-twice.md
+		seenConsent = map[string]bool{}
 		usage       llm.Usage
 		corrections []string
 		redrafts    int
@@ -251,8 +262,18 @@ func (a *Agent) Run(ctx context.Context, in Input) (Result, error) {
 				emit(Event{Kind: EvText, Text: e.Text})
 			case llm.EventThinkingDelta:
 				emit(Event{Kind: EvThinking, Text: e.Text})
-			case llm.EventToolUse:
-				emit(Event{Kind: EvToolStart, Tool: e.ToolName})
+				// llm.EventToolUse is deliberately NOT turned into an EvToolStart
+				// here. It fires when the model announces a tool, which is before
+				// the budget check and before the refusal check - so a tool that is
+				// about to be blocked, or a response that is about to be refused,
+				// used to emit "tool_start" for a call that never started. It also
+				// carries no arguments and no tool-use id, so a client had no way to
+				// pair it with the real one emitted at the call site below, and the
+				// stream carried two tool_start events for every one tool_result.
+				// The signal it bought was a status flip a few tens of milliseconds
+				// earlier - the only thing between here and the call site is the
+				// remainder of this same response stream.
+				// See docs/bugfix/2026-08-28-duplicate-tool-start-events.md
 			}
 		})
 		if err != nil {
@@ -314,6 +335,25 @@ func (a *Agent) Run(ctx context.Context, in Input) (Result, error) {
 				messages = messages[:len(messages)-1]
 				continue
 			}
+			// A redraft that still fails used to be delivered as though it had
+			// passed. The verifiers had already caught both fragments reported
+			// from the live deployment; what went wrong is that nobody was told.
+			// The answer still goes out — it is usually most of an answer — but
+			// it says so, and offers the way out.
+			if needsRedraft && redrafts >= maxRedrafts && len(blocked) == 0 {
+				var why []string
+				for _, f := range vFindings {
+					if f.Severity == guardrail.Repair {
+						why = append(why, blockReason(lang, f.Code, f.Message))
+					}
+				}
+				if len(why) > 0 {
+					answer = joinAnswer(answer, sysMsg(lang, msgUnresolved, strings.Join(why, "；")))
+					rec.Warn(obs.VerifierFailed, "UNRESOLVED_AFTER_REDRAFT",
+						"the redraft still failed; the answer was delivered with a note saying so",
+						map[string]any{"codes": codesOf(vFindings)})
+				}
+			}
 			if len(blocked) > 0 {
 				// The block message already names the rule and says nothing was
 				// done, so the generic refusal line would only repeat it.
@@ -362,7 +402,8 @@ func (a *Agent) Run(ctx context.Context, in Input) (Result, error) {
 				emit(Event{Kind: EvApproval, Approval: &ap})
 				stop = StopAwaitingApproval
 			}
-			if res.Consent != nil {
+			if res.Consent != nil && !seenConsent[string(res.Consent.Scope)] {
+				seenConsent[string(res.Consent.Scope)] = true
 				consents = append(consents, *res.Consent)
 				cp := *res.Consent
 				emit(Event{Kind: EvConsent, Consent: &cp})
@@ -437,6 +478,18 @@ func (a *Agent) Run(ctx context.Context, in Input) (Result, error) {
 	return result, nil
 }
 
+// knownRefFor widens the corpus check with the live ids produced this turn.
+func knownRefFor(corpusKnows func(string) bool, calls []guardrail.ToolCallRecord) func(string) bool {
+	live := map[string]bool{}
+	for _, c := range calls {
+		ids, _ := c.Meta["live_ids"].([]string)
+		for _, id := range ids {
+			live[id] = true
+		}
+	}
+	return func(ref string) bool { return corpusKnows(ref) || live[ref] }
+}
+
 // replyLanguage resolves which language this turn answers in.
 //
 // The session wins over the deployment default, because the person choosing a
@@ -459,7 +512,10 @@ func (a *Agent) verify(
 		Intent: string(in.ID), Answer: answer, Role: string(ses.Role),
 		Locale:      replyLanguage(a.Cfg, ses),
 		AccessNeeds: needStrings(ses.AccessNeeds), ToolCalls: calls,
-		KnownRef: a.Corpus.KnownRef,
+		// Corpus ids plus anything a live lookup returned this turn. Live results
+		// are not in the corpus, but they came back from a tool with a URL
+		// attached — which is the property the check actually cares about.
+		KnownRef: knownRefFor(a.Corpus.KnownRef, calls),
 		ConsentGranted: func(scope string) bool {
 			return a.Store.Consent(ses.SubjectID, domain.ConsentScope(scope)).Granted
 		},
@@ -479,6 +535,14 @@ func (a *Agent) verify(
 
 // blockMessage is what the person sees when a draft could not be delivered. It
 // names the problem rather than pretending the turn simply produced nothing.
+func codesOf(fs []guardrail.Finding) []string {
+	out := make([]string, 0, len(fs))
+	for _, f := range fs {
+		out = append(out, f.Code)
+	}
+	return out
+}
+
 func blockMessage(locale string, fs []guardrail.Finding) string {
 	var b strings.Builder
 	b.WriteString(sysMsg(locale, msgBlockHeader))

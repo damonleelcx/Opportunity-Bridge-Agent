@@ -31,6 +31,7 @@ import (
 	"github.com/damonleelcx/Opportunity-Bridge-Agent/internal/corpus"
 	"github.com/damonleelcx/Opportunity-Bridge-Agent/internal/domain"
 	"github.com/damonleelcx/Opportunity-Bridge-Agent/internal/intent"
+	"github.com/damonleelcx/Opportunity-Bridge-Agent/internal/livesource"
 	"github.com/damonleelcx/Opportunity-Bridge-Agent/internal/llm"
 	"github.com/damonleelcx/Opportunity-Bridge-Agent/internal/retrieval"
 	"github.com/damonleelcx/Opportunity-Bridge-Agent/internal/store"
@@ -168,6 +169,9 @@ type Runner struct {
 	// LiveClient, when set, is used for "route" cases so routing can be measured
 	// against the real classifier. Turn cases always use the case's own script.
 	LiveClient llm.Client
+	// Live is the out-of-corpus lookup, so cases exercise the same path the
+	// deployment does.
+	Live livesource.Provider
 }
 
 func (r *Runner) Run(ctx context.Context, cases []Case) Report {
@@ -296,7 +300,7 @@ func (r *Runner) runOne(ctx context.Context, c Case) CaseResult {
 
 	ag := &agent.Agent{
 		Cfg: r.Cfg, LLM: client, Store: st, Corpus: r.Corpus,
-		Index: retrieval.NewIndex(r.Corpus), Tools: tools.Default(),
+		Index: retrieval.NewIndex(r.Corpus), Tools: tools.Default(), Live: r.Live,
 	}
 	out, err := ag.Run(ctx, agent.Input{SessionID: ses.ID, Message: c.Message, Intent: intent.ID(c.Pin)})
 	if err != nil {
