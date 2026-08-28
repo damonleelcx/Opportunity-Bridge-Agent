@@ -1,0 +1,63 @@
+{
+  "code": 200,
+  "log_id": "5cd4b1a183b64b26",
+  "msg": null,
+  "data": {
+    "_type": "SearchResponse",
+    "queryContext": {
+      "originalQuery": "深圳 招聘 白班 普工 公共就业服务"
+    },
+    "webPages": {
+      "webSearchUrl": "https://bochaai.com/search?q=深圳 招聘 白班 普工 公共就业服务",
+      "totalEstimatedMatches": 10000000,
+      "value": [
+        {
+          "id": "https://api.bochaai.com/v1/#WebPages.0",
+          "name": "普工,专业的应届毕业生求职,招聘服务平台,一览应届生网",
+          "url": "https://yjs.job1001.com/job_detail/53587041.htm",
+          "displayUrl": "https://yjs.job1001.com/job_detail/53587041.htm",
+          "snippet": "学历要求: 不限 工作经验: 不限 招聘普工3名:长白班,周日固定休息,年龄要求18岁-45岁之间,要求男性,薪资按深圳劳动法,岗位补贴150元/月,住宿补贴200元/月,伙食补助20元/天,车费补助",
+          "summary": "学历要求: 不限 工作经验: 不限 招聘普工3名:长白班,周日固定休息,年龄要求18岁-45岁之间,要求男性,薪资按深圳劳动法,岗位补贴150元/月,住宿补贴200元/月,伙食补助20元/天,车费补助4元/天,全勤奖100元,平时加班20.34/H,周末加班27.13/H,工作车间无噪音,无异味,纯手工,空调车间配有休息台,饮水机纸巾茶杯椅子等!有意者联系我:15920023049徐小姐面试时间:周一至周五上午9点-12点 下午14点-18点.入职即买五险一金。地址:龙华观湖街道鹭湖社区英飞好成产业园",
+          "siteName": "一览校园",
+          "datePublished": "2024-12-15T20:41:01+08:00",
+          "dateLastCrawled": "2024-12-15T20:41:01Z",
+          "cachedPageUrl": null,
+          "language": null,
+          "isFamilyFriendly": null,
+          "isNavigational": null
+        },
+        {
+          "id": "https://api.bochaai.com/v1/#WebPages.1",
+          "name": "【普工/长白班招聘_普工/长白班】-前程无忧",
+          "url": "https://msearch.51job.com/jobs/shenzhen-baq/154097016.html",
+          "displayUrl": "https://msearch.51job.com/jobs/shenzhen-baq/154097016.html",
+          "snippet": "普工/长白班 5-7千 深圳-宝安区 | 无需经验 包住 餐饮补贴 五险一金 专业培训 社保 加班补贴 工龄奖 工作轻松 上班地址 : 新永丰恒隆工业园-6栋3楼 深圳市蓝芯科科技有限公司 民营 | ",
+          "summary": "普工/长白班 5-7千 深圳-宝安区 | 无需经验 包住 餐饮补贴 五险一金 专业培训 社保 加班补贴 工龄奖 工作轻松 上班地址 : 新永丰恒隆工业园-6栋3楼 深圳市蓝芯科科技有限公司 民营 | 50-150人 | 电子技术/半导体/集成电路 仪器仪表/工业自动化 该公司其他职位 职位描述 1、18-45岁,男女不限,身体健康吃苦耐劳 2、淡季员工保底薪资4000元(全勤) 3、包住、餐补(每天/10元)、优秀员工奖100、工龄奖满一年100以此类推上不封顶、购买五险一金 4、独立岗位,工作轻松简单,岗补(0-500) 求职过程中如果遇到违规收费、信息不实、以招聘名义的培训收费或者微信营销等虚假招聘行为,请点击立即举报,并保留证据,维护自己的合法权益。",
+          "siteName": "前程无忧",
+          "datePublished": "2025-01-18T00:00:00+08:00",
+          "dateLastCrawled": "2025-01-18T00:00:00Z",
+          "cachedPageUrl": null,
+          "language": null,
+          "isFamilyFriendly": null,
+          "isNavigational": null
+        },
+        {
+          "id": "https://api.bochaai.com/v1/#WebPages.2",
+          "name": "长白班+包吃住+可带手机普工 - 深圳普工/技工招聘 - 深圳58同城招聘",
+          "url": "https://m.58.com/sz/zpshengchankaifa/64023994458557x.shtml",
+          "displayUrl": "https://m.58.com/sz/zpshengchankaifa/64023994458557x.shtml",
+          "snippet": "【岗位职责】-车间操作,按流程完成产品组装、检测等工作。【职位要求】-年龄18-45岁,**不限;-初中及以上学历,无经验要求;-能适应两班倒或长白班工作安排。【工作时间】-长白班/两班倒,具体作休时",
+          "summary": "【岗位职责】-车间操作,按流程完成产品组装、检测等工作。【职位要求】-年龄18-45岁,**不限;-初中及以上学历,无经验要求;-能适应两班倒或长白班工作安排。【工作时间】-长白班/两班倒,具体作休时间面议。【薪资福利】-月薪6500-8500元;-包吃包住,提供交通补助、加班补助;-缴纳五险一金。联系我时,请说是在58同城上看到的,谢谢!",
+          "siteName": "58同城",
+          "datePublished": "2025-11-28T18:27:56+08:00",
+          "dateLastCrawled": "2025-11-28T18:27:56Z",
+          "cachedPageUrl": null,
+          "language": null,
+          "isFamilyFriendly": null,
+          "isNavigational": null
+        }
+      ],
+      "someResultsRemoved": true
+    }
+  }
+}

@@ -63,6 +63,12 @@ type Config struct {
 	// Live lookup. The directory ships enabled and needs nothing. Web search is
 	// what actually returns employers and courses nationwide, and it needs a
 	// key — off by default rather than silently degrading.
+	//
+	// SearchProvider decides WHICH vendor, and it is an enum rather than
+	// something inferred from the endpoint, because the vendors do not share a
+	// wire shape: guessing wrong decodes cleanly and returns nothing, so the
+	// failure would be silent. One key variable, one provider variable.
+	SearchProvider  SearchProvider
 	SearchAPIKey    string
 	SearchAPIURL    string
 	SearchKeyHeader string
@@ -132,6 +138,7 @@ func Load() (Config, error) {
 		// services, and the surrounding prompt being written in English is an
 		// artefact of the code, not a signal about who is reading the answer.
 		ReplyLanguage:   env("OBA_REPLY_LANGUAGE", "zh-CN"),
+		SearchProvider:  SearchProvider(env("OBA_SEARCH_PROVIDER", string(SearchBocha))),
 		SearchAPIKey:    env("OBA_SEARCH_API_KEY", ""),
 		SearchAPIURL:    env("OBA_SEARCH_API_URL", ""),
 		SearchKeyHeader: env("OBA_SEARCH_KEY_HEADER", ""),
@@ -212,6 +219,15 @@ func (c Config) Validate() error {
 		// provider has no other credential source, so the failure is certain.
 		errs = append(errs, fmt.Errorf("OBA_BACKEND=%s requires %s to be set; "+
 			"create a key at platform.deepseek.com and export it", c.Backend, spec.KeyEnv))
+	}
+	// Checked even when no key is set. A misspelled provider name with the key
+	// still to come is a deployment that would come up looking healthy and then
+	// answer without live results; saying so at startup costs nothing.
+	switch c.SearchProvider {
+	case SearchBocha, SearchBrave:
+	default:
+		errs = append(errs, fmt.Errorf("OBA_SEARCH_PROVIDER=%q: expected one of: %s",
+			c.SearchProvider, strings.Join(SearchProviderNames(), ", ")))
 	}
 	return errors.Join(errs...)
 }
