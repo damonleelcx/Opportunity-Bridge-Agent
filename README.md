@@ -106,6 +106,13 @@ Full write-up: [docs/13-name-and-voice.md](docs/13-name-and-voice.md).
 
 ## What the interface shows
 
+![Three columns — conversations on the left; in the middle the question, the routing badge 已为你匹配：个人 · 机会路径 and a CNC training card with its address, hours and the documents to bring; 我的概览 on the right with the open task, 阿桥 and the record kept about the person](docs/assets/interface-mockup.png)
+
+*The UX Pilot mockup this was built to — not a screenshot of the running binary.
+Two things in it could not ship as drawn: the CDN it loads, and the mascot's line
+"王师傅，别担心…", which is the false reassurance the persona forbids and
+`no_false_reassurance` blocks. [What changed and why](docs/14-interface.md).*
+
 Three columns: conversations on the left, the conversation in the middle, **我的
 概览** on the right — open tasks, 阿桥, everything held about the person, and the
 four permissions with a control to grant or withdraw each.
