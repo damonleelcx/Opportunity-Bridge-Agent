@@ -107,3 +107,21 @@ func firstLine(s string) string {
 	}
 	return s
 }
+
+// The answer is rendered with textContent and spoken with the browser's
+// speech synthesiser, both of which take it literally. Nothing downstream strips
+// Markdown, so the only place this can be decided is here.
+//
+// Observed in production on 2026-08-28: an answer full of **bold** and dash
+// bullets, shown to the reader with the asterisks in it. The read-aloud setting
+// would have spoken them.
+// See docs/bugfix/2026-08-28-answers-were-raw-markdown.md
+func TestCharterForbidsMarkdown(t *testing.T) {
+	for _, want := range []string{"plain text", "Markdown", "asterisk"} {
+		if !strings.Contains(prompt.Charter, want) {
+			t.Errorf("the charter no longer mentions %q: nothing else in the "+
+				"product stops the model emitting Markdown, and the interface "+
+				"shows it raw", want)
+		}
+	}
+}

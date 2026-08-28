@@ -45,6 +45,12 @@ type Env struct {
 	// Live looks things up outside the corpus. Nil is legitimate and means the
 	// corpus is all there is.
 	Live livesource.Provider
+	// LiveSeq numbers live results across the WHOLE turn, so two searches in one
+	// turn cannot both produce a live-003. It is a pointer because Env is copied
+	// into every tool call and the count has to survive that. Nil numbers each
+	// lookup from one, which is the old behaviour and is correct for a caller
+	// that only looks up once.
+	LiveSeq *livesource.Sequence
 	// Approvals holds approval ids granted for this run, keyed by id. A tool
 	// with RiskIrreversible executes only if one of these matches its own name
 	// and an exact hash of its arguments.

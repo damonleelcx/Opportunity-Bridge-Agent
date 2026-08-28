@@ -140,6 +140,11 @@ const (
 	EventThinkingDelta EventKind = "thinking_delta"
 	EventToolUse       EventKind = "tool_use"
 	EventDone          EventKind = "done"
+	// EventReset says that everything streamed so far this call is void and must
+	// be taken off the screen. It is emitted by Retrying when an attempt fails
+	// after it had already produced deltas — see retry.go for why the deltas are
+	// no longer withheld until the attempt succeeds.
+	EventReset EventKind = "reset"
 )
 
 type Event struct {

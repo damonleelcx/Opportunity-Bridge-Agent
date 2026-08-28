@@ -121,6 +121,9 @@ func (c Chain) Name() string {
 
 // LookupAll returns the merged results and, separately, the providers that
 // failed. Never returns an error itself.
+//
+// It does NOT assign ids. Numbering belongs to whoever knows where the turn
+// starts and ends — see Sequence.
 func (c Chain) LookupAll(ctx context.Context, q Query) ([]Result, []error) {
 	var out []Result
 	var errs []error
@@ -132,12 +135,75 @@ func (c Chain) LookupAll(ctx context.Context, q Query) ([]Result, []error) {
 		}
 		out = append(out, res...)
 	}
-	// Ids are assigned here, after the merge, so they are stable within a turn
-	// regardless of which providers answered.
-	for i := range out {
-		out[i].ID = fmt.Sprintf("live-%03d", i+1)
-	}
 	return out, errs
+}
+
+// Sequence numbers live results across one whole turn.
+//
+// Why it exists rather than numbering inside LookupAll, which is where this used
+// to happen: that numbering restarted at live-001 on every call, and the agent
+// searches more than once in a turn as a matter of course — once per trade when
+// somebody names two, once per intent when it wants both work and courses. A
+// turn that searched twice produced two different live-003s, and the answer then
+// cited one id for two different organisations. Observed in production on
+// 2026-08-28: live-003 was both a welding school and a cookery school in the
+// same answer.
+//
+// That is worse than a cosmetic clash. An id is the reader's only handle on an
+// unverified lead — it is what they say to ask about one of them — and the
+// invented-identifier check cannot object, because both really were produced
+// this turn. See docs/bugfix/2026-08-28-live-ids-collided-within-a-turn.md
+//
+// The zero value is ready to use, and a nil *Sequence numbers from one: a caller
+// that has not been given a turn to count within still gets usable ids rather
+// than results with no id at all, which is what the non-Chain path used to
+// return.
+type Sequence struct {
+	n     int
+	byKey map[string]string
+}
+
+// Assign gives every result an id, continuing where this sequence left off.
+// Results that already carry one are left alone.
+//
+// The SAME lead found twice in a turn keeps ONE id. Two searches in a turn
+// routinely return the same page — most obviously the city's own service
+// directory, which answers every lookup — and numbering strictly by arrival
+// would hand one office two ids and invite the answer to cite both, as though
+// they were two places to go.
+func (s *Sequence) Assign(results []Result) {
+	local := Sequence{}
+	if s == nil {
+		s = &local
+	}
+	if s.byKey == nil {
+		s.byKey = map[string]string{}
+	}
+	for i := range results {
+		if results[i].ID != "" {
+			continue
+		}
+		k := leadKey(results[i])
+		if id, seen := s.byKey[k]; seen {
+			results[i].ID = id
+			continue
+		}
+		s.n++
+		id := fmt.Sprintf("live-%03d", s.n)
+		s.byKey[k] = id
+		results[i].ID = id
+	}
+}
+
+// leadKey identifies one lead. The URL is what a reader would open, so two
+// results pointing at the same page are the same lead however they were found.
+// A directory entry for a city with no recorded URL falls back to its title,
+// which is that city's own office and equally singular.
+func leadKey(r Result) string {
+	if u := strings.TrimSpace(r.URL); u != "" {
+		return "u:" + u
+	}
+	return "t:" + r.Region + "|" + r.Title
 }
 
 func (c Chain) Lookup(ctx context.Context, q Query) ([]Result, error) {

@@ -48,6 +48,15 @@ drill() {
     fail=$((fail + 1))
     return 0
   fi
+  # A mutation that does not COMPILE fails the test for the wrong reason, and a
+  # runner that cannot tell those apart blesses fences that never fired. Vet the
+  # package first and refuse to draw a conclusion from a build error.
+  if ! go vet "$pkg" >/dev/null 2>&1; then
+    echo "  INVALID DRILL  $name"
+    echo "                 the mutated source does not compile, so a failing test proves nothing"
+    fail=$((fail + 1))
+    return 0
+  fi
   if go test "$pkg" -run "$test" -count=1 >/dev/null 2>&1; then
     echo "  NOT A FENCE  $name"
     echo "               $test passed with the rule removed"
@@ -127,6 +136,49 @@ drill "the card reads the intent" \
   web/static/app.js \
   "$(py_sub "'''x.intent === \"training\"'''" "'''false'''")" \
   'TestLiveCardTellsACourseFromAnOpening' ./web/
+
+echo
+echo "mutation drills: streaming, plain text, live ids"
+
+drill "deltas reach the reader while the model is still writing" \
+  internal/llm/retry.go \
+  "$(py_sub "'''		emitted := false
+		resp, err := r.Inner.Stream(ctx, req, func(e Event) {
+			if e.Kind == EventTextDelta || e.Kind == EventThinkingDelta {
+				emitted = true
+			}
+			if sink != nil {
+				sink(e)
+			}
+		})'''" "'''		emitted := false
+		var buffered []Event
+		resp, err := r.Inner.Stream(ctx, req, func(e Event) { buffered = append(buffered, e) })
+		if err == nil && sink != nil {
+			for _, e := range buffered {
+				sink(e)
+			}
+		}'''")" \
+  'TestRetryingStreamsDeltasAsTheyArrive' ./internal/llm/
+
+drill "a failed attempt is taken back off the screen" \
+  internal/llm/retry.go \
+  "$(py_sub "'''if emitted && sink != nil {
+			sink(Event{Kind: EventReset})
+		}'''" "'''_ = emitted'''")" \
+  'TestRetryingLeavesTheReaderOnlyTheSuccessfulAttempt|TestPartialOutputIsTakenBackEvenWhenNoRetryFollows' ./internal/llm/
+
+drill "one id sequence for the whole turn, not one per lookup" \
+  internal/tools/builtin.go \
+  "$(py_sub "'''env.LiveSeq.Assign(live)'''" "'''(&livesource.Sequence{}).Assign(live)'''")" \
+  'TestLiveIDsAreUniqueAcrossOneTurn' ./internal/tools/
+
+drill "the same lead keeps one id across two searches" \
+  internal/livesource/livesource.go \
+  "$(py_sub "'''if id, seen := s.byKey[k]; seen {
+			results[i].ID = id
+			continue
+		}'''" "'''_ = k'''")" \
+  'TestSequenceGivesOneLeadOneID|TestSequenceMatchesURLlessLeadsByTitle' ./internal/livesource/
 
 echo
 echo "$pass fence(s) held, $fail did not"

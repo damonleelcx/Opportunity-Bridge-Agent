@@ -77,6 +77,12 @@ type Event struct {
 	Consent  *tools.ConsentPrompt   `json:"consent,omitempty"`
 	Trace    *obs.Event             `json:"trace,omitempty"`
 	Final    *Result                `json:"final,omitempty"`
+	// Reset, on a text event, means everything streamed so far this turn is void
+	// and must be cleared from the screen. It rides on the text event rather than
+	// arriving as a kind of its own so that a client which does not know about it
+	// appends an empty string instead of ignoring an unknown event — and the
+	// final event still corrects the display either way.
+	Reset bool `json:"reset,omitempty"`
 }
 
 // Result is the completed turn.
@@ -190,6 +196,10 @@ func (a *Agent) Run(ctx context.Context, in Input) (Result, error) {
 		Cfg: a.Cfg, Store: a.Store, Corpus: a.Corpus, Index: a.Index,
 		Session: ses, Rec: rec, Live: a.Live,
 		Approvals: map[string]store.PendingApproval{},
+		// One sequence for the whole turn. Built here because this is the only
+		// scope that IS the turn: env is made once per Run and reused across
+		// every iteration and every tool call within it.
+		LiveSeq: &livesource.Sequence{},
 	}
 	for _, ap := range a.approvedForSession(ses.ID) {
 		env.Approvals[ap.ID] = ap
@@ -262,6 +272,10 @@ func (a *Agent) Run(ctx context.Context, in Input) (Result, error) {
 				emit(Event{Kind: EvText, Text: e.Text})
 			case llm.EventThinkingDelta:
 				emit(Event{Kind: EvThinking, Text: e.Text})
+			case llm.EventReset:
+				// An attempt failed after it had already written something. What
+				// it wrote is void; the retry starts from a clean screen.
+				emit(Event{Kind: EvText, Reset: true})
 				// llm.EventToolUse is deliberately NOT turned into an EvToolStart
 				// here. It fires when the model announces a tool, which is before
 				// the budget check and before the refusal check - so a tool that is
