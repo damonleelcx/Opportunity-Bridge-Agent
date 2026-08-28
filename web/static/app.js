@@ -23,6 +23,10 @@ import { icon, paintIcons } from "/icons.js";
 
 const $ = (s) => document.querySelector(s);
 
+// Light unless somebody says otherwise. Defined once and mirrored by bare :root
+// in styles.css, so the first paint and this script agree; see applyTheme.
+const DEFAULT_THEME = "light";
+
 const state = {
   session: null,
   meta: null,
@@ -44,7 +48,7 @@ async function boot() {
   $("#locale").value = locale();
   $("#favicon").href = faviconDataURI();
   paintIcons();
-  applyTheme(localStorage.getItem("oba.theme") || "system");
+  applyTheme(localStorage.getItem("oba.theme") || DEFAULT_THEME);
   brandMood("calm");
 
   wireGate();
@@ -486,17 +490,89 @@ function el(html) {
   return d.firstElementChild;
 }
 
+// opportunityList renders BOTH what the corpus held and what was looked up live.
+//
+// It used to render only `results`, the corpus records. For every city the
+// corpus does not cover — which is every city but one — that array is empty, so
+// the card said "nothing matched this time" while the answer printed directly
+// above it listed five real openings the live lookup had just returned. The
+// panel contradicted the agent, and the panel is the part people scan.
+//
+// "Nothing matched" is now only said when BOTH are empty, because that is the
+// only time it is true.
+// See docs/bugfix/2026-08-28-live-results-shown-as-nothing.md
 function opportunityList(r) {
   const wrap = document.createElement("div");
   wrap.style.display = "contents";
-  if (!r.results?.length) {
+  const live = r.live_results || [];
+  if (!r.results?.length && !live.length) {
+    // No city list here. The tool returns `cities_with_local_listings` for the
+    // model's own reference and tells it not to read that out to somebody who
+    // asked about a different city; showing it here would do exactly that. (The
+    // previous line read `r.cities_covered`, a field the tool has never
+    // returned, so it rendered nothing — this makes the silence deliberate.)
     wrap.append(el(`<div class="notice notice-advisory" style="margin-left:0">
-      <span class="notice-title">${esc(t("card.nothing"))}</span>
-      ${esc((r.cities_covered || []).join("、"))}</div>`));
+      <span class="notice-title">${esc(t("card.nothing"))}</span></div>`));
     return wrap;
   }
-  for (const o of r.results) wrap.append(opportunityCard(o));
+  for (const o of r.results || []) wrap.append(opportunityCard(o));
+  for (const x of live) wrap.append(liveCard(x));
   return wrap;
+}
+
+// liveCard renders one result from outside the corpus.
+//
+// It is deliberately plainer than opportunityCard: a corpus record has vetted
+// criteria and a source_ref to expand, and one of these has a URL and a date.
+// Dressing them the same would say they carry the same authority. The badge
+// carries the distinction in the reader's own language, and the date is shown
+// because a job board posting can be years old — production has served one from
+// 2018 — and the reader is the one deciding whether it is worth the journey.
+function liveCard(x) {
+  const directory = x.kind === "directory";
+  const badge = directory
+    ? `<span class="pill pill-free">${esc(t("card.liveDirectory"))}</span>`
+    : `<span class="pill">${esc(t("card.liveListing"))}</span>`;
+
+  const when = directory
+    ? x.verified_at && t("card.liveVerified") + x.verified_at
+    : x.published_at && t("card.livePublished") + x.published_at;
+  const facts = [
+    x.region && ["pin", x.region],
+    when && ["calendar", when],
+    x.phone && ["phone", x.phone],
+  ].filter(Boolean);
+
+  const card = el(`
+    <article class="ocard">
+      <div class="ocard-body">
+        <div class="ocard-top">
+          <h3 class="ocard-title">${esc(clip(x.title, 60))}<span class="ocard-id">${esc(x.id)}</span></h3>
+          ${badge}
+        </div>
+        <p class="ocard-sum">${esc(clip(x.summary || "", 160))}</p>
+        <div class="ocard-facts">
+          ${facts.map(([i, v]) => `<div class="fact"><span class="ico">${icon(i)}</span><span>${esc(v)}</span></div>`).join("")}
+        </div>
+      </div>
+      <div class="ocard-foot">
+        <span class="ocard-need">${esc(x.source || "")}</span>
+      </div>
+    </article>`);
+
+  // rel="noopener noreferrer" because these URLs come from a search index, not
+  // from us: the destination must not get a handle on this page or its referrer.
+  if (x.url) {
+    const foot = card.querySelector(".ocard-foot");
+    const a = document.createElement("a");
+    a.className = "link";
+    a.href = x.url;
+    a.target = "_blank";
+    a.rel = "noopener noreferrer";
+    a.textContent = t("card.liveOpen");
+    foot.append(a);
+  }
+  return card;
 }
 
 function opportunityCard(o) {
@@ -970,15 +1046,17 @@ function brandMood(mood) {
   }
 }
 
-// Three states, not two. "system" leaves the page following the OS, which is
-// what most people want and what it did before; the other two are an explicit
-// override that outranks the OS in both directions. The choice is stamped on
-// <html> as data-theme, which every colour token is defined against, and it is
-// applied before first paint in boot() so there is no flash of the wrong theme.
+// Three states, not two: light (the default), dark, and following the OS.
+//
+// All three are stamped on <html> as data-theme, including "system" — it used to
+// be the absence of the attribute, which worked only while "system" was also the
+// default. With light as the default, an unstamped document has to mean light,
+// or every load would paint dark first on an OS-dark machine and then correct
+// itself. So "follow the OS" is now something a reader opts into explicitly, and
+// bare :root in styles.css carries the same default this file does.
 function applyTheme(choice) {
-  const value = ["system", "light", "dark"].includes(choice) ? choice : "system";
-  if (value === "system") delete document.documentElement.dataset.theme;
-  else document.documentElement.dataset.theme = value;
+  const value = ["system", "light", "dark"].includes(choice) ? choice : DEFAULT_THEME;
+  document.documentElement.dataset.theme = value;
   localStorage.setItem("oba.theme", value);
   const sel = $("#theme");
   if (sel) sel.value = value;

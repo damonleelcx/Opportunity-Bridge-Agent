@@ -13,9 +13,15 @@
  *     label — a window terminal in daylight loses hue before it loses text.
  */
 
-:root { color-scheme: light dark; }
-:root[data-theme="light"] { color-scheme: light; }
+/* Light is the default, and it is the default HERE rather than only in app.js.
+   A theme decided by a script paints the other one first on every load, and the
+   people this is for open it on borrowed and public machines whose OS setting is
+   not theirs. So bare :root — what the document has before any script runs, and
+   what it keeps unless somebody chooses otherwise — is light. Following the OS
+   is now an explicit opt-in and carries data-theme="system". */
+:root, :root[data-theme="light"] { color-scheme: light; }
 :root[data-theme="dark"] { color-scheme: dark; }
+:root[data-theme="system"] { color-scheme: light dark; }
 
 :root {
 
@@ -49,12 +55,12 @@
   --shadow: 0 4px 14px rgba(15, 23, 42, .07);
 }
 
-/* Dark tokens live in one block, applied twice: once for the OS preference (only
-   when the reader has not explicitly chosen light) and once for an explicit dark
-   choice. Defining a colour ONLY inside a media query is how a theme toggle ends
-   up half-working. */
+/* Dark tokens live in one block, applied twice: once for the OS preference — and
+   only for readers who asked to follow it — and once for an explicit dark choice.
+   Defining a colour ONLY inside a media query is how a theme toggle ends up
+   half-working. */
 @media (prefers-color-scheme: dark) {
-  :root:not([data-theme="light"]) {
+  :root[data-theme="system"] {
     --bg: #0b1017;
     --surface: #111823;
     --surface-2: #161f2c;
@@ -629,6 +635,11 @@ button, select, textarea, input { font: inherit; color: inherit; }
   font-size: .78em; color: var(--brand); padding: 0;
 }
 .link:hover { text-decoration: underline; }
+/* .link was written for <button>, which has no underline to begin with, so the
+   rule above reads as "underline on hover". An <a> starts underlined, so the
+   same class on the live-result link would be underlined always and hover would
+   do nothing. This makes the anchor behave the way the class already promises. */
+a.link { text-decoration: none; white-space: nowrap; }
 
 .who {
   display: flex; align-items: center; justify-content: space-between; gap: 8px;

@@ -115,10 +115,13 @@
     </label>
     <label class="setting">
       <span data-i18n="ctl.theme">主题</span>
+      <!-- 浅色 first and selected, so the markup states the same default the
+           CSS and app.js do. Before any script runs this select must not claim
+           a theme the page is not showing. -->
       <select id="theme">
-        <option value="system" data-i18n="theme.system">跟随系统</option>
-        <option value="light" data-i18n="theme.light">浅色</option>
+        <option value="light" data-i18n="theme.light" selected>浅色</option>
         <option value="dark" data-i18n="theme.dark">深色</option>
+        <option value="system" data-i18n="theme.system">跟随系统</option>
       </select>
     </label>
     <button id="newSession" class="btn btn-block">
