@@ -34,7 +34,10 @@
       </div>
     </div>
 
-    <h1 class="gate-title" data-i18n="gate.title">先登录</h1>
+    <!-- No data-i18n: the heading is one of two strings depending on the mode,
+         so setGateMode owns it. Leaving the attribute on would let setLocale's
+         sweep put "先登录" back over "注册账号" on every language switch. -->
+    <h1 class="gate-title" id="gateTitle">先登录</h1>
     <p class="gate-lede" data-i18n="gate.lede">你的对话、档案和进行中任务只属于你的账号，别人看不到。</p>
 
     <label class="gate-field">
