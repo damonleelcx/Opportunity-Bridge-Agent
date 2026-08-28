@@ -11,6 +11,45 @@
 <body>
 <a class="skip" href="#input" data-i18n="a11y.skip">跳到输入框</a>
 
+<!-- ── the gate ────────────────────────────────────────────────────────────
+     Shown until /api/auth/me answers. It covers the shell rather than living on
+     a second page so that the theme, the language switch and every string stay
+     in one document — a separate sign-in page is where those quietly diverge. -->
+<div id="gate" class="gate" hidden>
+  <form id="gateForm" class="gate-card" autocomplete="on">
+    <h1 class="gate-title" data-i18n="gate.title">先登录</h1>
+    <p class="gate-lede" data-i18n="gate.lede">你的对话、档案和进行中任务只属于你的账号，别人看不到。</p>
+
+    <label class="gate-field">
+      <span data-i18n="gate.username">用户名</span>
+      <input id="gateUser" name="username" autocomplete="username" required>
+    </label>
+    <label class="gate-field">
+      <span data-i18n="gate.password">密码</span>
+      <input id="gatePass" name="password" type="password" autocomplete="current-password" required>
+    </label>
+    <label class="gate-field" id="gateInviteField" hidden>
+      <span data-i18n="gate.invite">邀请码</span>
+      <input id="gateInvite" name="invite" autocomplete="off">
+      <small class="gate-hint" data-i18n="gate.inviteHint">没有邀请码就注册不了，问一下给你链接的人。</small>
+    </label>
+
+    <p id="gateError" class="gate-error" role="alert" hidden></p>
+
+    <button id="gateSubmit" class="btn btn-primary gate-submit" type="submit" data-i18n="gate.signIn">登录</button>
+    <button id="gateSwitch" class="link gate-switch" type="button" data-i18n="gate.toSignUp">还没有账号？去注册</button>
+
+    <!-- The gate is now the first screen, and it covers the sidebar where the
+         language control lives. A bilingual product whose only reachable
+         language on the first screen is one of them is not bilingual. -->
+    <div class="gate-lang">
+      <button type="button" class="link" data-gate-lang="zh-CN">中文</button>
+      <span aria-hidden="true">·</span>
+      <button type="button" class="link" data-gate-lang="en">English</button>
+    </div>
+  </form>
+</div>
+
 <!-- ── sidebar ─────────────────────────────────────────────────────────── -->
 <aside class="sidebar" aria-label="Conversations">
   <div class="brand">
@@ -53,6 +92,10 @@
     <button id="newSession" class="btn btn-block">
       <span class="ico" data-icon="plus"></span><span data-i18n="ctl.new">新对话</span>
     </button>
+    <div class="who" id="who" hidden>
+      <span class="who-name" id="whoName"></span>
+      <button id="signOut" class="link" data-i18n="gate.signOut">退出登录</button>
+    </div>
   </div>
 </aside>
 
