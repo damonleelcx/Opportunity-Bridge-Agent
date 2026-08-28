@@ -580,6 +580,20 @@ button, select, textarea, input { font: inherit; color: inherit; }
   border-radius: var(--r);
   box-shadow: var(--shadow);
 }
+.gate-brand {
+  display: flex; flex-direction: column; align-items: center; gap: 12px;
+  margin-bottom: 2px;
+}
+.gate-face {
+  width: 96px; height: 96px; object-fit: contain;
+  border-radius: var(--r-xs); background: var(--surface-2);
+}
+.gate-id { display: flex; align-items: center; gap: 10px; }
+.gate-mark { width: 32px; height: 32px; flex: 0 0 auto; }
+.gate-id-text { display: flex; flex-direction: column; line-height: 1.2; }
+.gate-id-text b { font-size: 1.05em; font-weight: 700; color: var(--ink-900); }
+.gate-id-text small { font-size: .72em; color: var(--ink-400); letter-spacing: .02em; }
+
 .gate-title { margin: 0; font-size: 1.25em; color: var(--ink-900); }
 .gate-lede { margin: -6px 0 2px; font-size: .84em; line-height: 1.55; color: var(--ink-500); }
 .gate-field { display: flex; flex-direction: column; gap: 6px; font-size: .82em; color: var(--ink-700); }

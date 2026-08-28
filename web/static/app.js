@@ -957,7 +957,15 @@ function setBusy(b) {
   document.querySelector(".mascot")?.classList.toggle("is-thinking", b);
 }
 
-function brandMood(mood) { setMood($("#brandAvatar"), mood, t("a11y.avatar")); }
+// Both brand marks are painted from the same call. The gate carries one too —
+// it covers the sidebar, so it is the only mark on the first screen — and
+// painting it here rather than at the gate keeps a single answer to "what does
+// the mark look like" instead of two that drift.
+function brandMood(mood) {
+  for (const slot of [$("#brandAvatar"), $("#gateAvatar")]) {
+    setMood(slot, mood, t("a11y.avatar"));
+  }
+}
 
 // Three states, not two. "system" leaves the page following the OS, which is
 // what most people want and what it did before; the other two are an explicit
