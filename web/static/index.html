@@ -1,0 +1,144 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>阿桥 · Opportunity Bridge Agent</title>
+<link rel="stylesheet" href="/styles.css">
+<!-- Set from avatar.js at boot so the tab icon and the in-page mark cannot drift. -->
+<link rel="icon" id="favicon" href="data:,">
+</head>
+<body>
+<a class="skip" href="#input" data-i18n="a11y.skip">跳到输入框</a>
+
+<!-- ── sidebar ─────────────────────────────────────────────────────────── -->
+<aside class="sidebar" aria-label="Conversations">
+  <div class="brand">
+    <span class="brand-mark" id="brandAvatar" aria-hidden="true"></span>
+    <div class="brand-text">
+      <h1 data-i18n="app.name">阿桥</h1>
+      <p>Opportunity Bridge</p>
+    </div>
+  </div>
+
+  <div class="sidebar-scroll">
+    <p class="rail-label" data-i18n="panel.sessions">对话历史</p>
+    <nav id="sessions" class="session-list"></nav>
+  </div>
+
+  <div class="sidebar-foot">
+    <label class="setting">
+      <span data-i18n="ctl.role">身份</span>
+      <select id="role"></select>
+    </label>
+    <label class="setting">
+      <span data-i18n="ctl.lang">语言</span>
+      <select id="locale">
+        <option value="zh-CN">中文</option>
+        <option value="en">English</option>
+      </select>
+    </label>
+    <label class="setting">
+      <span data-i18n="ctl.intent">意图</span>
+      <select id="intentPick"></select>
+    </label>
+    <label class="setting">
+      <span data-i18n="ctl.theme">主题</span>
+      <select id="theme">
+        <option value="system" data-i18n="theme.system">跟随系统</option>
+        <option value="light" data-i18n="theme.light">浅色</option>
+        <option value="dark" data-i18n="theme.dark">深色</option>
+      </select>
+    </label>
+    <button id="newSession" class="btn btn-block">
+      <span class="ico" data-icon="plus"></span><span data-i18n="ctl.new">新对话</span>
+    </button>
+  </div>
+</aside>
+
+<!-- ── workspace ───────────────────────────────────────────────────────── -->
+<div class="workspace">
+  <main class="chat">
+    <header class="chat-head">
+      <div class="crumbs">
+        <span class="crumb-chip" data-i18n="crumb.serving">为你服务中</span>
+        <span class="crumb-sep">/</span>
+        <span class="crumb-now" id="crumbIntent" data-i18n="crumb.waiting">还没开始</span>
+      </div>
+      <div class="head-actions">
+        <span id="sampleFlag" class="flag" title="" data-i18n="banner.sampleShort">演示语料</span>
+        <button id="techToggle" class="icon-btn" aria-pressed="false"
+                data-i18n-title="ctl.tech" title="显示系统运行详情">
+          <span class="ico" data-icon="gear"></span>
+        </button>
+      </div>
+    </header>
+
+    <div id="transcript" class="transcript" aria-live="polite"></div>
+
+    <form id="composer" class="composer">
+      <div class="input-shell">
+        <textarea id="input" rows="1" data-i18n-ph="composer.placeholder"
+          placeholder="输入你的问题，阿桥随时在…"></textarea>
+        <div class="input-actions">
+          <button type="button" id="mic" class="icon-btn" data-i18n-title="a11y.voiceIn" title="语音输入">
+            <span class="ico" data-icon="mic"></span>
+          </button>
+          <button type="submit" id="send" class="btn-send" data-i18n-title="composer.send" title="发送">
+            <span class="ico" data-icon="send"></span>
+          </button>
+        </div>
+      </div>
+      <div class="composer-foot">
+        <label class="check"><input type="checkbox" id="a11yPlain"><span data-i18n="a11y.plain">大白话模式</span></label>
+        <label class="check"><input type="checkbox" id="a11yLarge"><span data-i18n="a11y.large">大字号</span></label>
+        <label class="check"><input type="checkbox" id="a11yVoice"><span data-i18n="a11y.voice">读给我听</span></label>
+        <span id="status" class="status"></span>
+      </div>
+    </form>
+  </main>
+
+  <!-- ── overview ──────────────────────────────────────────────────────── -->
+  <aside class="overview" aria-label="Overview">
+    <div class="overview-head">
+      <h2 data-i18n="panel.overview">我的概览</h2>
+    </div>
+
+    <section class="card">
+      <div class="card-head">
+        <h3 data-i18n="panel.tasks">进行中任务</h3>
+        <span id="taskCount" class="card-note"></span>
+      </div>
+      <div id="tasks"></div>
+    </section>
+
+    <section class="mascot">
+      <div class="mascot-art">
+        <img class="mascot-img" id="mascotImg" src="/mascot.png" alt="" aria-hidden="true">
+        <span class="mascot-tag" data-i18n="mascot.tag">我是阿桥</span>
+      </div>
+      <p class="mascot-line" id="mascotLine" data-i18n="mascot.line">
+        条件我一条条念给你听。定不了的，我就说定不了。
+      </p>
+    </section>
+
+    <section class="card">
+      <div class="card-head">
+        <h3 data-i18n="panel.records">档案记录</h3>
+        <button id="forget" class="link-danger" data-i18n="profile.clear">清空记录</button>
+      </div>
+      <div id="records"></div>
+    </section>
+
+    <section class="card">
+      <div class="card-head">
+        <h3 data-i18n="panel.consent">授权</h3>
+      </div>
+      <div id="consents"></div>
+    </section>
+  </aside>
+</div>
+
+<script type="module" src="/app.js"></script>
+</body>
+</html>

@@ -30,3 +30,19 @@ go.work.sum
 # Editor/IDE
 # .idea/
 # .vscode/
+
+# Opportunity Bridge Agent
+bin/
+.state/
+
+# Local secrets. .env.example is committed; .env never is.
+.env
+.env.*
+!.env.example
+
+# local editor/tooling
+.claude/
+dist/
+
+# Account-specific deploy identifiers.
+deploy/deploy.env

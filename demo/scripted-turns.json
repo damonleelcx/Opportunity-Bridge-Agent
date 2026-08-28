@@ -1,0 +1,55 @@
+{
+  "turns": [
+    {
+      "text": "{\"intent\": \"individual_pathway\", \"confidence\": 0.92, \"rationale\": \"One person describing their own work situation and asking what exists.\"}"
+    },
+    {
+      "thinking": "工厂关了，能接得住五年流水线经验的是数控这条线。先把培训和岗位一起搜出来，再谈推荐。",
+      "tool_calls": [
+        {
+          "name": "opportunity_search",
+          "input": {
+            "query": "cnc machining training assembly line laid off",
+            "city": "Chengdu",
+            "limit": 5
+          }
+        }
+      ]
+    },
+    {
+      "tool_calls": [
+        {
+          "name": "criteria_explain",
+          "input": {
+            "opportunity_id": "trn-002"
+          }
+        }
+      ]
+    },
+    {
+      "text": "有两条路，第一条如果你已经做了失业登记，是免费的。\n\ntrn-002——龙泉驿技工学校的数控课，六周全日制。你五年流水线的底子，这门课默认你已经有了。最后一周有合作企业进来面试。\n\n它公布的条件是两条：18 到 50 岁；有求职登记，或者有近十二个月内的解除劳动合同证明。你说厂子刚关，第二条看起来是有的。求职登记有没有办，我这边看不到。这个由学校认定，不是我说了算。\n\njob-001——龙泉驿锦禾精密的数控操作工，5600 到 8200 元，带六周在岗培训，不要求先有证。是两班倒，你可以照着通勤时间算一下合不合适。\n\n下一步就一件事：打 028-5551-0022，问下一期 trn-002 什么时候开班，以及解除劳动合同证明能不能单独作数。想当面办，学校在成洛大道 200 号，周一到周五 8:30-17:00。"
+    },
+    {
+      "text": "{\"intent\": \"individual_pathway\", \"confidence\": 0.92, \"rationale\": \"Same person, same objective; they are asking to have the step tracked.\"}"
+    },
+    {
+      "tool_calls": [
+        {
+          "name": "case_task_create",
+          "input": {
+            "domain": "training",
+            "title": "问 trn-002 下一期开班时间，以及解除劳动合同证明是否单独作数",
+            "owner": "resident",
+            "linked_ref": "trn-002",
+            "channel_phone": "028-5551-0022",
+            "channel_window": "Longquanyi Technical School, 200 Chengluo Ave",
+            "channel_hours": "Mon-Fri 08:30-17:00"
+          }
+        }
+      ]
+    },
+    {
+      "text": "记下了。在你的任务清单里是一条待办，负责人是你，电话和地址都挂在上面。\n\n如果学校说解除劳动合同证明不够，另一条路是先去任意一个区就业服务大厅做求职登记——打 12333，他们会告诉你你住的地方归哪个大厅管。"
+    }
+  ]
+}

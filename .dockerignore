@@ -1,0 +1,10 @@
+.git
+.env
+.env.*
+!.env.example
+bin/
+.state/
+*.md
+docs/
+evals/
+demo/
