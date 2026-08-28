@@ -251,9 +251,13 @@ func opportunitySearch() Tool {
 						liveErrs = append(liveErrs, err)
 					}
 				}
+				// Numbered here, not inside the lookup: ids have to be unique
+				// across the turn, and only this side knows the turn.
+				env.LiveSeq.Assign(live)
 				env.Rec.Info(obs.RetrievalQueried, "live lookup",
 					map[string]any{"city": askedCity, "results": len(live),
-						"failures": len(liveErrs), "intents": intentNames(lq.Intents)})
+						"failures": len(liveErrs), "intents": intentNames(lq.Intents),
+						"live_ids": liveIDs(live)})
 			}
 
 			outcome := "matched"

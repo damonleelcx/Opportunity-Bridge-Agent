@@ -335,15 +335,21 @@ function agentTurn() {
     techCount: 0,
   };
   turn.slot.innerHTML = avatar("calm", t("a11y.avatar"));
-  // The bubble starts as a typing indicator rather than as empty space: the
-  // model can think for a long time before the first token, and an empty grey
-  // box reads as a broken answer.
-  turn.bubble.innerHTML = '<span class="typing" aria-label="…"><i></i><i></i><i></i></span>';
-  turn.typing = true;
+  awaitingText(turn);
   turn.tech.open = state.showTech;
   $("#transcript").append(g);
   scroll();
   return turn;
+}
+
+// awaitingText puts the bubble back to a typing indicator rather than empty
+// space: the model can think for a long time before the first token, and an
+// empty grey box reads as a broken answer. Used at the start of a turn and again
+// after a reset, which is the same situation — nothing written yet, and more
+// coming.
+function awaitingText(turn) {
+  turn.bubble.innerHTML = '<span class="typing" aria-label="…"><i></i><i></i><i></i></span>';
+  turn.typing = true;
 }
 
 const show = (el) => { el.hidden = false; };
@@ -395,6 +401,17 @@ async function send(text) {
         case "routed": routePill(turn, ev.route); crumb(ev.route.intent); break;
         case "thinking": show(turn.thinking); turn.thinking.textContent = clip(turn.thinking.textContent + ev.text, 320); scroll(); break;
         case "text":
+          // reset means the attempt that wrote this text failed and is being
+          // retried. What is on screen came from a run that is not happening any
+          // more, so it goes — leaving it would show half an answer above a
+          // different whole one.
+          // See docs/bugfix/2026-08-28-answers-never-streamed.md
+          if (ev.reset) {
+            streamed = "";
+            turn.thinking.textContent = "";
+            awaitingText(turn);
+            if (!ev.text) { scroll(); break; }
+          }
           streamed += ev.text;
           turn.typing = false;
           turn.bubble.textContent = streamed;

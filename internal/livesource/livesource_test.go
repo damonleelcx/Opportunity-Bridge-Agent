@@ -199,10 +199,95 @@ func TestChainKeepsGoingWhenOneProviderFails(t *testing.T) {
 	if len(errs) != 1 {
 		t.Fatalf("the failure was not reported: %v", errs)
 	}
-	// Ids are assigned after the merge, so they are stable within a turn
-	// whatever answered.
-	if res[0].ID != "live-001" {
-		t.Errorf("unstable id: %q", res[0].ID)
+	// LookupAll no longer numbers anything: ids have to be unique across the
+	// whole turn, and only the caller knows where the turn starts. See
+	// TestSequenceNumbersAcrossAWholeTurn.
+	if res[0].ID != "" {
+		t.Errorf("LookupAll assigned an id (%q); numbering belongs to the turn, and "+
+			"numbering per lookup is what made two searches both produce live-003", res[0].ID)
 	}
 	_ = fmt.Sprint(chain.Name())
+}
+
+// Two searches in one turn must not both produce a live-003.
+//
+// The agent searches more than once as a matter of course — once per trade when
+// somebody names two, once per intent when it wants both work and courses.
+// Observed in production on 2026-08-28: one answer cited live-003 for a welding
+// school and for a cookery school, and the reader had no way to say which one
+// they meant. See docs/bugfix/2026-08-28-live-ids-collided-within-a-turn.md
+func TestSequenceNumbersAcrossAWholeTurn(t *testing.T) {
+	seq := &livesource.Sequence{}
+	first := []livesource.Result{{Title: "a"}, {Title: "b"}}
+	second := []livesource.Result{{Title: "c"}, {Title: "d"}}
+	seq.Assign(first)
+	seq.Assign(second)
+
+	got := []string{first[0].ID, first[1].ID, second[0].ID, second[1].ID}
+	want := []string{"live-001", "live-002", "live-003", "live-004"}
+	if strings.Join(got, ",") != strings.Join(want, ",") {
+		t.Fatalf("ids across two lookups = %v, want %v", got, want)
+	}
+
+	seen := map[string]bool{}
+	for _, id := range got {
+		if seen[id] {
+			t.Fatalf("id %q was handed out twice; it identifies nothing", id)
+		}
+		seen[id] = true
+	}
+}
+
+// The same lead found by two searches keeps one id.
+//
+// The city's own service directory answers EVERY lookup, so a turn that searches
+// twice gets it twice. Numbering strictly by arrival gave one office two ids and
+// the answer then cited both, as though they were two places to go.
+func TestSequenceGivesOneLeadOneID(t *testing.T) {
+	seq := &livesource.Sequence{}
+	first := []livesource.Result{
+		{Title: "深圳人社", URL: "https://hrss.sz.gov.cn/"},
+		{Title: "电焊培训班", URL: "https://example.test/weld"},
+	}
+	second := []livesource.Result{
+		{Title: "深圳人社", URL: "https://hrss.sz.gov.cn/"},
+		{Title: "烹饪培训班", URL: "https://example.test/cook"},
+	}
+	seq.Assign(first)
+	seq.Assign(second)
+
+	if first[0].ID != second[0].ID {
+		t.Errorf("one office got two ids (%q and %q); the answer will cite both",
+			first[0].ID, second[0].ID)
+	}
+	if second[1].ID == first[1].ID {
+		t.Errorf("two different pages share id %q", second[1].ID)
+	}
+	if got := []string{first[0].ID, first[1].ID, second[1].ID}; strings.Join(got, ",") != "live-001,live-002,live-003" {
+		t.Errorf("ids = %v, want live-001,live-002,live-003 with no number spent on the repeat", got)
+	}
+}
+
+// A lead with no URL is still singular: the hotline-only directory entry for a
+// city the corpus has no site for must not consume a new id per lookup.
+func TestSequenceMatchesURLlessLeadsByTitle(t *testing.T) {
+	seq := &livesource.Sequence{}
+	a := []livesource.Result{{Title: "克拉玛依：公共就业服务", Region: "克拉玛依"}}
+	b := []livesource.Result{{Title: "克拉玛依：公共就业服务", Region: "克拉玛依"}}
+	seq.Assign(a)
+	seq.Assign(b)
+	if a[0].ID != b[0].ID {
+		t.Errorf("the same hotline entry got %q and %q", a[0].ID, b[0].ID)
+	}
+}
+
+// A caller with no sequence still gets usable ids. The non-Chain path used to
+// return results with NO id at all, which the answer cannot cite.
+func TestNilSequenceStillNumbersFromOne(t *testing.T) {
+	var seq *livesource.Sequence
+	res := []livesource.Result{{Title: "a"}, {Title: "b"}}
+	seq.Assign(res)
+	if res[0].ID != "live-001" || res[1].ID != "live-002" {
+		t.Fatalf("nil sequence produced %q, %q", res[0].ID, res[1].ID)
+	}
 }

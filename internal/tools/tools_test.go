@@ -448,6 +448,66 @@ func TestATrainingQuestionOutsideTheCorpusComesBackWithACourse(t *testing.T) {
 	}
 }
 
+// Two searches in one turn must not both produce a live-003.
+//
+// The agent searches more than once as a matter of course — once per trade when
+// somebody names two, once per intent when it wants both work and courses.
+// Observed in production on 2026-08-28: one answer cited live-003 for a welding
+// school and for a cookery school. The id is the reader's only handle on an
+// unverified lead, and the invented-identifier check cannot object because both
+// really were produced this turn.
+//
+// The unit test in livesource proves the counter counts. This one proves the
+// counter is WIRED — that opportunity_search shares one across the turn, which
+// is the part that was missing. See
+// docs/bugfix/2026-08-28-live-ids-collided-within-a-turn.md
+func TestLiveIDsAreUniqueAcrossOneTurn(t *testing.T) {
+	const body = `{"code":200,"data":{"webPages":{"value":[
+	 {"name":"佛山电焊工培训班招生","url":"https://example.test/weld","snippet":"佛山电焊培训报名","siteName":"某校","datePublished":"2026-08-20T00:00:00+08:00"},
+	 {"name":"佛山中式烹调师培训招生","url":"https://example.test/cook","snippet":"佛山烹饪培训学费","siteName":"某校","datePublished":"2026-08-18T00:00:00+08:00"}
+	]}}}`
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_, _ = w.Write([]byte(body))
+	}))
+	defer srv.Close()
+
+	b := livesource.NewBocha(srv.URL, "test-key")
+	b.Now = func() time.Time { return time.Date(2026, 8, 28, 12, 0, 0, 0, time.UTC) }
+
+	// One Env for both calls, exactly as the agent loop reuses it across a turn.
+	env := testEnv(t, domain.RoleResident)
+	env.Live = livesource.Chain{b}
+	env.LiveSeq = &livesource.Sequence{}
+	reg := Default()
+
+	seen := map[string]string{}
+	for _, args := range []string{
+		`{"query":"电焊","city":"佛山","kinds":["training"]}`,
+		`{"query":"烹饪","city":"佛山","kinds":["training"]}`,
+	} {
+		res, err := reg.Call(context.Background(), env, allowAll, "opportunity_search",
+			json.RawMessage(args))
+		if err != nil {
+			t.Fatalf("opportunity_search %s: %v", args, err)
+		}
+		live, _ := res.Content.(map[string]any)["live_results"].([]livesource.Result)
+		if len(live) == 0 {
+			t.Fatalf("%s returned no live results; this fence needs some to number", args)
+		}
+		for _, r := range live {
+			if r.ID == "" {
+				t.Fatalf("a live result came back with no id: %q", r.Title)
+			}
+			if prev, dup := seen[r.ID]; dup {
+				t.Fatalf("id %q was handed to both %q and %q in one turn; "+
+					"it identifies nothing and the reader cannot ask about either",
+					r.ID, prev, r.Title)
+			}
+			seen[r.ID] = r.Title
+		}
+	}
+}
+
 // Fence 3 for docs/bugfix/2026-08-28-subject-identity-and-tracked-steps.md:
 // opportunity_search must report corpus hits separately from live-directory
 // results. next_step_is_tracked reads corpus_hits, and folding the two together

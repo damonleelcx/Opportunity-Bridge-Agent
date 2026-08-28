@@ -61,6 +61,40 @@ func TestOpportunityPanelConsultsLiveResultsBeforeSayingNothingMatched(t *testin
 	}
 }
 
+// A reset takes the failed attempt off the screen.
+//
+// Deltas now stream through as the model writes them, so a failed attempt has
+// already put text in front of the reader by the time it fails. The reset event
+// is what makes that safe; a client that ignores it shows half an answer
+// followed by a different whole one — which is the exact thing the old
+// buffer-everything approach was protecting against, and the reason it cost the
+// product its streaming. See docs/bugfix/2026-08-28-answers-never-streamed.md
+func TestClientClearsTheScreenOnReset(t *testing.T) {
+	src := asset(t, "app.js")
+
+	start := strings.Index(src, `case "text":`)
+	if start < 0 {
+		t.Fatal("the text branch is gone; this fence no longer guards anything")
+	}
+	end := strings.Index(src[start:], "case \"tool_start\":")
+	if end < 0 {
+		t.Fatal("could not find the end of the text branch")
+	}
+	body := src[start : start+end]
+
+	if !strings.Contains(body, "ev.reset") {
+		t.Error("the text branch never reads ev.reset: a retried turn leaves the " +
+			"failed attempt's text on screen with the new answer appended to it")
+	}
+	if !strings.Contains(body, `streamed = ""`) {
+		t.Error("reset does not clear the accumulated text")
+	}
+	if !strings.Contains(body, "awaitingText") {
+		t.Error("reset leaves an empty bubble rather than the typing indicator; " +
+			"an empty grey box reads as a broken answer")
+	}
+}
+
 // A live lead says whether it is a job or a course.
 //
 // The lookup already knows — it asked the web a different question for each —

@@ -195,16 +195,27 @@ func TestErrorsAreTranslatedIntoSomethingActionable(t *testing.T) {
 	}
 }
 
-func TestRetryingHidesPartialOutputFromTheUser(t *testing.T) {
-	// A failed attempt must not leave half an answer on screen followed by a
-	// different whole one.
+// A failed attempt must not leave half an answer on screen followed by a
+// different whole one.
+//
+// Written as the READER experiences it — accumulate text, clear on reset —
+// rather than as "the sink never sees the failed attempt", because the mechanism
+// changed and the guarantee did not. Deltas now stream through as they arrive
+// and a failed attempt is taken back with EventReset. Withholding every delta
+// until the attempt had succeeded is what removed streaming from the product:
+// nothing the model wrote reached the reader until it had stopped writing.
+// See docs/bugfix/2026-08-28-answers-never-streamed.md
+func TestRetryingLeavesTheReaderOnlyTheSuccessfulAttempt(t *testing.T) {
 	attempts := 0
 	inner := &flaky{fail: 1, onAttempt: func() { attempts++ }}
-	var seen []string
+	var onScreen string
 	r := llm.Retrying{Inner: inner, Max: 2}
 	resp, err := r.Stream(context.Background(), llm.Request{}, func(e llm.Event) {
-		if e.Kind == llm.EventTextDelta {
-			seen = append(seen, e.Text)
+		switch e.Kind {
+		case llm.EventReset:
+			onScreen = ""
+		case llm.EventTextDelta:
+			onScreen += e.Text
 		}
 	})
 	if err != nil {
@@ -213,12 +224,81 @@ func TestRetryingHidesPartialOutputFromTheUser(t *testing.T) {
 	if attempts != 2 {
 		t.Errorf("attempts = %d, want 2", attempts)
 	}
-	if strings.Join(seen, "") != "good" {
-		t.Errorf("user saw %q, want only the successful attempt", strings.Join(seen, ""))
+	if onScreen != "good" {
+		t.Errorf("the reader was left with %q, want only the successful attempt", onScreen)
 	}
 	if resp.TextContent() != "good" {
 		t.Errorf("final %q", resp.TextContent())
 	}
+}
+
+// Deltas must reach the sink WHILE the attempt is running.
+//
+// This is the fence for the defect itself. Measured on a real turn before the
+// fix: all 451 text deltas arrived in the same instant, 57 seconds in, together
+// with the final event — a blank screen followed by a wall of text, which reads
+// as a broken product rather than a thinking one.
+func TestRetryingStreamsDeltasAsTheyArrive(t *testing.T) {
+	var seen []string
+	sawFirstDuringAttempt := false
+	inner := &scripted{run: func(sink func(llm.Event)) (llm.Response, error) {
+		sink(llm.Event{Kind: llm.EventTextDelta, Text: "half "})
+		// If the wrapper is buffering, the sink below has not run yet.
+		sawFirstDuringAttempt = len(seen) == 1
+		sink(llm.Event{Kind: llm.EventTextDelta, Text: "done"})
+		return llm.Response{Blocks: []llm.Block{llm.Text("half done")}, StopReason: "end_turn"}, nil
+	}}
+	_, err := llm.Retrying{Inner: inner, Max: 2}.
+		Stream(context.Background(), llm.Request{}, func(e llm.Event) {
+			if e.Kind == llm.EventTextDelta {
+				seen = append(seen, e.Text)
+			}
+		})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !sawFirstDuringAttempt {
+		t.Fatal("no delta reached the sink until the attempt had finished; " +
+			"the answer arrives as one block and the product does not stream")
+	}
+}
+
+// A non-retryable failure ends the turn with an error, and half an answer above
+// that error is worse than none. The take-back is not only for retries.
+func TestPartialOutputIsTakenBackEvenWhenNoRetryFollows(t *testing.T) {
+	inner := &flaky{fail: 5, err: "MODEL_REQUEST_INVALID: bad shape"}
+	var onScreen string
+	reset := false
+	_, err := llm.Retrying{Inner: inner, Max: 3}.
+		Stream(context.Background(), llm.Request{}, func(e llm.Event) {
+			switch e.Kind {
+			case llm.EventReset:
+				reset = true
+				onScreen = ""
+			case llm.EventTextDelta:
+				onScreen += e.Text
+			}
+		})
+	if err == nil {
+		t.Fatal("expected an error")
+	}
+	if !reset {
+		t.Error("no reset was sent, so the failed attempt's text stays on screen under the error")
+	}
+	if onScreen != "" {
+		t.Errorf("the reader was left with %q above an error message", onScreen)
+	}
+}
+
+// scripted is a client whose whole behaviour is one function, for tests that
+// care about WHEN the sink is called rather than about failure handling.
+type scripted struct {
+	run func(sink func(llm.Event)) (llm.Response, error)
+}
+
+func (s *scripted) Name() string { return "scripted" }
+func (s *scripted) Stream(_ context.Context, _ llm.Request, sink func(llm.Event)) (llm.Response, error) {
+	return s.run(sink)
 }
 
 func TestNonRetryableErrorsFailFast(t *testing.T) {
