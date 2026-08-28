@@ -29,3 +29,8 @@ data:
   OBA_MAX_TOOL_CALLS: "12"
   OBA_MAX_WALLCLOCK_SEC: "150"
   OBA_K_ANONYMITY: "5"
+  # Which search vendor the live lookup uses. Named explicitly rather than left
+  # to the default, for the same reason the model ids are: a deployment should
+  # read what it is actually running. The key itself arrives via the
+  # opportunity-bridge-model Secret; without it the lookup is off and says so.
+  OBA_SEARCH_PROVIDER: "bocha"
