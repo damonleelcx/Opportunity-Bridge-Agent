@@ -5,8 +5,11 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"log/slog"
 	"net/http"
+	"sort"
 	"strings"
+	"sync"
 	"time"
 )
 
@@ -31,27 +34,59 @@ type Bocha struct {
 	Endpoint string
 	APIKey   string
 	Client   *http.Client
+	// Now exists so the age cutoff can be tested against fixed dates rather than
+	// against whenever the suite happens to run. Nil means time.Now.
+	Now func() time.Time
+	// Log records a window that failed while others succeeded. Without it a
+	// partial lookup is indistinguishable from a thin one.
+	Log *slog.Logger
 }
 
 const DefaultBochaEndpoint = "https://api.bochaai.com/v1/web-search"
 
-// bochaFreshness is deliberately "noLimit", and this is the one setting here
-// that is not obvious, so it is written down.
+// bochaWindows are the freshness windows this provider asks for, and merges.
 //
-// Asking Bocha for RECENT results makes the answer WORSE, because it trades away
-// the city. Measured 2026-08-28 over three cities, counting how many returned
-// results actually concern the city that was asked about:
+// ── Why more than one, which is the whole point of this file ─────────────────
 //
-//	freshness=noLimit    深圳 5/5    佛山 8/8    成都 8/8    = 21/21
-//	freshness=oneMonth   深圳 1/8    佛山 4/8    成都 5/8    = 10/24
+// `noLimit` is NOT "everything, ranked by relevance". It is its own result set,
+// and it largely MISSES recent postings. Measured 2026-08-28, newest result that
+// actually concerned the city asked about:
 //
-// The oneMonth results for 深圳 were postings in 永城, 安徽, 临安 and 即墨 — recent,
-// and in the wrong province. For somebody deciding whether to spend a morning
-// travelling to an address, a fresh listing in another province is worse than a
-// stale one in their own city: the stale one wastes a phone call, the wrong-city
-// one wastes the trip. Recency is instead handled honestly — the publication date
-// travels with every result and is shown to the reader.
-const bochaFreshness = "noLimit"
+//	query              oneWeek       noLimit
+//	深圳 保洁 招聘      2026-08-26    2026-01-04
+//	深圳 普工 白班      2026-08-27    2026-03-19
+//	成都 普工 招聘      2026-08-28    2025-09-04
+//
+// So no single window can be right: asking only `noLimit` serves listings one to
+// six years old — which is what somebody reported, with a 2020 posting on screen
+// — and asking only a narrow window loses the cities where nothing was posted
+// this week. They are queried together and merged.
+//
+// ── Correcting the earlier reasoning, because it is why this was wrong ───────
+//
+// This constant was previously a single `noLimit`, justified by a measurement
+// that counted city-correct results among the RAW response. That measurement was
+// taken before the city filter existed in the pipeline, and the filter is
+// precisely what neutralises a narrow window's weakness: `oneMonth` looked bad
+// at 10/24 raw, but the wrong-province results it returned are exactly the ones
+// mentionsCity discards. Measuring the input to a filter and concluding
+// something about its output is the mistake; the numbers above are counted
+// AFTER filtering.
+//
+// `oneMonth` is kept despite overlapping `oneWeek` because the windows are not
+// nested in practice — 深圳 保洁 returned 3 city-correct results for oneWeek and
+// 0 for oneMonth, so a "wider" window is not a superset of a narrower one.
+var bochaWindows = []string{"oneWeek", "oneMonth", "noLimit"}
+
+// maxListingAge drops postings too old to be worth a journey.
+//
+// Every result Bocha returned in testing carried a date (70 of 70), so this
+// discards on evidence rather than on a guess. Two years is the line because a
+// posting older than that is an archive page rather than a lead: the reported
+// screenshot had a 2020-07-14 listing on it, offered to somebody looking for
+// work today. Results are additionally ordered newest-first, so age is visible
+// even within what survives.
+const maxListingAge = 730 * 24 * time.Hour
 
 func NewBocha(endpoint, key string) *Bocha {
 	if endpoint == "" {
@@ -61,6 +96,20 @@ func NewBocha(endpoint, key string) *Bocha {
 		Endpoint: endpoint, APIKey: key,
 		Client: &http.Client{Timeout: 12 * time.Second},
 	}
+}
+
+func (b *Bocha) now() time.Time {
+	if b.Now != nil {
+		return b.Now()
+	}
+	return time.Now()
+}
+
+func (b *Bocha) log() *slog.Logger {
+	if b.Log != nil {
+		return b.Log
+	}
+	return slog.Default()
 }
 
 func (b *Bocha) Name() string { return "bocha" }
@@ -92,6 +141,12 @@ type bochaResponse struct {
 	} `json:"data"`
 }
 
+// Lookup asks every freshness window, merges what comes back, and answers
+// newest-first.
+//
+// The windows are queried CONCURRENTLY. Run in sequence they would add their
+// latencies together inside a turn that also has to call a model twice, and the
+// slowest of three is a much better bill than the sum of three.
 func (b *Bocha) Lookup(ctx context.Context, q Query) ([]Result, error) {
 	if !b.Configured() {
 		return nil, nil // not switched on; not a failure
@@ -104,28 +159,124 @@ func (b *Bocha) Lookup(ctx context.Context, q Query) ([]Result, error) {
 	if limit <= 0 || limit > 10 {
 		limit = 5
 	}
+	// The caller's own words, kept separately from the query we send, because
+	// they are also what a result has to be ABOUT to be returned.
 	terms := strings.TrimSpace(q.Keyword)
-	if terms == "" {
-		terms = "招聘 培训"
-	}
-	// Over-fetch, because the city filter below discards anything that drifted to
-	// another city. Asking for exactly `limit` and then filtering would quietly
-	// return fewer results than the caller asked for.
-	fetch := limit * 2
+	needles := strings.Fields(terms)
+	// Over-fetch per window, because the city filter and the age cutoff both
+	// discard. Asking for exactly `limit` and then filtering would quietly return
+	// fewer results than the caller asked for.
+	fetch := limit * 4
 	if fetch > 20 {
 		fetch = 20
 	}
+	query := recruitmentQuery(city, terms)
 
+	type outcome struct {
+		window string
+		hits   []bochaHit
+		err    error
+	}
+	out := make(chan outcome, len(bochaWindows))
+	var wg sync.WaitGroup
+	for _, w := range bochaWindows {
+		wg.Add(1)
+		go func(window string) {
+			defer wg.Done()
+			hits, err := b.fetchWindow(ctx, query, window, fetch)
+			out <- outcome{window: window, hits: hits, err: err}
+		}(w)
+	}
+	wg.Wait()
+	close(out)
+
+	var firstErr error
+	failed := 0
+	seen := map[string]bool{}
+	merged := make([]Result, 0, fetch)
+	cutoff := b.now().Add(-maxListingAge)
+
+	for o := range out {
+		if o.err != nil {
+			failed++
+			if firstErr == nil {
+				firstErr = o.err
+			}
+			// One window failing is survivable; saying nothing about it is not.
+			b.log().Warn("one search window failed; the answer is built from the rest",
+				"code", "SEARCH_WINDOW_FAILED", "window", o.window, "error", o.err)
+			continue
+		}
+		for _, r := range o.hits {
+			if r.URL == "" || r.Name == "" {
+				continue // a result without a page is not a result
+			}
+			if seen[r.URL] {
+				continue // the windows overlap; the same posting must appear once
+			}
+			text := r.Name + " " + r.Snippet + " " + r.Summary + " " + r.URL + " " + r.SiteName
+			if !mentionsCity(city, text) || !isRecruitment(text) || !mentionsAll(text, needles) {
+				continue
+			}
+			published, ok := publishedTime(r.DatePublished)
+			// A posting with no readable date is kept: it cannot be shown to be
+			// stale, and dropping it would discard real listings to enforce a rule
+			// about dates. It sorts last, so it never displaces something dated.
+			if ok && published.Before(cutoff) {
+				continue
+			}
+			seen[r.URL] = true
+			merged = append(merged, Result{
+				Kind: KindListing, Region: city,
+				Title:     collapse(r.Name),
+				Summary:   collapse(firstNonEmpty(r.Summary, r.Snippet)),
+				URL:       r.URL,
+				Source:    sourceLabel(r.SiteName),
+				Published: publishedOn(r.DatePublished),
+				Caveat: "这是网上搜到的线索，不是本系统核实过的岗位，发布网站多为商业招聘平台。" +
+					"点开先看发布日期和单位名称；凡是先收费、先交押金、先办贷款的，都不要答应。" +
+					"拿不准就打 12333 核一下再跑一趟。",
+			})
+		}
+	}
+
+	// Every window failed, so this is a failed lookup and must not be reported as
+	// an empty city. One or two failing still yields an answer.
+	if failed == len(bochaWindows) {
+		return nil, firstErr
+	}
+
+	// Newest first. This is the point of the whole change: the reader was being
+	// shown a 2020 posting above a current one because the API's own ordering is
+	// by relevance, and relevance has no opinion about whether a job still exists.
+	sort.SliceStable(merged, func(i, j int) bool {
+		return merged[i].Published > merged[j].Published // ISO dates sort as strings; "" sorts last
+	})
+	if len(merged) > limit {
+		merged = merged[:limit]
+	}
+	return merged, nil
+}
+
+// bochaHit is one raw result, before it is judged.
+type bochaHit struct {
+	Name          string
+	URL           string
+	Snippet       string
+	Summary       string
+	SiteName      string
+	DatePublished string
+}
+
+// fetchWindow performs one search. Everything it knows about failure is here, so
+// the caller can treat a window uniformly whether it answered or not.
+func (b *Bocha) fetchWindow(ctx context.Context, query, window string, count int) ([]bochaHit, error) {
 	body, err := json.Marshal(bochaRequest{
-		Query:     fmt.Sprintf("%s %s", city, terms),
-		Freshness: bochaFreshness,
-		Summary:   true,
-		Count:     fetch,
+		Query: query, Freshness: window, Summary: true, Count: count,
 	})
 	if err != nil {
 		return nil, err
 	}
-
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, b.Endpoint, bytes.NewReader(body))
 	if err != nil {
 		return nil, err
@@ -167,30 +318,91 @@ func (b *Bocha) Lookup(ctx context.Context, q Query) ([]Result, error) {
 		return nil, fmt.Errorf("SEARCH_FAILED: the search API returned code %s: %s", code, parsed.Msg)
 	}
 
-	out := make([]Result, 0, limit)
+	hits := make([]bochaHit, 0, len(parsed.Data.WebPages.Value))
 	for _, r := range parsed.Data.WebPages.Value {
-		if r.URL == "" || r.Name == "" {
-			continue // a result without a page is not a result
-		}
-		if !mentionsCity(city, r.Name, r.Snippet, r.Summary, r.URL, r.SiteName) {
-			continue
-		}
-		out = append(out, Result{
-			Kind: KindListing, Region: city,
-			Title:     collapse(r.Name),
-			Summary:   collapse(firstNonEmpty(r.Summary, r.Snippet)),
-			URL:       r.URL,
-			Source:    sourceLabel(r.SiteName),
-			Published: publishedOn(r.DatePublished),
-			Caveat: "这是网上搜到的线索，不是本系统核实过的岗位，发布网站多为商业招聘平台。" +
-				"点开先看发布日期和单位名称；凡是先收费、先交押金、先办贷款的，都不要答应。" +
-				"拿不准就打 12333 核一下再跑一趟。",
+		hits = append(hits, bochaHit{
+			Name: r.Name, URL: r.URL, Snippet: r.Snippet, Summary: r.Summary,
+			SiteName: r.SiteName, DatePublished: r.DatePublished,
 		})
-		if len(out) >= limit {
-			break
+	}
+	return hits, nil
+}
+
+// publishedTime parses what the site said, reporting whether it could.
+// "Could not read the date" and "published at the zero time" must not be the
+// same answer, because one of them would silently discard the result.
+func publishedTime(s string) (time.Time, bool) {
+	s = strings.TrimSpace(s)
+	if s == "" {
+		return time.Time{}, false
+	}
+	if t, err := time.Parse(time.RFC3339, s); err == nil {
+		return t, true
+	}
+	if len(s) >= 10 {
+		if t, err := time.Parse("2006-01-02", s[:10]); err == nil {
+			return t, true
 		}
 	}
-	return out, nil
+	return time.Time{}, false
+}
+
+// recruitmentQuery makes sure the search is actually asking about work.
+//
+// The agent passes the trade, not the intent: a real turn sent query="保洁",
+// so the search was literally "深圳 保洁". What came back was a cosmetic-surgery
+// advertisement, two insurance stories and a cleaning-services procurement
+// notice — all in 深圳, all recent, none of them a job. `noLimit` had been
+// concealing this, because its relevance ranking happens to favour job boards.
+//
+// Measured 2026-08-28 on "深圳 保洁": 4 of 20 results looked like recruitment.
+// With 招聘 appended: 16 of 17.
+func recruitmentQuery(city, terms string) string {
+	q := strings.TrimSpace(city + " " + terms)
+	if !isRecruitment(q) {
+		q += " 招聘"
+	}
+	return q
+}
+
+// recruitmentWords are the words a page about hiring uses. A page that uses none
+// of them is not a job advertisement, whatever it is about.
+//
+// A list rather than a cleverer relevance model because the failure it prevents
+// is gross, not subtle — insurance news and medical advertising scored highly on
+// "深圳 保洁" simply by being about 深圳 — and because a list can be read and
+// corrected by somebody who knows the domain and not this code.
+var recruitmentWords = []string{
+	"招聘", "急聘", "诚聘", "招工", "招人", "用工", "直聘",
+	"求职", "人才网", "兼职", "岗位", "职位",
+	"月薪", "薪资", "工资", "待遇", "包吃住", "日结", "周结", "月结",
+}
+
+func isRecruitment(text string) bool {
+	for _, w := range recruitmentWords {
+		if strings.Contains(text, w) {
+			return true
+		}
+	}
+	return false
+}
+
+// mentionsAll requires the result to be about what was actually asked for.
+//
+// Without it, "深圳 保洁 招聘" returns current recruitment drives for school
+// librarians and administrators: in the right city, genuinely about hiring, and
+// nothing to do with the work the person came here for. Recency cannot make an
+// irrelevant lead worth a journey.
+//
+// An empty needle list imposes nothing, so a caller who named no trade still
+// gets the city's recruitment pages.
+func mentionsAll(text string, needles []string) bool {
+	for _, n := range needles {
+		if !strings.Contains(text, n) {
+			return false
+		}
+	}
+	return true
 }
 
 // mentionsCity keeps a result only if it actually concerns the city that was
@@ -204,17 +416,12 @@ func (b *Bocha) Lookup(ctx context.Context, q Query) ([]Result, error) {
 //
 // The trailing 市 / 区 is trimmed so 深圳市 asked about matches 深圳 written on the
 // page, which is how these sites label themselves.
-func mentionsCity(city string, fields ...string) bool {
+func mentionsCity(city, text string) bool {
 	needle := strings.TrimSuffix(strings.TrimSuffix(city, "市"), "区")
 	if needle == "" {
 		return false
 	}
-	for _, f := range fields {
-		if strings.Contains(f, needle) {
-			return true
-		}
-	}
-	return false
+	return strings.Contains(text, needle)
 }
 
 // publishedOn keeps the date part of an RFC3339 timestamp. The reader is being
