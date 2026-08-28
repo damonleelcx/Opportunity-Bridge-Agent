@@ -19,6 +19,10 @@ const P = {
   user: '<path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/>',
   route: '<circle cx="6" cy="19" r="3"/><circle cx="18" cy="5" r="3"/><path d="M9 19h5a4 4 0 0 0 0-8h-4a4 4 0 0 1 0-8h5"/>',
   arrow: '<path d="m9 18 6-6-6-6"/>',
+  eye: '<path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/>',
+  // The struck-through eye, not a closed one: at 16px a closed eye reads as a
+  // smudge, while the stroke across it stays legible as "not shown".
+  eyeOff: '<path d="M17.9 17.9A10.6 10.6 0 0 1 12 20C5 20 1 12 1 12a19.7 19.7 0 0 1 5.1-5.9m3.6-1.7A10.6 10.6 0 0 1 12 4c7 0 11 8 11 8a19.6 19.6 0 0 1-2.2 3.2"/><path d="M9.9 9.9a3 3 0 0 0 4.2 4.2"/><path d="M1 1l22 22"/>',
 };
 
 export function icon(name) {

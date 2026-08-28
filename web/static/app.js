@@ -34,6 +34,7 @@ const state = {
   showTech: false,
   account: null, // who is signed in; null until /api/auth/me answers
   gateMode: "signin",
+  gatePeek: false, // is the gate's password shown in the clear
 };
 
 // ── boot ───────────────────────────────────────────────────────────────────
@@ -1022,6 +1023,9 @@ async function currentAccount() {
 
 function showGate() {
   $("#gate").hidden = false;
+  // A revealed password is never inherited across a sign-out, a session
+  // expiry or a reload. Whoever opens this next did not ask to see it.
+  state.gatePeek = false;
   setGateMode(state.gateMode);
   $("#gateUser").focus();
 }
@@ -1044,7 +1048,26 @@ function setGateMode(mode) {
   $("#gateTitle").textContent = t(up ? "gate.titleSignUp" : "gate.title");
   $("#gateSubmit").textContent = t(up ? "gate.signUp" : "gate.signIn");
   $("#gateSwitch").textContent = t(up ? "gate.toSignIn" : "gate.toSignUp");
+  setPeek(state.gatePeek);
   gateError("");
+}
+
+// setPeek is the whole reveal: the input type, the pressed state and the label.
+//
+// The label carries the state rather than the icon, because an eye alone is
+// ambiguous in both directions — does it mean "this is shown" or "press to show
+// it"? A verb plus aria-pressed answers that for a screen reader and for anyone
+// reading the tooltip, and it is one of two strings, so it is set here rather
+// than through data-i18n-title, which would only ever apply one of them.
+function setPeek(on) {
+  state.gatePeek = on;
+  const btn = $("#gatePeek");
+  const label = t(on ? "gate.hidePassword" : "gate.showPassword");
+  $("#gatePass").type = on ? "text" : "password";
+  btn.setAttribute("aria-pressed", String(on));
+  btn.setAttribute("aria-label", label);
+  btn.title = label;
+  btn.querySelector(".ico").innerHTML = icon(on ? "eyeOff" : "eye");
 }
 
 // The server's own message is shown rather than a generic one. Its errors are
@@ -1060,6 +1083,8 @@ function gateError(msg) {
 function wireGate() {
   $("#gateSwitch").addEventListener("click", () =>
     setGateMode(state.gateMode === "signup" ? "signin" : "signup"));
+
+  $("#gatePeek").addEventListener("click", () => setPeek(!state.gatePeek));
 
   for (const b of document.querySelectorAll("[data-gate-lang]")) {
     b.addEventListener("click", () => {

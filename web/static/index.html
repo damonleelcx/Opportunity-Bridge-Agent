@@ -46,7 +46,19 @@
     </label>
     <label class="gate-field">
       <span data-i18n="gate.password">密码</span>
-      <input id="gatePass" name="password" type="password" autocomplete="current-password" required>
+      <!-- A typed password is wrong invisibly, and on this form the retry is
+           expensive: sign-up also asks for an invite code, and a person who
+           cannot see what they typed has no way to tell which of the two they
+           got wrong. Off by default and reset every time the gate opens — a
+           service window is a shoulder-surfing environment.
+           The button's label is set in code, not by data-i18n-title: it is one
+           of two strings depending on state, like the heading above. -->
+      <span class="gate-input">
+        <input id="gatePass" name="password" type="password" autocomplete="current-password" required>
+        <button type="button" id="gatePeek" class="icon-btn gate-peek" aria-pressed="false">
+          <span class="ico" data-icon="eye"></span>
+        </button>
+      </span>
     </label>
     <label class="gate-field" id="gateInviteField" hidden>
       <span data-i18n="gate.invite">邀请码</span>

@@ -603,6 +603,15 @@ button, select, textarea, input { font: inherit; color: inherit; }
   background: var(--surface); color: var(--ink-900);
 }
 .gate-field input:focus-visible { outline: 2px solid var(--brand); outline-offset: 1px; }
+/* The toggle sits inside the field rather than beside it, and the input reserves
+   room for it, so a long password scrolls under the label instead of behind an
+   opaque button. */
+.gate-input { position: relative; display: block; }
+.gate-input input { width: 100%; padding-right: 44px; }
+.gate-peek {
+  position: absolute; right: 4px; top: 50%; transform: translateY(-50%);
+  width: 34px; height: 34px; font-size: .95em;
+}
 .gate-hint { font-size: .92em; color: var(--ink-400); line-height: 1.5; }
 .gate-error {
   margin: 0; padding: 10px 12px; font-size: .82em; line-height: 1.5;
