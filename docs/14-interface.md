@@ -127,6 +127,49 @@ at 50 rows and says how many older ones are not shown, rather than truncating
 silently. Clicking a row while an answer is streaming aborts that turn; the
 server still finishes and persists it, so the answer is there when you go back.
 
+## Theme
+
+**Light unless somebody says otherwise.** Three states — light, dark, and
+following the OS — and light is the default rather than the OS preference,
+because the people this is built for open it on borrowed and public machines
+whose OS setting is not theirs. Following the OS is now something a reader opts
+into, not something they inherit from whoever used the terminal before them.
+
+The part worth not undoing: **the default lives in CSS, not only in JavaScript.**
+
+```css
+:root, :root[data-theme="light"] { color-scheme: light; }   /* the default */
+:root[data-theme="dark"]         { color-scheme: dark; }
+:root[data-theme="system"]       { color-scheme: light dark; }
+```
+
+A theme decided only by a script paints the other one first on every load and
+then corrects itself. So bare `:root` — what the document has before any script
+runs, and what it keeps if a script never runs at all — is light, and the served
+HTML carries no `data-theme` at all.
+
+That forced one change in `applyTheme`. All three states are now stamped on
+`<html>`, **including `system`**, which used to be the *absence* of the
+attribute. That encoding worked only while `system` was also the default; with
+light as the default, an unstamped document has to mean light. The auto-dark
+block is therefore guarded by `:root[data-theme="system"]` rather than by
+`:root:not([data-theme="light"])`, so the OS preference reaches only the readers
+who asked for it.
+
+`DEFAULT_THEME` in `app.js` and bare `:root` in `styles.css` are two statements
+of one default. If you change one, change the other, or the first paint and the
+script will disagree.
+
+Existing readers keep whatever is in `localStorage["oba.theme"]`, `system`
+included. This changed what a new or cleared browser gets, not what anybody had
+already chosen.
+
+> **Where this is in the history.** It was committed in `3d3df1b`, whose subject
+> is *"Show the live results the panel was already being handed"* — an unrelated
+> fix to the search panel. Two changes were in the working tree at once and went
+> in together. `git log` on the theme code lands on a commit about search
+> results, so this note is the pointer; `git log -S DEFAULT_THEME` finds it.
+
 ## Kept from before
 
 Streaming SSE, the approval gate showing the exact arguments, the consent card,

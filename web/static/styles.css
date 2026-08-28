@@ -18,7 +18,8 @@
    people this is for open it on borrowed and public machines whose OS setting is
    not theirs. So bare :root — what the document has before any script runs, and
    what it keeps unless somebody chooses otherwise — is light. Following the OS
-   is now an explicit opt-in and carries data-theme="system". */
+   is now an explicit opt-in and carries data-theme="system".
+   Why, and the encoding change it forced: docs/14-interface.md, "Theme". */
 :root, :root[data-theme="light"] { color-scheme: light; }
 :root[data-theme="dark"] { color-scheme: dark; }
 :root[data-theme="system"] { color-scheme: light dark; }

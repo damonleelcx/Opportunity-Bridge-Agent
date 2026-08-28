@@ -1054,6 +1054,7 @@ function brandMood(mood) {
 // or every load would paint dark first on an OS-dark machine and then correct
 // itself. So "follow the OS" is now something a reader opts into explicitly, and
 // bare :root in styles.css carries the same default this file does.
+// Written up in docs/14-interface.md, "Theme".
 function applyTheme(choice) {
   const value = ["system", "light", "dark"].includes(choice) ? choice : DEFAULT_THEME;
   document.documentElement.dataset.theme = value;
