@@ -203,8 +203,14 @@ func TestOpeningTwiceAppliesTheSchemaTwiceWithoutFailing(t *testing.T) {
 // first write would then sweep their rows away.
 func TestAnUnreachableDatabaseRefusesToStart(t *testing.T) {
 	pgDSN(t) // skip in the same conditions as the rest of the file
-	_, err := store.OpenPostgres(context.Background(),
-		"postgres://nobody:nobody@127.0.0.1:1/nothing?sslmode=disable&connect_timeout=2", nil)
+	// A short deadline, because OpenPostgres now RETRIES a refused connection
+	// for up to a minute (a new pod can be refused by a NetworkPolicy that
+	// permits it, until the CNI catches up). The property under test is that it
+	// eventually gives up rather than starting, not how long it waits.
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	defer cancel()
+	_, err := store.OpenPostgres(ctx,
+		"postgres://nobody:nobody@127.0.0.1:1/nothing?sslmode=disable&connect_timeout=1", nil)
 	if err == nil {
 		t.Fatal("an unreachable database started anyway; the operator would believe their data is safe")
 	}

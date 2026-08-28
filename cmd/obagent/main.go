@@ -213,7 +213,7 @@ func openStore(cfg config.Config, log *slog.Logger) (*store.Store, error) {
 		log.Warn("OBA_STATE_PATH is set and is being IGNORED: OBA_DATABASE_URL takes precedence",
 			"code", "STATE_PATH_IGNORED", "ignored_path", cfg.StatePath)
 	}
-	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), 90*time.Second)
 	defer cancel()
 	st, err := store.OpenPostgres(ctx, cfg.DatabaseURL, log)
 	if err != nil {

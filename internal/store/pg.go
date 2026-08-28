@@ -77,9 +77,35 @@ func openPG(ctx context.Context, dsn string, log *slog.Logger) (*pgBackend, erro
 	if err != nil {
 		return nil, fmt.Errorf("DATABASE_UNREACHABLE: %w", err)
 	}
-	if err := pool.Ping(ctx); err != nil {
-		pool.Close()
-		return nil, fmt.Errorf("DATABASE_UNREACHABLE: %w", err)
+	// Retry rather than fail on the first refusal, for a reason specific to
+	// running under a NetworkPolicy: a CNI programs a NEW pod's rules
+	// ASYNCHRONOUSLY, so a pod that connects in its first instants is refused by
+	// a policy that permits it. The heros backup CronJob carries the same note
+	// and solves it with a sleep; this image is distroless and has no shell to
+	// sleep in, so the wait belongs here — where it also covers the ordinary
+	// case of postgres restarting underneath a pod that is already running.
+	//
+	// Bounded, because "cannot reach the database" must still eventually be an
+	// answer. Failing after a minute of trying is a diagnosis; retrying forever
+	// is a pod that looks alive and serves nobody.
+	deadline := time.Now().Add(60 * time.Second)
+	for attempt := 1; ; attempt++ {
+		err = pool.Ping(ctx)
+		if err == nil {
+			break
+		}
+		if time.Now().After(deadline) || ctx.Err() != nil {
+			pool.Close()
+			return nil, fmt.Errorf("DATABASE_UNREACHABLE after %d attempts: %w", attempt, err)
+		}
+		log.Warn("database not reachable yet, retrying",
+			"code", "DATABASE_RETRY", "attempt", attempt, "error", err)
+		select {
+		case <-ctx.Done():
+			pool.Close()
+			return nil, fmt.Errorf("DATABASE_UNREACHABLE: %w", ctx.Err())
+		case <-time.After(2 * time.Second):
+		}
 	}
 	b := &pgBackend{pool: pool, log: log}
 	if err := b.migrate(ctx); err != nil {
