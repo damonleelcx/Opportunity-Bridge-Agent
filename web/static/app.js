@@ -6,10 +6,11 @@
 //   1. No CDN. The mockup loads Tailwind, Font Awesome and Google Fonts over the
 //      network. This binary serves every byte it needs, because a service window
 //      on a closed network is a real deployment target.
-//   2. The mascot is the inline 阿桥 mark, not a hosted illustration. It keeps
-//      the mood states — in particular `serious`, which stops it smiling while
-//      the agent is refusing — and it adds no external dependency. Dropping an
-//      image into web/static/ and pointing at it is a one-line change.
+//   2. Two faces, on purpose. The illustrated 阿桥 greets from the overview panel
+//      and the sign-in gate, served out of web/static/ rather than the mockup's
+//      storage bucket, so rule 1 still holds. The inline mark (avatar.js) is what
+//      sits beside every message, because it is the one with the mood states — in
+//      particular `serious`, which stops it smiling while the agent is refusing.
 //
 // The interface still shows its machinery, but no longer in the way: tool calls,
 // advisory findings and the trace fold into one collapsed "系统运行详情" per turn,
@@ -88,8 +89,9 @@ function wire() {
   $("#locale").addEventListener("change", async (e) => {
     setLocale(e.target.value);
     localStorage.setItem("oba.locale", e.target.value);
-    // The gate's submit and switch labels are set in code, so setLocale's sweep
-    // over [data-i18n] does not reach them.
+    // The gate's heading, submit and switch labels are set in code, because each
+    // is one of two strings depending on the mode, so setLocale's sweep over
+    // [data-i18n] does not reach them.
     if (!$("#gate").hidden) setGateMode(state.gateMode);
     paintIcons();
     buildRoleSelect();
@@ -957,7 +959,15 @@ function setBusy(b) {
   document.querySelector(".mascot")?.classList.toggle("is-thinking", b);
 }
 
-function brandMood(mood) { setMood($("#brandAvatar"), mood, t("a11y.avatar")); }
+// Both brand marks are painted from the same call. The gate carries one too —
+// it covers the sidebar, so it is the only mark on the first screen — and
+// painting it here rather than at the gate keeps a single answer to "what does
+// the mark look like" instead of two that drift.
+function brandMood(mood) {
+  for (const slot of [$("#brandAvatar"), $("#gateAvatar")]) {
+    setMood(slot, mood, t("a11y.avatar"));
+  }
+}
 
 // Three states, not two. "system" leaves the page following the OS, which is
 // what most people want and what it did before; the other two are an explicit
@@ -1027,6 +1037,11 @@ function setGateMode(mode) {
   $("#gateInviteField").hidden = !up;
   $("#gateInvite").required = up;
   $("#gatePass").setAttribute("autocomplete", up ? "new-password" : "current-password");
+  // The heading says which of the two things this form is. It used to be pinned
+  // to "先登录" by data-i18n, so somebody who tapped 去注册 was still being told to
+  // sign in while filling in an invite code — the one screen where being sure
+  // what you are doing matters most, since the wrong guess loses what you typed.
+  $("#gateTitle").textContent = t(up ? "gate.titleSignUp" : "gate.title");
   $("#gateSubmit").textContent = t(up ? "gate.signUp" : "gate.signIn");
   $("#gateSwitch").textContent = t(up ? "gate.toSignIn" : "gate.toSignUp");
   gateError("");

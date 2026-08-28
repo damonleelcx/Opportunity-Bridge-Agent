@@ -26,12 +26,20 @@ SC where they exist. A service window on a closed network is a real deployment
 target, and it was already true that this app makes no external request but the
 one to the model.
 
-**The mascot is the 阿桥 mark, not a hosted illustration.** The mockup embeds a
-generated PNG from a storage bucket. Using it would add an external dependency on
-somebody else's asset and, more importantly, would drop the mood states — in
-particular `serious`, which stops the face smiling while the agent is refusing.
-Dropping an image into `web/static/` and pointing the mascot slot at it is a
-one-line change if you want the illustrated character.
+**The illustration is served by this binary, not fetched from a bucket.** The
+mockup points its mascot slot at a generated PNG on somebody else's storage. The
+same character is committed here as `web/static/mascot.png`, so keeping the face
+costs nothing against the rule above — it is still one binary and still no
+external request but the one to the model.
+
+**There are two faces, and that is deliberate.** An illustration cannot change
+expression, and the mood that had to survive is `serious` — the one that stops
+the face smiling while the agent is refusing. So the illustrated 阿桥 greets, from
+the overview panel and from the sign-in screen, and the inline mark
+(`avatar.js`, four moods, no request) is what sits beside every message, in the
+sidebar and in the tab icon. **The face next to a refusal is the mark, and it is
+not smiling.** Swapping the illustration is still a file drop; swapping the mark
+would cost the moods, which is the part that is load-bearing.
 
 There is also one line of the mockup's copy that could not ship as written: the
 mascot says *"王师傅，别担心，我会一步步带你完成报名的！"* — which is exactly the
