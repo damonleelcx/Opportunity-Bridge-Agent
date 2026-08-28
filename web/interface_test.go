@@ -175,3 +175,141 @@ func TestEveryInterfaceStringExistsInEveryLanguage(t *testing.T) {
 		}
 	}
 }
+
+// Read-aloud must name the voice it wants, and must still speak when it cannot
+// have it.
+//
+// Two failures sit on top of each other here. The first is that
+// SpeechSynthesisVoice carries no gender, so a chosen voice can only be a named
+// one — the moment this goes back to setting `lang` alone, the reader is handed
+// whatever the platform happens to default to, which on some machines is a male
+// voice and on others an elderly one. The second is worse and quieter: if a
+// missing voice were treated as a reason not to speak, read-aloud would switch
+// itself off on exactly the machines whose voice list is thin, for the people
+// who cannot read the answer off the screen.
+func TestReadAloudPicksANamedVoiceAndStillSpeaksWithoutOne(t *testing.T) {
+	src := asset(t, "app.js")
+
+	if !strings.Contains(src, "const READING_VOICES = {") {
+		t.Fatal("READING_VOICES is gone; read-aloud is back to the platform default voice")
+	}
+	for _, lang := range []string{`"zh-CN": [`, `"en-US": [`} {
+		if !strings.Contains(src, lang) {
+			t.Errorf("READING_VOICES has no %s block: that language falls back to the platform default", lang)
+		}
+	}
+
+	// The local-voice logic lives in speakLocally, not speak: speak now chooses
+	// between the vendor and this, and speakLocally is the branch that has to
+	// pick a named voice. The invariants below are unchanged by that move.
+	body := section(t, src, "function speakLocally(")
+
+	if !strings.Contains(body, "readingVoice(") || !strings.Contains(body, "u.voice = voice") {
+		t.Error("speakLocally does not set a chosen voice: the answer is read by whatever the platform defaults to")
+	}
+	// The voice must be optional. `if (voice)` guarding the assignment, and a
+	// lang set on both branches, is what keeps a thin voice list from silencing
+	// the feature.
+	if !strings.Contains(body, "if (voice) u.voice = voice;") {
+		t.Error("the chosen voice is not optional: a machine without it may end up speaking nothing")
+	}
+	if !regexp.MustCompile(`u\.lang = voice \? voice\.lang : lang;`).MatchString(body) {
+		t.Error("u.lang is not set on both branches: with no voice found nothing selects the language")
+	}
+
+	// Exact language matching, not prefix. Half this product's Chinese voices on
+	// a Mac are zh-TW, and a mainland answer must not be read in a Taiwanese
+	// accent because "zh" matched.
+	if !strings.Contains(src, "function sameLanguage(") {
+		t.Fatal("sameLanguage is gone; voice selection can match zh-TW for a zh-CN reader")
+	}
+	pick := src[strings.Index(src, "function readingVoice("):]
+	if end := strings.Index(pick, "\nfunction "); end > 0 {
+		pick = pick[:end]
+	}
+	if !strings.Contains(pick, "sameLanguage(v.lang, lang)") {
+		t.Error("readingVoice does not compare languages exactly; a zh-TW voice can be picked for zh-CN")
+	}
+	if !strings.Contains(pick, "if (!available.length) return null;") {
+		t.Error("readingVoice caches a lookup made against an empty voice list: " +
+			"Chrome loads voices asynchronously, so the miss would be cached forever")
+	}
+}
+
+// A speech vendor that is off, unreachable or refusing must still leave the
+// answer readable aloud.
+//
+// This is the fence that matters most in the read-aloud path, and it guards a
+// failure that is invisible from the outside: with a vendor wired in, every way
+// the vendor can fail — no key on this deployment, a network error, a 402 when
+// the credit runs out, a browser autoplay policy refusing to play the audio —
+// ends in the person pressing 读给我听 and hearing nothing at all. Nothing on
+// screen changes, no error is shown, and the feature simply looks unused. The
+// built-in voice is the recovery, and every one of those paths has to reach it.
+func TestVendorSpeechAlwaysFallsBackToTheBrowsersOwnVoice(t *testing.T) {
+	src := asset(t, "app.js")
+
+	for _, fn := range []string{"function speak(", "function speakWithVendor(", "function speakLocally("} {
+		if !strings.Contains(src, fn) {
+			t.Fatalf("%s is gone; this fence no longer guards anything", fn)
+		}
+	}
+
+	speak := section(t, src, "async function speak(")
+	if !strings.Contains(speak, "speakLocally(") {
+		t.Error("speak never reaches speakLocally: when the vendor is off or failing, " +
+			"pressing read-aloud produces silence and says nothing")
+	}
+	// The fallback must be unconditional-on-failure: `await speakWithVendor(...)`
+	// returning false has to fall through to the local voice on the same path.
+	if !regexp.MustCompile(`if \(vendorVoice !== false && await speakWithVendor\(body\)\) return;\s*\n\s*speakLocally\(body\);`).MatchString(speak) {
+		t.Error("the local voice is not the unconditional next step after a failed vendor render")
+	}
+
+	vendor := section(t, src, "async function speakWithVendor(")
+	// Every exit that is not "audio is playing" must be false, including the
+	// ones people forget: a thrown fetch, a non-ok status, an empty blob, and a
+	// rejected play() — autoplay policy is a refusal, not an error.
+	for _, need := range []string{"catch", "if (!r.ok) return false;", "if (!blob.size) return false;"} {
+		if !strings.Contains(vendor, need) {
+			t.Errorf("speakWithVendor has no %q path: that failure reaches the person as silence", need)
+		}
+	}
+	if !strings.Contains(vendor, "vendorVoice = false;") {
+		t.Error("a 503 does not disable the vendor for the session: an unkeyed deployment " +
+			"makes one failed request per answer forever")
+	}
+
+	// Switching read-aloud off has to silence BOTH paths. Cancelling only
+	// speechSynthesis leaves vendor audio playing after the person opted out.
+	if !strings.Contains(src, "function stopSpeaking(") {
+		t.Fatal("stopSpeaking is gone; the read-aloud toggle can no longer stop vendor audio")
+	}
+	stop := section(t, src, "function stopSpeaking(")
+	if !strings.Contains(stop, "speechSynthesis?.cancel()") || !strings.Contains(stop, "vendorAudio.pause()") {
+		t.Error("stopSpeaking does not stop both the browser voice and the vendor audio")
+	}
+	if strings.Contains(src, "if (!e.target.checked) window.speechSynthesis?.cancel();") {
+		t.Error("the read-aloud toggle cancels only the browser voice; vendor audio keeps playing " +
+			"after the person switches it off")
+	}
+}
+
+// section returns one function body, from its declaration to the next
+// top-level function.
+func section(t *testing.T, src, decl string) string {
+	t.Helper()
+	start := strings.Index(src, decl)
+	if start < 0 {
+		t.Fatalf("%q not found", decl)
+	}
+	rest := src[start+len(decl):]
+	end := strings.Index(rest, "\nfunction ")
+	if a := strings.Index(rest, "\nasync function "); a >= 0 && (end < 0 || a < end) {
+		end = a
+	}
+	if end < 0 {
+		return src[start:]
+	}
+	return src[start : start+len(decl)+end]
+}

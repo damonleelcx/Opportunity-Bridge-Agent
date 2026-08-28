@@ -73,6 +73,20 @@ type Config struct {
 	SearchAPIURL    string
 	SearchKeyHeader string
 
+	// Read-aloud through a speech vendor. Off unless keyed, for the same reason
+	// web search is: a feature that silently degrades is worse than one that
+	// says it is not switched on. With no key the browser reads answers with its
+	// own built-in voice, which is what it has always done.
+	//
+	// ‼️ TTSModel defaults to Fish's FREE backbone. Fish's terms for it say
+	// requests may be used to improve model quality, and the text sent is the
+	// answer — a city, an employment situation, sometimes a benefit being
+	// claimed. Read docs/17-read-aloud.md before pointing this at real users.
+	TTSAPIKey  string
+	TTSVoiceID string
+	TTSModel   string
+	TTSAPIURL  string
+
 	// InviteCodes gate sign-up. EMPTY MEANS SIGN-UP IS CLOSED, not open: a
 	// deployment that forgets to set them must refuse new accounts, never admit
 	// everybody. See docs/bugfix/2026-08-28-data-exposure-no-ownership-checks.md
@@ -142,6 +156,10 @@ func Load() (Config, error) {
 		SearchAPIKey:    env("OBA_SEARCH_API_KEY", ""),
 		SearchAPIURL:    env("OBA_SEARCH_API_URL", ""),
 		SearchKeyHeader: env("OBA_SEARCH_KEY_HEADER", ""),
+		TTSAPIKey:       env("OBA_TTS_API_KEY", ""),
+		TTSVoiceID:      env("OBA_TTS_VOICE_ID", ""),
+		TTSModel:        env("OBA_TTS_MODEL", ""),
+		TTSAPIURL:       env("OBA_TTS_API_URL", ""),
 		InviteCodes:     splitList(env("OBA_INVITE_CODES", "")),
 		DemoAccount:     env("OBA_DEMO_ACCOUNT", ""),
 		SignInTTL:       time.Duration(envInt("OBA_SIGNIN_TTL_DAYS", 30)) * 24 * time.Hour,
@@ -228,6 +246,16 @@ func (c Config) Validate() error {
 	default:
 		errs = append(errs, fmt.Errorf("OBA_SEARCH_PROVIDER=%q: expected one of: %s",
 			c.SearchProvider, strings.Join(SearchProviderNames(), ", ")))
+	}
+	// A key with no voice would come up healthy and read every answer in the
+	// vendor's default voice — which is the one thing the person configuring
+	// this was trying to change. Refused rather than warned: it is certain to be
+	// wrong, and it is one variable away from being right.
+	if c.TTSAPIKey != "" && c.TTSVoiceID == "" {
+		errs = append(errs, errors.New("OBA_TTS_API_KEY is set but OBA_TTS_VOICE_ID is empty: "+
+			"without a voice id every answer is read in the vendor's default voice. "+
+			"Set the model id from the voice's fish.audio URL, "+
+			"for example OBA_TTS_VOICE_ID=df5c6c19dca944918dcbd6f1368fd02f"))
 	}
 	return errors.Join(errs...)
 }

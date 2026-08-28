@@ -20,6 +20,7 @@ import (
 	"github.com/damonleelcx/Opportunity-Bridge-Agent/internal/domain"
 	"github.com/damonleelcx/Opportunity-Bridge-Agent/internal/intent"
 	"github.com/damonleelcx/Opportunity-Bridge-Agent/internal/store"
+	"github.com/damonleelcx/Opportunity-Bridge-Agent/internal/tts"
 )
 
 type Server struct {
@@ -28,6 +29,10 @@ type Server struct {
 	Cfg   config.Config
 	Web   fs.FS
 	Log   *slog.Logger
+	// TTS renders answers as speech. NIL MEANS OFF, and off is the default:
+	// with no provider the browser reads answers in its own built-in voice,
+	// which is what it did before this existed. See tts.go.
+	TTS tts.Provider
 
 	// Failed sign-in attempts, per username. See auth.go for why this is in
 	// memory rather than in the store.
@@ -47,15 +52,40 @@ func (s *Server) Routes() http.Handler {
 	mux.HandleFunc("DELETE /api/sessions/{id}/profile", s.forgetProfile)
 	mux.HandleFunc("POST /api/approvals/{id}", s.decideApproval)
 	mux.HandleFunc("POST /api/consent", s.setConsent)
+	mux.HandleFunc("POST /api/tts", s.speak)
 	mux.HandleFunc("POST /api/auth/signup", s.signUp)
 	mux.HandleFunc("POST /api/auth/signin", s.signIn)
 	mux.HandleFunc("POST /api/auth/signout", s.signOut)
 	mux.HandleFunc("GET /api/auth/me", s.me)
+	// `/` is the landing page (web/static/index.html); the conversational shell is
+	// at `/app`. Both are served by the file server, but `/app` has no extension
+	// and therefore no file of its own name, so it is named here. Bound twice
+	// because Go's mux treats "/app" and "/app/" as different patterns and a
+	// trailing slash a person typed should not be a 404.
+	mux.HandleFunc("GET /app", s.appShell)
+	mux.HandleFunc("GET /app/", s.appShell)
 	mux.Handle("GET /", http.FileServerFS(s.Web))
 	// The gate wraps every route rather than being applied per handler: a route
 	// added later is protected by default, and forgetting to opt in cannot
 	// silently publish somebody's transcript. See auth.go.
 	return logging(s.Log, s.gate(mux))
+}
+
+// appShell serves the conversational interface at /app.
+//
+// It reads the file rather than delegating to the file server so the URL can be
+// /app rather than /app.html: the app is the thing people bookmark and paste to
+// each other, and ".html" in that link is an implementation detail that becomes
+// permanent the moment somebody saves it.
+func (s *Server) appShell(w http.ResponseWriter, r *http.Request) {
+	b, err := fs.ReadFile(s.Web, "app.html")
+	if err != nil {
+		s.Log.Error("app shell missing", "error", err)
+		http.Error(w, "interface unavailable", http.StatusInternalServerError)
+		return
+	}
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	_, _ = w.Write(b)
 }
 
 func logging(log *slog.Logger, next http.Handler) http.Handler {

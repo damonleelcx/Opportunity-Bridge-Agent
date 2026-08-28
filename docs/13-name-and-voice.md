@@ -55,6 +55,36 @@ is always the same shape: **what is known, what is not, and who decides.**
 > small one, and it is one line per intent to remove if you would rather not
 > have it.
 
+## The reading voice
+
+The persona above is how 阿桥 writes. This is who reads it out, and it is a
+separate decision, made in `READING_VOICES` in `web/static/app.js`.
+
+`SpeechSynthesisVoice` gives a name, a language tag and whether it is installed
+locally. There is no gender field, no age field, nothing about timbre. So a
+female voice cannot be *asked for* — it can only be named. The table lists, best
+first, the female voices the three engines this runs in actually ship: Microsoft
+(Edge, Windows), Apple (Safari, and Chrome on macOS), Google (Chrome elsewhere).
+On macOS 2026-08-28 it resolves to **Sandy (Chinese (China mainland))**; on a
+machine with none of them it falls through to the platform default.
+
+Three things that are load-bearing:
+
+- **Falling through must still speak.** A missing voice is not a reason to stay
+  silent. Read-aloud sits next to 大字号 as an accessibility control; for some
+  readers it is the only way the answer arrives.
+- **Languages are compared exactly, not by prefix.** Half the Chinese voices on
+  a Mac are `zh-TW`, and `Sandy` exists in both. A `zh` prefix match would read
+  a 成都 social-insurance answer in a Taiwanese accent.
+- **Pitch is raised to 1.15 and no further**, and rate stays at 0.95. Pitch is
+  the only dial the API gives for "younger and friendlier", but age-related
+  hearing loss takes the high frequencies first — every step up costs
+  comprehension for part of the audience this feature exists for. The named
+  voice carries the character; pitch only leans on it.
+
+`TestReadAloudPicksANamedVoiceAndStillSpeaksWithoutOne` in
+`web/interface_test.go` holds all three.
+
 ## The greeting
 
 Rendered locally from the i18n table on every new conversation, never by the

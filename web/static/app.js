@@ -126,7 +126,10 @@ function wire() {
     document.body.classList.toggle("large-text", e.target.checked));
   $("#a11yVoice").addEventListener("change", (e) => {
     state.speak = e.target.checked;
-    if (!e.target.checked) window.speechSynthesis?.cancel();
+    // Both paths, not just the browser's: with a vendor voice playing, cancelling
+    // only speechSynthesis would leave the audio running after the person
+    // switched read-aloud off.
+    if (!e.target.checked) stopSpeaking();
   });
   // Plain language is not a client-side rewrite: it goes through the same
   // accessibility_set path the agent itself uses, so the answer actually changes.
@@ -987,12 +990,165 @@ async function forgetProfile() {
 
 // ── voice ──────────────────────────────────────────────────────────────────
 
-function speak(text) {
+// Which voice reads answers aloud, best first, per language.
+//
+// Why a named table and not a property test: SpeechSynthesisVoice exposes a
+// name, a language and whether it is installed locally — and nothing else. There
+// is no gender field and no age field, so "a young female voice" cannot be asked
+// for, only spelled out. These are the female voices the engines this runs in
+// actually ship: Microsoft (Edge, Windows), Apple (Safari, and Chrome on macOS)
+// and Google (Chrome elsewhere). Measured on macOS 2026-08-28: of the zh-CN
+// voices present there, Sandy and Tingting are the two female ones worth having,
+// and Grandpa/Reed/Rocko are why picking the first zh-CN voice found is wrong.
+//
+// Every entry is optional and a missing one costs nothing. A machine with none
+// of them falls through to the platform default for the language, which is what
+// this did before. A voice that cannot be found must never turn read-aloud off:
+// for some of the people this is built for it is the only way the answer
+// arrives at all.
+const READING_VOICES = {
+  "zh-CN": [
+    "Xiaoyi",        // Microsoft neural, the liveliest of the Mandarin set
+    "Sandy",         // Apple, younger and brighter than the default
+    "Tingting",      // Apple's Mandarin default
+    "Xiaoxiao",      // Microsoft neural
+    "Google 普通话", // Chrome on Windows, Linux, Android
+  ],
+  "en-US": [
+    "Jenny", "Aria",       // Microsoft neural
+    "Flo",                 // Apple, the younger of its two US voices
+    "Samantha",            // Apple's US default
+    "Google US English",   // Chrome
+  ],
+};
+
+// Pitch is raised a little, and only a little.
+//
+// Pitch is the one dial the Web Speech API gives for "younger and friendlier",
+// and it is held at 1.15 rather than pushed because read-aloud here is an
+// accessibility control sitting next to 大字号: age-related hearing loss takes
+// the high frequencies first, so every step up costs comprehension for part of
+// the audience the feature exists for. The named voice above is what carries
+// the character; this only leans on it.
+const READING_PITCH = 1.15;
+
+// Rate stays under 1.0, deliberately, for that same audience.
+const READING_RATE = 0.95;
+
+// The resolved voice per language.
+//
+// Chrome fills getVoices() asynchronously and returns an empty array on the
+// first call, so resolving once at startup would cache "nothing found" forever.
+// A miss on an empty list is therefore not cached, and the cache is dropped when
+// the browser says the list changed.
+let voiceCache = {};
+window.speechSynthesis?.addEventListener?.("voiceschanged", () => { voiceCache = {}; });
+
+// sameLanguage compares two BCP-47 tags exactly, not by prefix.
+//
+// Prefix matching is the trap here: "Sandy (Chinese (Taiwan))" starts with zh
+// just as the mainland Sandy does, and half this machine's Chinese voices are
+// zh-TW. A reader asking about 成都 social insurance should not be answered in
+// a Taiwanese accent, so a voice whose tag does not match is not a near miss —
+// it is a different voice.
+function sameLanguage(a, b) {
+  return a.replace(/_/g, "-").toLowerCase() === b.replace(/_/g, "-").toLowerCase();
+}
+
+function readingVoice(lang) {
+  if (lang in voiceCache) return voiceCache[lang];
+  const available = window.speechSynthesis.getVoices();
+  if (!available.length) return null; // Not loaded yet; do not cache the miss.
+  let picked = null;
+  for (const wanted of READING_VOICES[lang] || []) {
+    picked = available.find((v) => sameLanguage(v.lang, lang)
+      && v.name.toLowerCase().includes(wanted.toLowerCase()));
+    if (picked) break;
+  }
+  voiceCache[lang] = picked || null;
+  return voiceCache[lang];
+}
+
+// The vendor voice, when the deployment has one, and the browser's own voice
+// when it does not.
+//
+// vendorVoice is a tri-state on purpose: null = not asked yet, true = the server
+// rendered audio, false = this deployment has no speech vendor. The false is
+// what stops an unkeyed deployment making one failed request per answer for the
+// rest of the session — it asks once, is told 503, and uses the built-in voice
+// from then on.
+let vendorVoice = null;
+let vendorAudio = null;
+
+// MAX_SPOKEN_CHARS matches the server's own cap. It is applied here as well
+// because sending text the server will only truncate wastes the person's time
+// waiting for it.
+const MAX_SPOKEN_CHARS = 3000;
+
+function stopSpeaking() {
+  window.speechSynthesis?.cancel();
+  if (vendorAudio) {
+    vendorAudio.pause();
+    URL.revokeObjectURL(vendorAudio.src);
+    vendorAudio = null;
+  }
+}
+
+async function speak(text) {
+  stopSpeaking();
+  const body = text.slice(0, MAX_SPOKEN_CHARS);
+  if (vendorVoice !== false && await speakWithVendor(body)) return;
+  speakLocally(body);
+}
+
+// speakWithVendor returns true when the audio is playing.
+//
+// Every failure path returns false and says nothing to the person: the answer is
+// already on their screen, and a message about a speech vendor is noise to
+// somebody who just wanted it read out. The fallback is the recovery.
+async function speakWithVendor(text) {
+  try {
+    const r = await fetch("/api/tts", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ text }),
+    });
+    if (r.status === 503) {
+      // Not configured. Stop asking for the rest of the session.
+      vendorVoice = false;
+      return false;
+    }
+    if (!r.ok) return false;
+    const blob = await r.blob();
+    if (!blob.size) return false;
+    vendorVoice = true;
+    vendorAudio = new Audio(URL.createObjectURL(blob));
+    // If playback itself is refused — an autoplay policy, a missing codec — the
+    // built-in voice still has to happen, so the fallback is inside the catch
+    // rather than after the await.
+    try {
+      await vendorAudio.play();
+      return true;
+    } catch {
+      stopSpeaking();
+      return false;
+    }
+  } catch {
+    return false;
+  }
+}
+
+function speakLocally(text) {
   if (!window.speechSynthesis) return;
-  window.speechSynthesis.cancel();
-  const u = new SpeechSynthesisUtterance(text.slice(0, 3000));
-  u.lang = locale() === "en" ? "en-US" : "zh-CN";
-  u.rate = 0.95;
+  const u = new SpeechSynthesisUtterance(text);
+  const lang = locale() === "en" ? "en-US" : "zh-CN";
+  const voice = readingVoice(lang);
+  if (voice) u.voice = voice;
+  // Set either way: with no voice this is what selects the platform default,
+  // and with one it has to agree with the voice that was chosen.
+  u.lang = voice ? voice.lang : lang;
+  u.rate = READING_RATE;
+  u.pitch = READING_PITCH;
   window.speechSynthesis.speak(u);
 }
 
