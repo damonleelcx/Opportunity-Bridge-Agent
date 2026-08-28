@@ -254,6 +254,23 @@ page usually looks:
   an inline script in the head. A reader whose script was blocked or delayed
   gets a readable page rather than a column of empty space. Fenced by
   `TestLandingPageHidesNothingWithoutJavaScript`.
+- **…and nothing is hidden from a reader that is never rendered.** This one was
+  found on the live site and is worth writing down, because it looks like it
+  cannot happen. `IntersectionObserver` callbacks are delivered from *update the
+  rendering*, which a hidden document does not run — exactly like
+  `requestAnimationFrame`. Measured on `jobs.heros-agent.space`: **zero observer
+  callbacks in 800ms** at `visibilityState: "hidden"`, rAF silent alongside it,
+  and all 53 sections sitting at `opacity: 0`. A prerender, a background tab, a
+  print job or a crawler taking a link preview would have captured a blank page
+  — for a page whose entire job is to be linked.
+
+  The recovery hangs off `setTimeout`, the one timer that still runs in a hidden
+  document. It also cannot simply add `.in`: that *starts a transition*, and a
+  transition only advances while the document is rendering. Measured on the
+  first attempt at the fix: 53/53 elements carried `.in` and the headline still
+  computed to `opacity: 0`. So the recovery stamps `shown` on `<html>`, and
+  `html.shown .reveal` states the final value outright with `transition: none`.
+  Same fence.
 - **Both languages, or neither.** A missing string does not throw — `t()` falls
   back to the key, so the headline renders as `home.hero.title`, in whichever
   language the author was not reading. Fenced by

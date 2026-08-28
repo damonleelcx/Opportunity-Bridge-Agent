@@ -453,6 +453,20 @@ func TestLandingPageHidesNothingWithoutJavaScript(t *testing.T) {
 		t.Error(`nothing stamps "js" on <html>, so html.js .reveal never matches and the ` +
 			`animation can never reveal anything`)
 	}
+
+	// ...and it must survive a document that is never rendered.
+	//
+	// IntersectionObserver callbacks are delivered from "update the rendering",
+	// which a hidden document does not run — measured on the live site: zero
+	// callbacks in 800ms at visibilityState "hidden", with rAF silent beside it.
+	// A prerender, a background tab, a print job or a crawler taking a link
+	// preview would otherwise snapshot every section at opacity 0. setTimeout is
+	// the only timer that still runs there, so the recovery has to hang off it.
+	js := asset(t, "home.js")
+	if !strings.Contains(js, "document.hidden") || !strings.Contains(js, "setTimeout") {
+		t.Error("home.js has no recovery for a document that is never rendered: a crawler, " +
+			"a prerender or a background tab will capture the landing page completely blank")
+	}
 }
 
 // localeBlocks splits the STRINGS table into its zh-CN half and its English

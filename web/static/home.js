@@ -20,7 +20,12 @@ const $$ = (sel) => Array.from(document.querySelectorAll(sel));
 
 function revealSections() {
   const items = $$(".reveal");
-  const showAll = () => items.forEach((el) => el.classList.add("in"));
+  // `shown` on <html> is what actually makes them visible here, not `.in`:
+  // see home.css. `.in` goes on too so the two paths leave the same DOM.
+  const showAll = () => {
+    document.documentElement.classList.add("shown");
+    items.forEach((el) => el.classList.add("in"));
+  };
   try {
     if (!("IntersectionObserver" in window)) return showAll();
     const io = new IntersectionObserver((entries) => {
@@ -31,6 +36,21 @@ function revealSections() {
       }
     }, { rootMargin: "0px 0px -8% 0px", threshold: 0.05 });
     items.forEach((el) => io.observe(el));
+
+    // A document that is not being rendered never runs "update the rendering",
+    // and IntersectionObserver callbacks are delivered from there — exactly like
+    // requestAnimationFrame. Measured on the live page: zero callbacks in 800ms
+    // with document.visibilityState === "hidden", and rAF silent alongside it.
+    // So a prerender, a background tab, a print job or a crawler taking a link
+    // preview would capture this page with all 53 sections still at opacity 0 —
+    // a column of empty space, for a page whose entire job is to be linked.
+    //
+    // setTimeout keeps running while hidden, which is why the recovery hangs off
+    // it rather than off anything the renderer drives. A visible reader never
+    // reaches it, so the animation is untouched for the people who can see it.
+    if (document.hidden) {
+      setTimeout(() => { if (document.hidden) showAll(); }, 900);
+    }
   } catch {
     showAll();
   }
