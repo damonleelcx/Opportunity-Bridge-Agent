@@ -132,6 +132,7 @@ async function newSession(role) {
 
 function greeting() {
   const turn = agentTurn();
+  turn.typing = false;
   turn.bubble.textContent = t("greeting");
   turn.bubble.classList.add("bubble-greeting");
   renderSuggestions(turn, []);
@@ -250,6 +251,11 @@ function agentTurn() {
     techCount: 0,
   };
   turn.slot.innerHTML = avatar("calm", t("a11y.avatar"));
+  // The bubble starts as a typing indicator rather than as empty space: the
+  // model can think for a long time before the first token, and an empty grey
+  // box reads as a broken answer.
+  turn.bubble.innerHTML = '<span class="typing" aria-label="…"><i></i><i></i><i></i></span>';
+  turn.typing = true;
   turn.tech.open = state.showTech;
   $("#transcript").append(g);
   scroll();
@@ -290,7 +296,12 @@ async function send(text) {
       switch (ev.kind) {
         case "routed": routePill(turn, ev.route); crumb(ev.route.intent); break;
         case "thinking": show(turn.thinking); turn.thinking.textContent = clip(turn.thinking.textContent + ev.text, 320); scroll(); break;
-        case "text": streamed += ev.text; turn.bubble.textContent = streamed; scroll(); break;
+        case "text":
+          streamed += ev.text;
+          turn.typing = false;
+          turn.bubble.textContent = streamed;
+          scroll();
+          break;
         case "tool_start":
           status(t("status.working"), "busy");
           if (ev.args) techItem(turn, `→ ${term("tool", ev.tool, ev.tool)} · ${ev.tool}`, ev.args);
@@ -306,6 +317,7 @@ async function send(text) {
     }
   } catch (e) {
     notice(turn, "block", t("status.failed"), String(e?.message || e));
+    if (turn.typing) { turn.typing = false; turn.bubble.textContent = ""; }
   } finally {
     setBusy(false);
     status("");
@@ -319,6 +331,12 @@ function finalise(turn, final, streamed) {
   // streamed text is NOT what the person should be left with, so it is replaced
   // rather than left on screen next to a correction.
   if (final.answer && final.answer !== streamed) turn.bubble.textContent = final.answer;
+  if (turn.typing) {
+    // No text ever arrived. Say so rather than leaving the dots blinking for ever.
+    turn.typing = false;
+    turn.bubble.textContent = final.answer || t("status.noAnswer");
+    turn.bubble.classList.add("is-blocked");
+  }
   if (final.stop_reason && final.stop_reason !== "answered") {
     turn.bubble.classList.add("is-blocked");
     setMood(turn.slot, "serious", t("a11y.avatar"));

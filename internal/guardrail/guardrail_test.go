@@ -318,3 +318,44 @@ func TestCitationRegexCoversEveryCorpusPrefix(t *testing.T) {
 		}
 	}
 }
+
+// National programmes are administered locally, so a city with no named
+// employers still has real coverage. An answer that never names the person's
+// city — worst of all one that opens with what the corpus lacks — tells them
+// there is nothing for them, and that is false.
+func TestAnswerIsWrittenForTheCityThatWasSearched(t *testing.T) {
+	nationalOnly := []guardrail.ToolCallRecord{{
+		Name: "opportunity_search",
+		Meta: map[string]any{"asked_city": "深圳", "result_count": 3, "local_hits": 0},
+	}}
+
+	ignored := guardrail.VerifyInput{
+		Answer:    "这边我没有本地清单。下面是全国通用的路子：先办灵活就业登记（nat-003）。",
+		ToolCalls: nationalOnly,
+	}
+	if got := codes(t, []string{"answers_the_city"}, ignored); got["CITY_NOT_ANSWERED"] == "" {
+		t.Errorf("an answer that never names the person's city passed: %v", got)
+	}
+
+	written := guardrail.VerifyInput{
+		Answer:    "在深圳你能办三件事。先办灵活就业登记，打 12333 问就近网点。",
+		ToolCalls: nationalOnly,
+	}
+	if got := codes(t, []string{"answers_the_city"}, written); len(got) != 0 {
+		t.Errorf("an answer written for the city was flagged: %v", got)
+	}
+
+	// Where local listings came back, the answer already names a district, an
+	// employer and a street. Demanding the city name on top is pedantry that
+	// costs a redraft — this check is only for the national-only case.
+	withLocal := guardrail.VerifyInput{
+		Answer: "trn-002 在龙泉驿区成洛大道 200 号，打 028-5551-0022。",
+		ToolCalls: []guardrail.ToolCallRecord{{
+			Name: "opportunity_search",
+			Meta: map[string]any{"asked_city": "成都", "result_count": 4, "local_hits": 3},
+		}},
+	}
+	if got := codes(t, []string{"answers_the_city"}, withLocal); len(got) != 0 {
+		t.Errorf("an answer full of local detail was flagged: %v", got)
+	}
+}

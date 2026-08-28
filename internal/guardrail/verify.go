@@ -60,6 +60,7 @@ var verifiers = map[string]Verifier{
 	"no_causal_overreach":        verifyNoCausalOverreach,
 	"no_false_reassurance":       verifyNoFalseReassurance,
 	"reply_language":             verifyReplyLanguage,
+	"answers_the_city":           verifyAnswersTheCity,
 }
 
 // Verify runs the named checks in order and returns every finding.
@@ -260,6 +261,44 @@ func verifyNoInventedIdentifiers(in VerifyInput) []Finding {
 		Message:  "The answer names identifiers that are not in the corpus. Somebody could try to use these at a counter.",
 		Evidence: bad,
 		Remedy:   "Only name programs returned by a search this turn. If nothing matched, say so and offer the human channel.",
+	}}
+}
+
+// verifyAnswersTheCity holds the line that national coverage is coverage.
+//
+// National programmes are administered locally, so somebody in 深圳 can act on
+// them in 深圳. An answer that never names their city — or worse, opens with
+// "这边我没有本地清单" — tells them there is nothing for them, which is false and
+// is exactly the failure this check exists to catch. If a search was run for a
+// city and anything came back, the answer has to be written for that city.
+func verifyAnswersTheCity(in VerifyInput) []Finding {
+	// Only fires when every result was national — that is the case at risk.
+	// Where local listings came back, the answer already names a district, an
+	// employer and a street, and demanding the city name on top would be
+	// pedantry that costs a redraft.
+	var city string
+	var national, local int
+	for _, c := range in.ToolCalls {
+		if c.Name != "opportunity_search" || c.Err != "" {
+			continue
+		}
+		if v, _ := c.Meta["asked_city"].(string); v != "" {
+			city = v
+		}
+		n, _ := metaInt(c, "result_count")
+		l, _ := metaInt(c, "local_hits")
+		national += n - l
+		local += l
+	}
+	if city == "" || local > 0 || national == 0 || strings.Contains(in.Answer, city) {
+		return nil
+	}
+	return []Finding{{
+		Guard: "verify", Code: "CITY_NOT_ANSWERED", Severity: Repair,
+		Message: fmt.Sprintf("The search was run for %s and returned programmes that apply there, "+
+			"but the answer never names %s.", city, city),
+		Remedy: fmt.Sprintf("Write the answer for %s. Say what the person can do in %s, name that city's "+
+			"own 12333, and do not open with what the corpus lacks.", city, city),
 	}}
 }
 

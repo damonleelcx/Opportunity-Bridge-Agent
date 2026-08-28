@@ -226,22 +226,33 @@ func opportunitySearch() Tool {
 			if len(hits) == 0 {
 				findings = append(findings, guardrail.Finding{
 					Guard: "coverage", Code: "NO_RESULTS", Severity: guardrail.Advisory,
-					Message: fmt.Sprintf("Nothing matched in %q. Local listings exist for: %s. National records apply everywhere.",
-						retrieval.NormalizeCity(city), strings.Join(env.Corpus.Cities(), "、")),
-					Remedy: "Say plainly that no LOCAL listing matched, and name which cities have local listings. " +
-						"Then give the national framework and the nationwide numbers (12333 人社热线, 12345 政务热线), " +
-						"which apply in every city. Do not invent a local listing to fill the gap.",
+					Message: fmt.Sprintf("No named employer or course in this corpus for %q. "+
+						"National programmes still apply there and are administered locally.",
+						retrieval.NormalizeCity(city)),
+					Remedy: "Answer FOR THAT CITY. Lead with what the person can do there — the national " +
+						"programmes are real and are run by that city's own 人社 department — and give that " +
+						"city's 12333. Mention the missing local listings once, briefly, and never as the " +
+						"opening line: leading with what you lack tells them there is nothing for them, which " +
+						"is untrue. Do not invent a local employer, course or address.",
 				})
 			}
 			return Result{
 				Content: map[string]any{
 					"results": results, "count": len(results),
+					"asked_city":                 retrieval.NormalizeCity(city),
 					"cities_with_local_listings": env.Corpus.Cities(),
 					"national_hotlines":          map[string]string{"人社": "12333", "政务": "12345"},
 					"note": "Only these records may be named in the answer; cite each by id. " +
-						"Records with scope=national apply in every city — give them even when no local listing matched.",
+						"Records with scope=national apply in asked_city and are administered by that city's own " +
+						"人社 department — present them as what is available THERE, not as a fallback. " +
+						"cities_with_local_listings is for your own reference; do not read it out to somebody " +
+						"who asked about a different city.",
 				},
-				Meta:     map[string]any{"result_count": len(results)},
+				Meta: map[string]any{
+					"result_count": len(results),
+					"asked_city":   retrieval.NormalizeCity(city),
+					"local_hits":   countLocal(results),
+				},
 				Findings: findings,
 				Signal:   sig,
 			}, nil
@@ -1102,6 +1113,16 @@ func criterionKeywords(text string) []string {
 		}
 	}
 	return out
+}
+
+func countLocal(rows []map[string]any) int {
+	n := 0
+	for _, r := range rows {
+		if r["scope"] == "local" {
+			n++
+		}
+	}
+	return n
 }
 
 // scopeOf reports whether a record is the national framework or a local listing,

@@ -233,6 +233,19 @@ button, select, textarea, input { font: inherit; color: inherit; }
 .bubble-agent.is-blocked { border-color: var(--stop-border); background: var(--stop-soft); }
 .bubble-user { background: var(--brand); color: var(--brand-ink); box-shadow: var(--shadow-sm); }
 .bubble-greeting { background: var(--brand-soft); border-color: var(--brand-border); }
+
+/* Shown until the first text delta arrives. DeepSeek can think for a long time
+   before it says anything, and an empty bubble for thirty seconds reads as a
+   failure — which is exactly what it was reported as. */
+.typing { display: inline-flex; gap: 5px; align-items: center; padding: 3px 0; }
+.typing i {
+  width: 6px; height: 6px; border-radius: 50%; background: var(--ink-400);
+  animation: typing-blink 1.4s infinite both;
+}
+.typing i:nth-child(2) { animation-delay: .2s; }
+.typing i:nth-child(3) { animation-delay: .4s; }
+@keyframes typing-blink { 0%, 80%, 100% { opacity: .25 } 40% { opacity: 1 } }
+@media (prefers-reduced-motion: reduce) { .typing i { animation: none; opacity: .6 } }
 .turn-body { min-width: 0; flex: 1; }
 .turn-user .turn-body { display: flex; justify-content: flex-end; }
 
