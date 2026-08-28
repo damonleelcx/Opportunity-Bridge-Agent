@@ -168,6 +168,8 @@ func opportunitySearch() Tool {
 			"and returns live_results: the city's own official public-employment-service site, and — where a " +
 			"search backend is configured — current leads found on the web. Live results are marked and carry " +
 			"a caveat; present them as leads to check, with their URL, never as verified openings. " +
+			"When a live result has published_at, SAY that date next to it: a job board posting can be a year " +
+			"old, and the reader is the one deciding whether it is worth a journey. " +
 			"THE INDEX IS IN CHINESE — search with Chinese keywords (数控, 养老护理, 培训补贴, 社保), " +
 			"not English ones. Results come in two scopes: records with scope \"national\" apply anywhere in " +
 			"the country and are returned whatever city is asked for; the rest are local listings for cities " +

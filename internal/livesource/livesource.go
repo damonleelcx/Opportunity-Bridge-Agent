@@ -57,6 +57,13 @@ type Result struct {
 	Source string `json:"source"`
 	// Verified, when set, is when the destination was last confirmed to answer.
 	Verified string `json:"verified_at,omitempty"`
+	// Published, when set, is when the SITE published the listing. It is kept
+	// separate from Verified rather than folded into it because the two say
+	// different things — "we confirmed this destination answers" is not "a job
+	// board posted this" — and a reader deciding whether an opening is still
+	// live needs the second one. A listing with no date is worse, not better,
+	// so the field being empty is itself informative.
+	Published string `json:"published_at,omitempty"`
 	// Caveat travels with the result to the model and on to the reader.
 	Caveat string `json:"caveat,omitempty"`
 }
