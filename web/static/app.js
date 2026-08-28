@@ -31,6 +31,8 @@ const state = {
   abort: null, // AbortController for the turn in flight, so switching conversation can end it
   speak: false,
   showTech: false,
+  account: null, // who is signed in; null until /api/auth/me answers
+  gateMode: "signin",
 };
 
 // ── boot ───────────────────────────────────────────────────────────────────
@@ -43,6 +45,16 @@ async function boot() {
   applyTheme(localStorage.getItem("oba.theme") || "system");
   brandMood("calm");
 
+  wireGate();
+  // Who is asking has to be settled before anything else is fetched: every
+  // other endpoint answers 401 without it, and a shell that loads and then
+  // fails five requests reads as broken rather than as locked.
+  state.account = await currentAccount();
+  if (!state.account) {
+    showGate();
+    return;
+  }
+
   try {
     state.meta = await api("GET", "/api/meta");
   } catch {
@@ -54,6 +66,7 @@ async function boot() {
   // A lookup that cannot run must not read as an absence of opportunities.
   $("#liveFlag").title = t("banner.liveOffTitle");
   $("#liveFlag").hidden = state.meta.live_search_enabled !== false;
+  paintWho();
   buildRoleSelect();
   wire();
   await newSession($("#role").value);
@@ -75,6 +88,9 @@ function wire() {
   $("#locale").addEventListener("change", async (e) => {
     setLocale(e.target.value);
     localStorage.setItem("oba.locale", e.target.value);
+    // The gate's submit and switch labels are set in code, so setLocale's sweep
+    // over [data-i18n] does not reach them.
+    if (!$("#gate").hidden) setGateMode(state.gateMode);
     paintIcons();
     buildRoleSelect();
     brandMood("calm");
@@ -124,33 +140,17 @@ function wire() {
 
 // ── sessions ───────────────────────────────────────────────────────────────
 
-// The person behind the conversations. A session is one conversation; the
-// subject is who it is about, and the profile, the consents and the open tasks
-// all hang off the subject rather than off the session.
+// Who the conversations belong to comes from the ACCOUNT now.
 //
-// Why this is stored: boot() opens a session on every page load, and the server
-// mints a fresh subject whenever one is not supplied. So a reload used to make
-// the reader a brand-new person - the overview panel, the granted permissions
-// and every tracked task started again from nothing, while the consent card was
-// promising "so you do not have to type it again next time". Carrying the id
-// makes that promise true. It is an opaque server-issued id, not personal data.
-// See docs/bugfix/2026-08-28-subject-identity-and-tracked-steps.md
-const SUBJECT_KEY = "oba.subject";
-
-function rememberedSubject() {
-  try { return localStorage.getItem(SUBJECT_KEY) || ""; } catch { return ""; }
-}
-
-function rememberSubject(id) {
-  if (!id) return;
-  try { localStorage.setItem(SUBJECT_KEY, id); } catch { /* private mode: this session only */ }
-}
-
+// This used to be an id kept in localStorage, because a page load minted a new
+// subject and discarded the profile, the consents and every tracked task. The
+// account supersedes it: the server takes the subject from whoever is signed in
+// and ignores anything the client says about it, which is also what stops one
+// person opening a conversation onto another person's record.
+// See docs/bugfix/2026-08-28-data-exposure-no-ownership-checks.md
 async function newSession(role) {
   abortTurn();
-  state.session = await api("POST", "/api/sessions",
-    { role, locale: locale(), subject_id: rememberedSubject() });
-  rememberSubject(state.session.subject_id);
+  state.session = await api("POST", "/api/sessions", { role, locale: locale() });
   state.pinnedIntent = "";
   $("#transcript").innerHTML = "";
   crumb(null);
@@ -995,3 +995,106 @@ function esc(s) {
 }
 
 boot();
+
+// ── the gate ───────────────────────────────────────────────────────────────
+//
+// One form for both signing in and creating an account. They differ by one
+// field and one endpoint, and two forms drift: the second one is where the
+// password rule, the error rendering and the language switch stop matching.
+
+async function currentAccount() {
+  try {
+    return await api("GET", "/api/auth/me");
+  } catch {
+    return null;
+  }
+}
+
+function showGate() {
+  $("#gate").hidden = false;
+  setGateMode(state.gateMode);
+  $("#gateUser").focus();
+}
+
+function hideGate() {
+  $("#gate").hidden = true;
+  gateError("");
+}
+
+function setGateMode(mode) {
+  state.gateMode = mode;
+  const up = mode === "signup";
+  $("#gateInviteField").hidden = !up;
+  $("#gateInvite").required = up;
+  $("#gatePass").setAttribute("autocomplete", up ? "new-password" : "current-password");
+  $("#gateSubmit").textContent = t(up ? "gate.signUp" : "gate.signIn");
+  $("#gateSwitch").textContent = t(up ? "gate.toSignIn" : "gate.toSignUp");
+  gateError("");
+}
+
+// The server's own message is shown rather than a generic one. Its errors are
+// written to be read by the person, and each carries a remedy — replacing them
+// with "something went wrong" is how somebody ends up stuck on a wrong invite
+// code with nothing to act on.
+function gateError(msg) {
+  const el = $("#gateError");
+  el.textContent = msg || "";
+  el.hidden = !msg;
+}
+
+function wireGate() {
+  $("#gateSwitch").addEventListener("click", () =>
+    setGateMode(state.gateMode === "signup" ? "signin" : "signup"));
+
+  for (const b of document.querySelectorAll("[data-gate-lang]")) {
+    b.addEventListener("click", () => {
+      const l = b.dataset.gateLang;
+      setLocale(l);
+      localStorage.setItem("oba.locale", l);
+      const sel = $("#locale");
+      if (sel) sel.value = l;
+      setGateMode(state.gateMode);
+    });
+  }
+
+  $("#gateForm").addEventListener("submit", async (e) => {
+    e.preventDefault();
+    const btn = $("#gateSubmit");
+    if (btn.disabled) return;
+    btn.disabled = true;
+    const wasLabel = btn.textContent;
+    btn.textContent = t("gate.signingIn");
+    gateError("");
+    try {
+      const up = state.gateMode === "signup";
+      state.account = await api("POST", up ? "/api/auth/signup" : "/api/auth/signin", {
+        username: $("#gateUser").value,
+        password: $("#gatePass").value,
+        invite_code: up ? $("#gateInvite").value : undefined,
+      });
+      $("#gatePass").value = "";
+      // Reload rather than calling boot() again: boot() binds the interface's
+      // event listeners, and running it twice binds them twice — every send
+      // would fire two turns.
+      location.reload();
+    } catch (err) {
+      gateError(String(err?.message || err));
+      btn.disabled = false;
+      btn.textContent = wasLabel;
+    }
+  });
+
+  $("#signOut").addEventListener("click", async () => {
+    // Server-side too, not just this browser: see auth.go.
+    try { await api("POST", "/api/auth/signout", {}); } catch { /* going anyway */ }
+    location.reload();
+  });
+}
+
+function paintWho() {
+  const who = $("#who");
+  if (!state.account) { who.hidden = true; return; }
+  who.hidden = false;
+  $("#whoName").textContent = state.account.username;
+  $("#whoName").title = `${t("gate.signedInAs")}: ${state.account.username}`;
+}

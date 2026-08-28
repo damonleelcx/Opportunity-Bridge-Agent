@@ -552,3 +552,63 @@ button, select, textarea, input { font: inherit; color: inherit; }
   .transcript, .notice, .decide, .tech, .results, .thinking { padding-left: 0; margin-left: 0; }
   .bubble { max-width: 100%; }
 }
+
+/* ── the gate ───────────────────────────────────────────────────────────────
+   Shown until somebody is signed in. It covers the shell rather than living on
+   its own page, so the theme, the language and every token stay in one place.
+   Colours come from the same variables as everything else, which is what makes
+   it follow light and dark without a second palette. */
+/* Any element given an explicit display beats the UA stylesheet's rule for
+   [hidden], so `el.hidden = true` stops working on it. Every element below sets
+   a display, and three of them are toggled that way — the gate itself, the
+   invite field, and the signed-in-as row. One rule, stated once, rather than a
+   `[hidden]` companion beside each. */
+.gate[hidden], .gate-field[hidden], .who[hidden] { display: none; }
+
+.gate {
+  position: fixed; inset: 0; z-index: 50;
+  display: flex; align-items: center; justify-content: center;
+  padding: 24px;
+  background: var(--bg);
+}
+.gate-card {
+  width: 100%; max-width: 380px;
+  display: flex; flex-direction: column; gap: 14px;
+  padding: 28px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--r);
+  box-shadow: var(--shadow);
+}
+.gate-title { margin: 0; font-size: 1.25em; color: var(--ink-900); }
+.gate-lede { margin: -6px 0 2px; font-size: .84em; line-height: 1.55; color: var(--ink-500); }
+.gate-field { display: flex; flex-direction: column; gap: 6px; font-size: .82em; color: var(--ink-700); }
+.gate-field input {
+  padding: 10px 12px; font-size: 1rem;
+  border: 1px solid var(--line); border-radius: var(--r-xs);
+  background: var(--surface); color: var(--ink-900);
+}
+.gate-field input:focus-visible { outline: 2px solid var(--brand); outline-offset: 1px; }
+.gate-hint { font-size: .92em; color: var(--ink-400); line-height: 1.5; }
+.gate-error {
+  margin: 0; padding: 10px 12px; font-size: .82em; line-height: 1.5;
+  background: var(--stop-soft); border: 1px solid var(--stop-border);
+  border-radius: var(--r-xs); color: var(--stop);
+}
+.gate-submit { width: 100%; }
+.gate-switch { align-self: center; }
+.gate-lang { display: flex; gap: 8px; justify-content: center; font-size: .78em; color: var(--ink-400); }
+
+/* .link was only ever defined in its danger variant; the gate needs the plain
+   one, and so does the sign-out control. */
+.link {
+  border: 0; background: transparent; cursor: pointer;
+  font-size: .78em; color: var(--brand); padding: 0;
+}
+.link:hover { text-decoration: underline; }
+
+.who {
+  display: flex; align-items: center; justify-content: space-between; gap: 8px;
+  padding: 10px 4px 0; font-size: .78em; color: var(--ink-500);
+}
+.who-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }

@@ -8,10 +8,10 @@ spec:
     scheme: https
     permanent: true
 ---
-# This endpoint is public and unauthenticated, and every turn spends model
-# tokens. A rate limit is not a substitute for authentication — see
-# docs/15-deployment.md — but it is the difference between a bad afternoon and
-# an unbounded bill.
+# Every turn spends model tokens. This is no longer the only thing standing
+# between a stranger and that budget — sign-in is, as of
+# docs/bugfix/2026-08-28-data-exposure-no-ownership-checks.md — but it still
+# caps sign-in guessing and the cost of a single noisy account.
 apiVersion: traefik.io/v1alpha1
 kind: Middleware
 metadata:

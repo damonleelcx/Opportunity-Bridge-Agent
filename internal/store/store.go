@@ -83,6 +83,17 @@ type Session struct {
 }
 
 type snapshot struct {
+	// Accounts and SignIns are what make every other map below somebody's
+	// rather than everybody's. Before they existed, GET /api/sessions/{id}
+	// answered for any id, and ids are sequential.
+	// See docs/bugfix/2026-08-28-data-exposure-no-ownership-checks.md
+	Accounts map[string]*Account `json:"accounts,omitempty"`
+	SignIns  map[string]*SignIn  `json:"sign_ins,omitempty"`
+	// LegacyAdopted records that the one-off adoption of pre-account data has
+	// run. It is a marker, not a feature: without it the adoption would keep
+	// sweeping up subjects on every restart.
+	LegacyAdopted bool `json:"legacy_adopted,omitempty"`
+
 	Sessions  map[string]*Session                                    `json:"sessions"`
 	Profiles  map[string]*domain.Profile                             `json:"profiles"`
 	Tasks     map[string]*domain.CaseTask                            `json:"case_tasks"`
@@ -112,6 +123,8 @@ func New(path string, log *slog.Logger) *Store {
 			Tasks:     map[string]*domain.CaseTask{},
 			Consent:   map[string]map[domain.ConsentScope]domain.ConsentGrant{},
 			Approvals: map[string]*PendingApproval{},
+			Accounts:  map[string]*Account{},
+			SignIns:   map[string]*SignIn{},
 		},
 	}
 	st.load()
@@ -152,6 +165,12 @@ func (s *Store) load() {
 	}
 	if snap.Approvals == nil {
 		snap.Approvals = map[string]*PendingApproval{}
+	}
+	if snap.Accounts == nil {
+		snap.Accounts = map[string]*Account{}
+	}
+	if snap.SignIns == nil {
+		snap.SignIns = map[string]*SignIn{}
 	}
 	s.s = snap
 }
@@ -255,11 +274,34 @@ const sessionTitleRunes = 80
 //
 // The shells are still stored; this hides them, it does not delete them. If that
 // growth needs collecting, that is a separate decision about deleting data.
+// SessionSummaries lists every conversation, for callers that legitimately have
+// no owner to scope by. It is NOT what the HTTP layer calls: a picker that lists
+// everybody's conversations to everybody is how a stranger's transcript ended up
+// one sequential id away from anyone who asked.
+// See docs/bugfix/2026-08-28-data-exposure-no-ownership-checks.md
 func (s *Store) SessionSummaries() []SessionSummary {
+	return s.summaries(nil)
+}
+
+// SessionSummariesFor lists only the conversations this account owns. The
+// ownership question is asked here, in the store, rather than by filtering
+// afterwards in a handler, because a handler that forgets to filter looks
+// exactly like one that did.
+func (s *Store) SessionSummariesFor(a *Account) []SessionSummary {
+	if a == nil {
+		return nil
+	}
+	return s.summaries(a)
+}
+
+func (s *Store) summaries(owner *Account) []SessionSummary {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 	out := make([]SessionSummary, 0, len(s.s.Sessions))
 	for _, ses := range s.s.Sessions {
+		if owner != nil && !owner.Owns(ses.SubjectID) {
+			continue
+		}
 		title, turns := "", 0
 		for _, h := range ses.History {
 			if h.Role != "user" {

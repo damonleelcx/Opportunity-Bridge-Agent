@@ -61,6 +61,7 @@ func run(addrOverride string, log *slog.Logger) error {
 	}
 	st := store.New(cfg.StatePath, log)
 	seedSignals(st, cfg, log)
+	adoptLegacyData(st, cfg, log)
 
 	client, err := buildClient(cfg)
 	if err != nil {
@@ -186,5 +187,34 @@ func seedSignals(st *store.Store, cfg config.Config, log *slog.Logger) {
 	}
 	if len(sigs) > 0 {
 		log.Info("seeded sample demand signals", "count", len(sigs))
+	}
+}
+
+// adoptLegacyData gives the subjects left behind by visitors from before
+// accounts existed to one named account, once.
+//
+// Why this is here rather than left alone: those records are real people's
+// messages, and after the ownership checks went in they belong to nobody, which
+// means nobody can read them, correct them or ask for them to be deleted. Giving
+// them one owner restores every one of those. It adds, never deletes, and a
+// marker in the store stops it running twice.
+// See docs/bugfix/2026-08-28-data-exposure-no-ownership-checks.md
+func adoptLegacyData(st *store.Store, cfg config.Config, log *slog.Logger) {
+	if cfg.DemoAccount == "" {
+		return
+	}
+	n, err := st.AdoptOrphanedSubjects(cfg.DemoAccount)
+	if err != nil {
+		// Not fatal: the service is fully functional without the adoption, and
+		// refusing to start over a migration for historical data would take the
+		// whole thing down for something nobody is waiting on. It is loud so it
+		// is not missed.
+		log.Warn("pre-account data was not adopted",
+			"code", "LEGACY_ADOPTION_FAILED", "account", cfg.DemoAccount, "error", err)
+		return
+	}
+	if n > 0 {
+		log.Info("pre-account data adopted", "code", "LEGACY_ADOPTED",
+			"account", cfg.DemoAccount, "subjects", n)
 	}
 }

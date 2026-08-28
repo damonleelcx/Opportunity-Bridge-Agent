@@ -12,6 +12,7 @@ import (
 	"log/slog"
 	"net/http"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/damonleelcx/Opportunity-Bridge-Agent/internal/agent"
@@ -27,6 +28,11 @@ type Server struct {
 	Cfg   config.Config
 	Web   fs.FS
 	Log   *slog.Logger
+
+	// Failed sign-in attempts, per username. See auth.go for why this is in
+	// memory rather than in the store.
+	limiterOnce sync.Once
+	lim         *attemptLimiter
 }
 
 func (s *Server) Routes() http.Handler {
@@ -41,8 +47,15 @@ func (s *Server) Routes() http.Handler {
 	mux.HandleFunc("DELETE /api/sessions/{id}/profile", s.forgetProfile)
 	mux.HandleFunc("POST /api/approvals/{id}", s.decideApproval)
 	mux.HandleFunc("POST /api/consent", s.setConsent)
+	mux.HandleFunc("POST /api/auth/signup", s.signUp)
+	mux.HandleFunc("POST /api/auth/signin", s.signIn)
+	mux.HandleFunc("POST /api/auth/signout", s.signOut)
+	mux.HandleFunc("GET /api/auth/me", s.me)
 	mux.Handle("GET /", http.FileServerFS(s.Web))
-	return logging(s.Log, mux)
+	// The gate wraps every route rather than being applied per handler: a route
+	// added later is protected by default, and forgetting to opt in cannot
+	// silently publish somebody's transcript. See auth.go.
+	return logging(s.Log, s.gate(mux))
 }
 
 func logging(log *slog.Logger, next http.Handler) http.Handler {
@@ -105,6 +118,29 @@ func (s *Server) health(w http.ResponseWriter, r *http.Request) {
 
 // meta tells the interface what this deployment can actually do, so limits are
 // visible up front rather than discovered by a person hitting one.
+
+// ownedSession resolves a session id and refuses it unless the signed-in
+// account owns the subject behind it.
+//
+// It answers 404, never 403. 403 would confirm that the id exists, which for
+// sequential ids (ses_0001, ses_0002, …) is most of what an enumerator wants.
+// "No such session, as far as you are concerned" is both true and quiet.
+//
+// Every handler that takes a session id goes through here. That is the point:
+// the check being in one place is what makes it possible to say it is applied
+// everywhere. See docs/bugfix/2026-08-28-data-exposure-no-ownership-checks.md
+func (s *Server) ownedSession(w http.ResponseWriter, r *http.Request, id string) (*store.Session, bool) {
+	ses, ok := s.Store.Session(id)
+	if ok {
+		if acct := accountFor(r); acct != nil && acct.Owns(ses.SubjectID) {
+			return ses, true
+		}
+	}
+	writeErr(w, http.StatusNotFound, "SESSION_NOT_FOUND",
+		fmt.Sprintf("No session %q.", id), "Start a new conversation.")
+	return nil, false
+}
+
 func (s *Server) meta(w http.ResponseWriter, r *http.Request) {
 	var disabled []string
 	for _, in := range intent.All() {
@@ -160,9 +196,11 @@ func (s *Server) intents(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) createSession(w http.ResponseWriter, r *http.Request) {
 	var body struct {
-		Role      string `json:"role"`
-		SubjectID string `json:"subject_id"`
-		Locale    string `json:"locale"`
+		Role string `json:"role"`
+		// No subject_id. It used to be accepted here and is deliberately gone:
+		// a field that is silently ignored reads, to the next person, like a
+		// field that works.
+		Locale string `json:"locale"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&body); err != nil && !errors.Is(err, http.ErrBodyReadAfterClose) {
 		writeErr(w, http.StatusBadRequest, "BODY_INVALID", "The request body was not valid JSON.", "Send {\"role\":\"resident\"}.")
@@ -187,22 +225,33 @@ func (s *Server) createSession(w http.ResponseWriter, r *http.Request) {
 		}
 		locale = body.Locale
 	}
-	ses := s.Store.CreateSession(role, body.SubjectID, locale)
+	// The subject comes from the signed-in account, never from the request.
+	// Honouring body.SubjectID would let anyone open a session onto anybody
+	// else's record and read it back through the panels — the same exposure the
+	// ownership checks close, wearing a cookie.
+	acct := accountFor(r)
+	if acct == nil {
+		writeErr(w, http.StatusUnauthorized, "SIGNIN_REQUIRED",
+			"You need to be signed in to start a conversation.",
+			"Sign in, or create an account with an invite code.")
+		return
+	}
+	ses := s.Store.CreateSession(role, acct.SubjectID, locale)
 	writeJSON(w, ses)
 }
 
 // listSessions backs the conversation picker. It returns summaries, not whole
 // sessions: the picker refetches after every turn and never needed transcripts.
 func (s *Server) listSessions(w http.ResponseWriter, r *http.Request) {
-	writeJSON(w, s.Store.SessionSummaries())
+	// Scoped to the caller. This endpoint used to answer with every visitor's
+	// conversation title, to anybody who asked.
+	writeJSON(w, s.Store.SessionSummariesFor(accountFor(r)))
 }
 
 func (s *Server) getSession(w http.ResponseWriter, r *http.Request) {
 	id := r.PathValue("id")
-	ses, ok := s.Store.Session(id)
+	ses, ok := s.ownedSession(w, r, id)
 	if !ok {
-		writeErr(w, http.StatusNotFound, "SESSION_NOT_FOUND",
-			fmt.Sprintf("No session %q.", id), "Start a new conversation.")
 		return
 	}
 	writeJSON(w, map[string]any{
@@ -217,9 +266,8 @@ func (s *Server) getSession(w http.ResponseWriter, r *http.Request) {
 // forgetProfile is the delete half of "you can see and correct what I hold".
 // A product that only offers inspection has offered nothing.
 func (s *Server) forgetProfile(w http.ResponseWriter, r *http.Request) {
-	ses, ok := s.Store.Session(r.PathValue("id"))
+	ses, ok := s.ownedSession(w, r, r.PathValue("id"))
 	if !ok {
-		writeErr(w, http.StatusNotFound, "SESSION_NOT_FOUND", "No such session.", "Start a new conversation.")
 		return
 	}
 	s.Store.ForgetProfile(ses.SubjectID)
@@ -250,9 +298,7 @@ func (s *Server) postMessage(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, http.StatusBadRequest, "MESSAGE_EMPTY", "The message was empty.", "Type what you need help with.")
 		return
 	}
-	if _, ok := s.Store.Session(id); !ok {
-		writeErr(w, http.StatusNotFound, "SESSION_NOT_FOUND", fmt.Sprintf("No session %q.", id),
-			"Start a new conversation.")
+	if _, ok := s.ownedSession(w, r, id); !ok {
 		return
 	}
 	if body.Locale != "" {
@@ -339,6 +385,17 @@ func (s *Server) decideApproval(w http.ResponseWriter, r *http.Request) {
 			"Send {\"approved\":true}.")
 		return
 	}
+	// An approval authorises an irreversible act inside one conversation, so it
+	// is only decidable by whoever owns that conversation.
+	pending, found := s.Store.Approval(r.PathValue("id"))
+	if !found {
+		writeErr(w, http.StatusNotFound, "APPROVAL_NOT_FOUND",
+			"No such request.", "Reload the conversation to see the current state.")
+		return
+	}
+	if _, ok := s.ownedSession(w, r, pending.SessionID); !ok {
+		return
+	}
 	ap, err := s.Store.DecideApproval(r.PathValue("id"), body.Approved, body.Reason)
 	if err != nil {
 		writeErr(w, http.StatusConflict, "APPROVAL_FAILED", err.Error(),
@@ -359,9 +416,8 @@ func (s *Server) setConsent(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, http.StatusBadRequest, "BODY_INVALID", "The request body was not valid JSON.", "")
 		return
 	}
-	ses, ok := s.Store.Session(body.SessionID)
+	ses, ok := s.ownedSession(w, r, body.SessionID)
 	if !ok {
-		writeErr(w, http.StatusNotFound, "SESSION_NOT_FOUND", "No such session.", "Start a new conversation.")
 		return
 	}
 	scope := domain.ConsentScope(body.Scope)
