@@ -15,6 +15,7 @@ const STRINGS = {
     "ctl.intent": "意图",
     "intent.auto": "自动判定",
     "ctl.tech": "显示系统运行详情",
+    "ctl.menu": "会话和设置",
     "ctl.theme": "主题",
     "theme.system": "跟随系统", "theme.light": "浅色", "theme.dark": "深色",
     "crumb.serving": "为你服务中",
@@ -108,6 +109,7 @@ const STRINGS = {
     "tab.trace": "执行轨迹",
     "composer.send": "发送",
     "composer.placeholder": "说说你的情况，比如：我在成都，做过流水线，想换个下午五点前能下班的工作",
+    "composer.placeholderShort": "说说你的情况…",
     "a11y.plain": "大白话",
     "a11y.large": "大字号",
     "a11y.voice": "读给我听",
@@ -159,6 +161,7 @@ const STRINGS = {
     "ctl.intent": "Intent",
     "intent.auto": "Route automatically",
     "ctl.tech": "Show system detail",
+    "ctl.menu": "Conversations and settings",
     "ctl.theme": "Theme",
     "theme.system": "Follow system", "theme.light": "Light", "theme.dark": "Dark",
     "crumb.serving": "Working for you",
@@ -252,6 +255,7 @@ const STRINGS = {
     "tab.trace": "Trace",
     "composer.send": "Send",
     "composer.placeholder": "Tell me your situation - for example: I'm in Chengdu, I worked on an assembly line, I need something that finishes before 17:00",
+    "composer.placeholderShort": "Tell me your situation…",
     "a11y.plain": "Plain language",
     "a11y.large": "Large text",
     "a11y.voice": "Read aloud",
@@ -500,6 +504,12 @@ export function setLocale(l) {
   }
   for (const el of document.querySelectorAll("[data-i18n-title]")) {
     el.title = t(el.dataset.i18nTitle);
+  }
+  // An icon-only control has no text to sweep, so its accessible name has to
+  // come from somewhere. Same shape as the two sweeps above rather than a
+  // one-off per button.
+  for (const el of document.querySelectorAll("[data-i18n-aria]")) {
+    el.setAttribute("aria-label", t(el.dataset.i18nAria));
   }
 }
 

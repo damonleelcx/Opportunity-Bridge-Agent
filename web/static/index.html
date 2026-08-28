@@ -82,8 +82,13 @@
   </form>
 </div>
 
+<!-- Narrow viewports turn the two side panels into drawers over the
+     conversation; this is what closes them by tapping beside one. It is inert
+     and invisible until a drawer is open, at every width. -->
+<div id="scrim" class="scrim" hidden></div>
+
 <!-- ── sidebar ─────────────────────────────────────────────────────────── -->
-<aside class="sidebar" aria-label="Conversations">
+<aside class="sidebar" id="sidebar" aria-label="Conversations">
   <div class="brand">
     <span class="brand-mark" id="brandAvatar" aria-hidden="true"></span>
     <div class="brand-text">
@@ -138,6 +143,15 @@
 <div class="workspace">
   <main class="chat">
     <header class="chat-head">
+      <!-- Only rendered on viewports where the panel it opens is off-canvas.
+           Below 900px that is the conversation list; below 1180px, 我的概览 —
+           which used to be display:none there, taking the consent controls with
+           it, so on a phone there was no way to withdraw a permission at all. -->
+      <button type="button" id="navToggle" class="icon-btn drawer-btn for-nav"
+              aria-controls="sidebar" aria-expanded="false"
+              data-i18n-title="ctl.menu" data-i18n-aria="ctl.menu" title="会话和设置">
+        <span class="ico" data-icon="menu"></span>
+      </button>
       <div class="crumbs">
         <span class="crumb-chip" data-i18n="crumb.serving">为你服务中</span>
         <span class="crumb-sep">/</span>
@@ -149,6 +163,11 @@
         <button id="techToggle" class="icon-btn" aria-pressed="false"
                 data-i18n-title="ctl.tech" title="显示系统运行详情">
           <span class="ico" data-icon="gear"></span>
+        </button>
+        <button type="button" id="overviewToggle" class="icon-btn drawer-btn for-overview"
+                aria-controls="overview" aria-expanded="false"
+                data-i18n-title="panel.overview" data-i18n-aria="panel.overview" title="我的概览">
+          <span class="ico" data-icon="user"></span>
         </button>
       </div>
     </header>
@@ -178,7 +197,7 @@
   </main>
 
   <!-- ── overview ──────────────────────────────────────────────────────── -->
-  <aside class="overview" aria-label="Overview">
+  <aside class="overview" id="overview" aria-label="Overview">
     <div class="overview-head">
       <h2 data-i18n="panel.overview">我的概览</h2>
     </div>

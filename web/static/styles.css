@@ -549,15 +549,72 @@ button, select, textarea, input { font: inherit; color: inherit; }
   .ocard, .btn, .icon-btn { transition: none; }
 }
 
-/* ── narrow ────────────────────────────────────────────────────────────── */
-@media (max-width: 1180px) { .overview { display: none; } }
+/* ── narrow ──────────────────────────────────────────────────────────────
+   The three columns become one column plus two drawers, rather than a stack.
+   Stacking was what this did before, and it put the whole sidebar — brand,
+   conversation list, four selects, the account row — above the conversation, so
+   a phone opened to about 900px of chrome and the answer was off-screen. The
+   conversation is the product; on a small screen it gets the whole screen.
+
+   The drawer is a deliberate addition, and it buys back something that was
+   missing rather than only tidying: 我的概览 was `display: none` under 1180px,
+   which took the four consent controls with it. A promise that permission can be
+   withdrawn is worth nothing on the device most of these readers actually have.
+
+   Both panels keep their markup and their desktop layout untouched; only their
+   positioning changes here, so there is one interface, not a mobile fork. */
+
+.scrim { position: fixed; inset: 0; z-index: 40; background: color-mix(in srgb, var(--ink-900) 45%, transparent); }
+.scrim[hidden] { display: none; }
+/* The buttons that open the drawers exist only where a drawer does. Hidden by
+   default so the desktop header is unchanged, and shown by the media queries
+   below — the same breakpoint that moves the panel off-canvas. */
+.drawer-btn { display: none; }
+
+@media (max-width: 1180px) {
+  .overview {
+    position: fixed; top: 0; right: 0; bottom: 0; z-index: 45;
+    width: min(320px, 86vw);
+    transform: translateX(100%);
+    transition: transform .18s ease;
+    box-shadow: var(--shadow);
+  }
+  body.overview-open .overview { transform: none; }
+  .drawer-btn.for-overview { display: inline-flex; }
+}
+
 @media (max-width: 900px) {
-  body { overflow: auto; height: auto; flex-direction: column; }
-  .sidebar { width: 100%; border-right: 0; border-bottom: 1px solid var(--line); }
-  .sidebar-scroll { max-height: 180px; }
-  .chat { min-height: 78vh; }
-  .transcript, .notice, .decide, .tech, .results, .thinking { padding-left: 0; margin-left: 0; }
+  .sidebar {
+    position: fixed; top: 0; left: 0; bottom: 0; z-index: 45;
+    width: min(300px, 86vw);
+    transform: translateX(-100%);
+    transition: transform .18s ease;
+    box-shadow: var(--shadow);
+  }
+  body.nav-open .sidebar { transform: none; }
+  .drawer-btn.for-nav { display: inline-flex; }
+
+  /* The shell keeps its own height and scrolling: the transcript scrolls, the
+     header and the composer do not. A page-level scroll would carry the input
+     off the bottom of the screen exactly when somebody is typing into it. */
+  .chat-head { padding: 0 8px 0 4px; gap: 8px; }
+  .crumbs { font-size: .78em; }
+  .crumb-chip { display: none; }
+  .crumb-sep { display: none; }
+  .head-actions { gap: 2px; }
+
+  .transcript { padding: 16px 14px 8px; }
+  .transcript > * { margin-bottom: 18px; }
+  .turn { gap: 10px; }
   .bubble { max-width: 100%; }
+  .composer { padding: 6px 12px 12px; }
+  /* Room for the home indicator on a phone, and nothing added anywhere else. */
+  .composer { padding-bottom: max(12px, env(safe-area-inset-bottom)); }
+  .composer-foot { flex-wrap: wrap; gap: 10px 14px; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .sidebar, .overview { transition: none; }
 }
 
 /* ── the gate ───────────────────────────────────────────────────────────────
