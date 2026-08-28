@@ -1,0 +1,254 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>阿桥 · Opportunity Bridge Agent</title>
+<link rel="stylesheet" href="/tokens.css">
+<link rel="stylesheet" href="/styles.css">
+<link rel="stylesheet" href="/avatar.css">
+<!-- Set from avatar.js at boot so the tab icon and the in-page mark cannot drift. -->
+<link rel="icon" id="favicon" href="data:,">
+</head>
+<body>
+<a class="skip" href="#input" data-i18n="a11y.skip">跳到输入框</a>
+
+<!-- ── the gate ────────────────────────────────────────────────────────────
+     Shown until /api/auth/me answers. It covers the shell rather than living on
+     a second page so that the theme, the language switch and every string stay
+     in one document — a separate sign-in page is where those quietly diverge. -->
+<div id="gate" class="gate" hidden>
+  <form id="gateForm" class="gate-card" autocomplete="on">
+    <!-- The gate covers the whole shell, so without this the first screen is an
+         unlabelled password box that could belong to anything — and the people
+         this is for are exactly the ones who should not have to guess whether a
+         login form is the thing they were sent to. Same mark as the sidebar
+         (avatar.js) and same face as the overview panel, so "what does 阿桥 look
+         like" has one answer everywhere, before and after signing in. -->
+    <div class="gate-brand">
+      <img class="gate-face" src="/mascot.png" alt="" aria-hidden="true">
+      <div class="gate-id">
+        <span class="gate-mark" id="gateAvatar" aria-hidden="true"></span>
+        <span class="gate-id-text">
+          <b data-i18n="app.name">阿桥</b>
+          <small>Opportunity Bridge</small>
+        </span>
+      </div>
+    </div>
+
+    <!-- No data-i18n: the heading is one of two strings depending on the mode,
+         so setGateMode owns it. Leaving the attribute on would let setLocale's
+         sweep put "先登录" back over "注册账号" on every language switch. -->
+    <h1 class="gate-title" id="gateTitle">先登录</h1>
+    <p class="gate-lede" data-i18n="gate.lede">你的对话、档案和进行中任务只属于你的账号，别人看不到。</p>
+
+    <label class="gate-field">
+      <span data-i18n="gate.username">用户名</span>
+      <input id="gateUser" name="username" autocomplete="username" required>
+    </label>
+    <label class="gate-field">
+      <span data-i18n="gate.password">密码</span>
+      <!-- A typed password is wrong invisibly, and on this form the retry is
+           expensive: sign-up also asks for an invite code, and a person who
+           cannot see what they typed has no way to tell which of the two they
+           got wrong. Off by default and reset every time the gate opens — a
+           service window is a shoulder-surfing environment.
+           The button's label is set in code, not by data-i18n-title: it is one
+           of two strings depending on state, like the heading above. -->
+      <span class="gate-input">
+        <input id="gatePass" name="password" type="password" autocomplete="current-password" required>
+        <button type="button" id="gatePeek" class="icon-btn gate-peek" aria-pressed="false">
+          <span class="ico" data-icon="eye"></span>
+        </button>
+      </span>
+    </label>
+    <label class="gate-field" id="gateInviteField" hidden>
+      <span data-i18n="gate.invite">邀请码</span>
+      <input id="gateInvite" name="invite" autocomplete="off">
+      <small class="gate-hint" data-i18n="gate.inviteHint">没有邀请码就注册不了，问一下给你链接的人。</small>
+    </label>
+
+    <p id="gateError" class="gate-error" role="alert" hidden></p>
+
+    <button id="gateSubmit" class="btn btn-primary gate-submit" type="submit" data-i18n="gate.signIn">登录</button>
+    <button id="gateSwitch" class="link gate-switch" type="button" data-i18n="gate.toSignUp">还没有账号？去注册</button>
+
+    <!-- The gate is now the first screen, and it covers the sidebar where the
+         language control lives. A bilingual product whose only reachable
+         language on the first screen is one of them is not bilingual. -->
+    <div class="gate-lang">
+      <button type="button" class="link" data-gate-lang="zh-CN">中文</button>
+      <span aria-hidden="true">·</span>
+      <button type="button" class="link" data-gate-lang="en">English</button>
+    </div>
+  </form>
+</div>
+
+<!-- Narrow viewports turn the two side panels into drawers over the
+     conversation; this is what closes them by tapping beside one. It is inert
+     and invisible until a drawer is open, at every width. -->
+<div id="scrim" class="scrim" hidden></div>
+
+<!-- ── sidebar ─────────────────────────────────────────────────────────── -->
+<aside class="sidebar" id="sidebar" aria-label="Conversations">
+  <div class="brand">
+    <span class="brand-mark" id="brandAvatar" aria-hidden="true"></span>
+    <div class="brand-text">
+      <h1 data-i18n="app.name">阿桥</h1>
+      <p>Opportunity Bridge</p>
+    </div>
+  </div>
+
+  <div class="sidebar-scroll">
+    <p class="rail-label" data-i18n="panel.sessions">对话历史</p>
+    <nav id="sessions" class="session-list"></nav>
+  </div>
+
+  <div class="sidebar-foot">
+    <label class="setting">
+      <span data-i18n="ctl.role">身份</span>
+      <select id="role"></select>
+    </label>
+    <label class="setting">
+      <span data-i18n="ctl.lang">语言</span>
+      <select id="locale">
+        <option value="zh-CN">中文</option>
+        <option value="en">English</option>
+      </select>
+    </label>
+    <label class="setting">
+      <span data-i18n="ctl.intent">意图</span>
+      <select id="intentPick"></select>
+    </label>
+    <label class="setting">
+      <span data-i18n="ctl.theme">主题</span>
+      <!-- 浅色 first and selected, so the markup states the same default the
+           CSS and app.js do. Before any script runs this select must not claim
+           a theme the page is not showing. -->
+      <select id="theme">
+        <option value="light" data-i18n="theme.light" selected>浅色</option>
+        <option value="dark" data-i18n="theme.dark">深色</option>
+        <option value="system" data-i18n="theme.system">跟随系统</option>
+      </select>
+    </label>
+    <button id="newSession" class="btn btn-block">
+      <span class="ico" data-icon="plus"></span><span data-i18n="ctl.new">新对话</span>
+    </button>
+    <div class="who" id="who" hidden>
+      <span class="who-name" id="whoName"></span>
+      <button id="signOut" class="link" data-i18n="gate.signOut">退出登录</button>
+    </div>
+  </div>
+</aside>
+
+<!-- ── workspace ───────────────────────────────────────────────────────── -->
+<div class="workspace">
+  <main class="chat">
+    <header class="chat-head">
+      <!-- Only rendered on viewports where the panel it opens is off-canvas.
+           Below 900px that is the conversation list; below 1180px, 我的概览 —
+           which used to be display:none there, taking the consent controls with
+           it, so on a phone there was no way to withdraw a permission at all. -->
+      <button type="button" id="navToggle" class="icon-btn drawer-btn for-nav"
+              aria-controls="sidebar" aria-expanded="false"
+              data-i18n-title="ctl.menu" data-i18n-aria="ctl.menu" title="会话和设置">
+        <span class="ico" data-icon="menu"></span>
+      </button>
+      <div class="crumbs">
+        <span class="crumb-chip" data-i18n="crumb.serving">为你服务中</span>
+        <span class="crumb-sep">/</span>
+        <span class="crumb-now" id="crumbIntent" data-i18n="crumb.waiting">还没开始</span>
+      </div>
+      <div class="head-actions">
+        <span id="sampleFlag" class="flag" title="" data-i18n="banner.sampleShort">演示语料</span>
+        <span id="liveFlag" class="flag flag-off" title="" hidden data-i18n="banner.liveOffShort">未接全国检索</span>
+        <button id="techToggle" class="icon-btn" aria-pressed="false"
+                data-i18n-title="ctl.tech" title="显示系统运行详情">
+          <span class="ico" data-icon="gear"></span>
+        </button>
+        <button type="button" id="overviewToggle" class="icon-btn drawer-btn for-overview"
+                aria-controls="overview" aria-expanded="false"
+                data-i18n-title="panel.overview" data-i18n-aria="panel.overview" title="我的概览">
+          <span class="ico" data-icon="user"></span>
+        </button>
+      </div>
+    </header>
+
+    <div id="transcript" class="transcript" aria-live="polite"></div>
+
+    <form id="composer" class="composer">
+      <div class="input-shell">
+        <!-- Short on purpose, and it has to stay short. A one-row textarea clips
+             whatever its placeholder does not fit on one line, and the sentence
+             that used to be here wrapped to two lines at 1000px and four at
+             375px — clipped mid-word, as the first thing a reader saw.
+             The budget: it must fit one line at 320px with 大字号 (19px) on, which
+             is the narrowest case this supports. Measured there, the box gives
+             188px; "Tell me your situation" needs 178. A translation longer than
+             that clips silently, so measure before changing this string.
+             The examples are not lost — the quickstart chips sit directly above
+             this box, where they are tappable rather than only readable. -->
+        <textarea id="input" rows="1" data-i18n-ph="composer.placeholder"
+          placeholder="说说你的情况"></textarea>
+        <div class="input-actions">
+          <button type="button" id="mic" class="icon-btn" data-i18n-title="a11y.voiceIn" title="语音输入">
+            <span class="ico" data-icon="mic"></span>
+          </button>
+          <button type="submit" id="send" class="btn-send" data-i18n-title="composer.send" title="发送">
+            <span class="ico" data-icon="send"></span>
+          </button>
+        </div>
+      </div>
+      <div class="composer-foot">
+        <label class="check"><input type="checkbox" id="a11yPlain"><span data-i18n="a11y.plain">大白话模式</span></label>
+        <label class="check"><input type="checkbox" id="a11yLarge"><span data-i18n="a11y.large">大字号</span></label>
+        <label class="check"><input type="checkbox" id="a11yVoice"><span data-i18n="a11y.voice">读给我听</span></label>
+        <span id="status" class="status"></span>
+      </div>
+    </form>
+  </main>
+
+  <!-- ── overview ──────────────────────────────────────────────────────── -->
+  <aside class="overview" id="overview" aria-label="Overview">
+    <div class="overview-head">
+      <h2 data-i18n="panel.overview">我的概览</h2>
+    </div>
+
+    <section class="card">
+      <div class="card-head">
+        <h3 data-i18n="panel.tasks">进行中任务</h3>
+        <span id="taskCount" class="card-note"></span>
+      </div>
+      <div id="tasks"></div>
+    </section>
+
+    <section class="mascot">
+      <div class="mascot-art">
+        <img class="mascot-img" id="mascotImg" src="/mascot.png" alt="" aria-hidden="true">
+        <span class="mascot-tag" data-i18n="mascot.tag">我是阿桥</span>
+      </div>
+      <p class="mascot-line" id="mascotLine" data-i18n="mascot.line">
+        条件我一条条念给你听。定不了的，我就说定不了。
+      </p>
+    </section>
+
+    <section class="card">
+      <div class="card-head">
+        <h3 data-i18n="panel.records">档案记录</h3>
+        <button id="forget" class="link-danger" data-i18n="profile.clear">清空记录</button>
+      </div>
+      <div id="records"></div>
+    </section>
+
+    <section class="card">
+      <div class="card-head">
+        <h3 data-i18n="panel.consent">授权</h3>
+      </div>
+      <div id="consents"></div>
+    </section>
+  </aside>
+</div>
+
+<script type="module" src="/app.js"></script>
+</body>
+</html>

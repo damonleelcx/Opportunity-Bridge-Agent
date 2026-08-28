@@ -37,7 +37,7 @@ Two pages sit outside the twenty steps:
 | [17-read-aloud.md](17-read-aloud.md) | Reading answers aloud: the browser voice that always works, the optional vendor voice, and what the free tier costs in privacy |
 | [16-live-lookup.md](16-live-lookup.md) | Looking things up outside the corpus: the provider seam, the verified directory, and the key-gated live search |
 | [15-deployment.md](15-deployment.md) | Live on k3s at jobs.heros-agent.space — the shape, four decisions, and what is not protected |
-| [14-interface.md](14-interface.md) | The conversational UI: what came from the mockup, what had to change, and where the machinery went |
+| [14-interface.md](14-interface.md) | The landing page at `/` and the conversational UI at `/app`: what came from the mockup, what had to change, and where the machinery went |
 
 ## Reading order
 

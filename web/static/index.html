@@ -4,249 +4,342 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>阿桥 · Opportunity Bridge Agent</title>
-<link rel="stylesheet" href="/styles.css">
+<meta name="description" content="阿桥 把「不知道能做什么、去哪里办、够不够格」变成一条走得通的路：问清情况、找到真实的岗位培训补贴、把公开条件一条条念出来、帮你办完。它不判定资格，也不给人打分。">
+<meta name="color-scheme" content="light dark">
+<link rel="stylesheet" href="/tokens.css">
+<link rel="stylesheet" href="/home.css">
+<link rel="stylesheet" href="/avatar.css">
 <!-- Set from avatar.js at boot so the tab icon and the in-page mark cannot drift. -->
 <link rel="icon" id="favicon" href="data:,">
 </head>
 <body>
-<a class="skip" href="#input" data-i18n="a11y.skip">跳到输入框</a>
 
-<!-- ── the gate ────────────────────────────────────────────────────────────
-     Shown until /api/auth/me answers. It covers the shell rather than living on
-     a second page so that the theme, the language switch and every string stay
-     in one document — a separate sign-in page is where those quietly diverge. -->
-<div id="gate" class="gate" hidden>
-  <form id="gateForm" class="gate-card" autocomplete="on">
-    <!-- The gate covers the whole shell, so without this the first screen is an
-         unlabelled password box that could belong to anything — and the people
-         this is for are exactly the ones who should not have to guess whether a
-         login form is the thing they were sent to. Same mark as the sidebar
-         (avatar.js) and same face as the overview panel, so "what does 阿桥 look
-         like" has one answer everywhere, before and after signing in. -->
-    <div class="gate-brand">
-      <img class="gate-face" src="/mascot.png" alt="" aria-hidden="true">
-      <div class="gate-id">
-        <span class="gate-mark" id="gateAvatar" aria-hidden="true"></span>
-        <span class="gate-id-text">
-          <b data-i18n="app.name">阿桥</b>
-          <small>Opportunity Bridge</small>
-        </span>
-      </div>
-    </div>
+<!-- Two things have to happen before the first paint, or the reader sees them
+     happen: the theme (otherwise a dark reader gets a white flash) and the `js`
+     class (which is what lets the reveal animations start hidden — without it
+     they must start VISIBLE, so a page whose script never arrives is still a
+     page and not a blank column). Deliberately not a module: modules are
+     deferred, and deferred is after the paint we are trying to get in front of. -->
+<script>
+  document.documentElement.classList.add("js");
+  try {
+    var th = localStorage.getItem("oba.theme");
+    document.documentElement.dataset.theme =
+      ["system", "light", "dark"].indexOf(th) >= 0 ? th : "light";
+    if (localStorage.getItem("oba.locale") === "en") document.documentElement.lang = "en";
+  } catch (e) { document.documentElement.dataset.theme = "light"; }
+</script>
 
-    <!-- No data-i18n: the heading is one of two strings depending on the mode,
-         so setGateMode owns it. Leaving the attribute on would let setLocale's
-         sweep put "先登录" back over "注册账号" on every language switch. -->
-    <h1 class="gate-title" id="gateTitle">先登录</h1>
-    <p class="gate-lede" data-i18n="gate.lede">你的对话、档案和进行中任务只属于你的账号，别人看不到。</p>
+<a class="skip" href="#main" data-i18n="a11y.skipToMain">跳到正文</a>
 
-    <label class="gate-field">
-      <span data-i18n="gate.username">用户名</span>
-      <input id="gateUser" name="username" autocomplete="username" required>
-    </label>
-    <label class="gate-field">
-      <span data-i18n="gate.password">密码</span>
-      <!-- A typed password is wrong invisibly, and on this form the retry is
-           expensive: sign-up also asks for an invite code, and a person who
-           cannot see what they typed has no way to tell which of the two they
-           got wrong. Off by default and reset every time the gate opens — a
-           service window is a shoulder-surfing environment.
-           The button's label is set in code, not by data-i18n-title: it is one
-           of two strings depending on state, like the heading above. -->
-      <span class="gate-input">
-        <input id="gatePass" name="password" type="password" autocomplete="current-password" required>
-        <button type="button" id="gatePeek" class="icon-btn gate-peek" aria-pressed="false">
-          <span class="ico" data-icon="eye"></span>
-        </button>
+<header class="nav">
+  <div class="wrap nav-in">
+    <a class="brand" href="/">
+      <span class="brand-mark" id="navAvatar" aria-hidden="true"></span>
+      <span class="brand-text">
+        <b data-i18n="app.name">阿桥</b>
+        <small>Opportunity Bridge</small>
       </span>
-    </label>
-    <label class="gate-field" id="gateInviteField" hidden>
-      <span data-i18n="gate.invite">邀请码</span>
-      <input id="gateInvite" name="invite" autocomplete="off">
-      <small class="gate-hint" data-i18n="gate.inviteHint">没有邀请码就注册不了，问一下给你链接的人。</small>
-    </label>
+    </a>
 
-    <p id="gateError" class="gate-error" role="alert" hidden></p>
+    <nav class="nav-links" aria-label="Sections">
+      <a href="#how" data-i18n="home.nav.how">它怎么帮你</a>
+      <a href="#who" data-i18n="home.nav.who">给谁用</a>
+      <a href="#boundary" data-i18n="home.nav.boundary">它的边界</a>
+      <a href="#limits" data-i18n="home.nav.limits">真话</a>
+    </nav>
 
-    <button id="gateSubmit" class="btn btn-primary gate-submit" type="submit" data-i18n="gate.signIn">登录</button>
-    <button id="gateSwitch" class="link gate-switch" type="button" data-i18n="gate.toSignUp">还没有账号？去注册</button>
-
-    <!-- The gate is now the first screen, and it covers the sidebar where the
-         language control lives. A bilingual product whose only reachable
-         language on the first screen is one of them is not bilingual. -->
-    <div class="gate-lang">
-      <button type="button" class="link" data-gate-lang="zh-CN">中文</button>
-      <span aria-hidden="true">·</span>
-      <button type="button" class="link" data-gate-lang="en">English</button>
-    </div>
-  </form>
-</div>
-
-<!-- Narrow viewports turn the two side panels into drawers over the
-     conversation; this is what closes them by tapping beside one. It is inert
-     and invisible until a drawer is open, at every width. -->
-<div id="scrim" class="scrim" hidden></div>
-
-<!-- ── sidebar ─────────────────────────────────────────────────────────── -->
-<aside class="sidebar" id="sidebar" aria-label="Conversations">
-  <div class="brand">
-    <span class="brand-mark" id="brandAvatar" aria-hidden="true"></span>
-    <div class="brand-text">
-      <h1 data-i18n="app.name">阿桥</h1>
-      <p>Opportunity Bridge</p>
-    </div>
-  </div>
-
-  <div class="sidebar-scroll">
-    <p class="rail-label" data-i18n="panel.sessions">对话历史</p>
-    <nav id="sessions" class="session-list"></nav>
-  </div>
-
-  <div class="sidebar-foot">
-    <label class="setting">
-      <span data-i18n="ctl.role">身份</span>
-      <select id="role"></select>
-    </label>
-    <label class="setting">
-      <span data-i18n="ctl.lang">语言</span>
-      <select id="locale">
-        <option value="zh-CN">中文</option>
-        <option value="en">English</option>
-      </select>
-    </label>
-    <label class="setting">
-      <span data-i18n="ctl.intent">意图</span>
-      <select id="intentPick"></select>
-    </label>
-    <label class="setting">
-      <span data-i18n="ctl.theme">主题</span>
-      <!-- 浅色 first and selected, so the markup states the same default the
-           CSS and app.js do. Before any script runs this select must not claim
-           a theme the page is not showing. -->
-      <select id="theme">
-        <option value="light" data-i18n="theme.light" selected>浅色</option>
-        <option value="dark" data-i18n="theme.dark">深色</option>
-        <option value="system" data-i18n="theme.system">跟随系统</option>
-      </select>
-    </label>
-    <button id="newSession" class="btn btn-block">
-      <span class="ico" data-icon="plus"></span><span data-i18n="ctl.new">新对话</span>
-    </button>
-    <div class="who" id="who" hidden>
-      <span class="who-name" id="whoName"></span>
-      <button id="signOut" class="link" data-i18n="gate.signOut">退出登录</button>
-    </div>
-  </div>
-</aside>
-
-<!-- ── workspace ───────────────────────────────────────────────────────── -->
-<div class="workspace">
-  <main class="chat">
-    <header class="chat-head">
-      <!-- Only rendered on viewports where the panel it opens is off-canvas.
-           Below 900px that is the conversation list; below 1180px, 我的概览 —
-           which used to be display:none there, taking the consent controls with
-           it, so on a phone there was no way to withdraw a permission at all. -->
-      <button type="button" id="navToggle" class="icon-btn drawer-btn for-nav"
-              aria-controls="sidebar" aria-expanded="false"
-              data-i18n-title="ctl.menu" data-i18n-aria="ctl.menu" title="会话和设置">
-        <span class="ico" data-icon="menu"></span>
-      </button>
-      <div class="crumbs">
-        <span class="crumb-chip" data-i18n="crumb.serving">为你服务中</span>
-        <span class="crumb-sep">/</span>
-        <span class="crumb-now" id="crumbIntent" data-i18n="crumb.waiting">还没开始</span>
+    <div class="nav-tools">
+      <!-- No data-i18n: the label is one of three strings depending on state,
+           so setThemeLabel owns it, the same way the app's gate heading works. -->
+      <button type="button" id="themeBtn" class="ghost" aria-live="polite">浅色</button>
+      <div class="lang" role="group" data-i18n-aria="a11y.language" aria-label="语言">
+        <button type="button" class="ghost" data-lang="zh-CN">中文</button>
+        <button type="button" class="ghost" data-lang="en">English</button>
       </div>
-      <div class="head-actions">
-        <span id="sampleFlag" class="flag" title="" data-i18n="banner.sampleShort">演示语料</span>
-        <span id="liveFlag" class="flag flag-off" title="" hidden data-i18n="banner.liveOffShort">未接全国检索</span>
-        <button id="techToggle" class="icon-btn" aria-pressed="false"
-                data-i18n-title="ctl.tech" title="显示系统运行详情">
-          <span class="ico" data-icon="gear"></span>
-        </button>
-        <button type="button" id="overviewToggle" class="icon-btn drawer-btn for-overview"
-                aria-controls="overview" aria-expanded="false"
-                data-i18n-title="panel.overview" data-i18n-aria="panel.overview" title="我的概览">
-          <span class="ico" data-icon="user"></span>
-        </button>
-      </div>
-    </header>
+      <a class="cta cta-sm" href="/app" data-i18n="home.cta.enter">进入对话</a>
+    </div>
+  </div>
+</header>
 
-    <div id="transcript" class="transcript" aria-live="polite"></div>
+<main id="main">
 
-    <form id="composer" class="composer">
-      <div class="input-shell">
-        <!-- Short on purpose, and it has to stay short. A one-row textarea clips
-             whatever its placeholder does not fit on one line, and the sentence
-             that used to be here wrapped to two lines at 1000px and four at
-             375px — clipped mid-word, as the first thing a reader saw.
-             The budget: it must fit one line at 320px with 大字号 (19px) on, which
-             is the narrowest case this supports. Measured there, the box gives
-             188px; "Tell me your situation" needs 178. A translation longer than
-             that clips silently, so measure before changing this string.
-             The examples are not lost — the quickstart chips sit directly above
-             this box, where they are tappable rather than only readable. -->
-        <textarea id="input" rows="1" data-i18n-ph="composer.placeholder"
-          placeholder="说说你的情况"></textarea>
-        <div class="input-actions">
-          <button type="button" id="mic" class="icon-btn" data-i18n-title="a11y.voiceIn" title="语音输入">
-            <span class="ico" data-icon="mic"></span>
-          </button>
-          <button type="submit" id="send" class="btn-send" data-i18n-title="composer.send" title="发送">
-            <span class="ico" data-icon="send"></span>
-          </button>
+<!-- ── hero ──────────────────────────────────────────────────────────────── -->
+<section class="hero">
+  <div class="sky" aria-hidden="true"></div>
+
+  <div class="wrap hero-in">
+    <p class="eyebrow reveal" data-i18n="home.hero.eyebrow">就业 · 培训 · 创业扶持 · 补贴 · 办事流程</p>
+    <h1 class="reveal" data-i18n="home.hero.title">把「不知道能做什么、去哪里办、够不够格」，变成一条走得通的路</h1>
+    <p class="lede reveal" data-i18n="home.hero.lede">阿桥 是一个会办事的对话智能体。先问清楚你的情况，再去找真实存在的岗位、培训、创业扶持和补贴；把公开的条件一条条念给你听——哪些已经符合，哪些不符合，哪些它也不确定；帮你把材料写出来，盯着后续，办不了就转给人。</p>
+
+    <div class="hero-act reveal">
+      <a class="cta cta-lg" href="/app" data-i18n="home.hero.start">开始对话</a>
+      <a class="ghost ghost-lg" href="#how" data-i18n="home.hero.seeHow">看它怎么工作</a>
+    </div>
+
+    <ul class="pills reveal">
+      <li data-i18n="home.hero.pill1">中文作答 · 全国可用</li>
+      <li data-i18n="home.hero.pill2">不判定资格，不给人打分</li>
+      <li data-i18n="home.hero.pill3">不知道，就说不知道</li>
+    </ul>
+  </div>
+
+  <!-- The bridge is the product's own metaphor, drawn once at full width: two
+       piers, an arch, the deck people actually cross, and its reflection. The
+       lanterns are the avatar's eyes at another scale, so the mark in the corner
+       and the picture behind the headline are recognisably the same object. -->
+  <div class="bridge-wrap" aria-hidden="true">
+    <svg class="bridge" viewBox="0 0 1200 300" preserveAspectRatio="xMidYMax slice">
+      <path class="b-arch" d="M170 196 Q600 22 1030 196"/>
+      <path class="b-hanger" d="M300 196 V128 M420 196 V88 M540 196 V64 M660 196 V64 M780 196 V88 M900 196 V128"/>
+      <path class="b-deck" d="M0 196 H1200"/>
+      <path class="b-pier" d="M170 196 V262 M1030 196 V262"/>
+      <circle class="b-lantern" cx="170" cy="182" r="7"/>
+      <circle class="b-lantern" cx="1030" cy="182" r="7"/>
+      <circle class="b-walker" cx="0" cy="187" r="6"/>
+      <path class="b-water" d="M0 262 H1200 M120 280 H520 M660 280 H1080"/>
+      <g class="b-reflect">
+        <path class="b-arch" d="M170 328 Q600 502 1030 328"/>
+        <path class="b-deck" d="M0 328 H1200"/>
+      </g>
+    </svg>
+  </div>
+</section>
+
+<!-- ── what it actually looks like ───────────────────────────────────────── -->
+<section class="section preview-sec">
+  <div class="wrap">
+    <p class="s-label reveal"><span class="s-num">01</span><span data-i18n="home.preview.label">一次真实形状的对话</span></p>
+    <h2 class="reveal" data-i18n="home.preview.title">你说一句处境，它给一条能走的路</h2>
+
+    <div class="chat reveal">
+      <p class="chat-tag" data-i18n="home.preview.sample">示例对话</p>
+
+      <div class="bubble bubble-you" data-i18n="home.preview.ask">我在成都，做过五年流水线，工厂关了，能做什么？</div>
+
+      <div class="turn">
+        <span class="turn-face" id="chatAvatar" aria-hidden="true"></span>
+        <div class="turn-body">
+          <p class="badge" data-i18n="home.preview.badge">已为你匹配：个人 · 机会路径</p>
+          <p class="say" data-i18n="home.preview.say">先说能定的：你有五年制造业操作经验，人在成都。有一门数控操作培训正在招生，学费全免。它公开的条件我一条条念给你听。</p>
+
+          <article class="ocard">
+            <header class="ocard-head">
+              <h3 data-i18n="home.preview.cardTitle">数控（CNC）操作培训 · 第 14 期</h3>
+              <span class="ocard-id">SAMPLE/TRAIN/CNC-014</span>
+            </header>
+            <p class="tag-free" data-i18n="home.preview.free">学费全免</p>
+            <dl class="ocard-meta">
+              <div><dt data-i18n="home.preview.whereLabel">地点</dt><dd data-i18n="home.preview.where">成都市新都区 · 职业技能提升中心</dd></div>
+              <div><dt data-i18n="home.preview.whenLabel">时间</dt><dd data-i18n="home.preview.when">周一至周五 09:00–16:00 · 共 6 周</dd></div>
+              <div><dt data-i18n="home.preview.callLabel">电话</dt><dd>028-8888 0000</dd></div>
+            </dl>
+            <p class="ocard-need" data-i18n="home.preview.need">需要准备：身份证 · 失业登记证明 · 一寸照片 2 张</p>
+
+            <p class="crit-title" data-i18n="home.preview.critTitle">公开条件</p>
+            <ul class="crit">
+              <li class="is-ok"><b data-i18n="home.preview.metLabel">已符合</b><span data-i18n="home.preview.met">16–60 周岁，持本市居住证</span></li>
+              <li class="is-unknown"><b data-i18n="home.preview.unknownLabel">不确定</b><span data-i18n="home.preview.unknown">近 12 个月是否已领过同类补贴——这条查不到，要打 12333 问</span></li>
+              <li class="is-unmet"><b data-i18n="home.preview.unmetLabel">未符合</b><span data-i18n="home.preview.unmet">没有</span></li>
+            </ul>
+          </article>
+
+          <p class="trace" data-i18n="home.preview.trace">› 系统运行详情 · 6 步</p>
         </div>
       </div>
-      <div class="composer-foot">
-        <label class="check"><input type="checkbox" id="a11yPlain"><span data-i18n="a11y.plain">大白话模式</span></label>
-        <label class="check"><input type="checkbox" id="a11yLarge"><span data-i18n="a11y.large">大字号</span></label>
-        <label class="check"><input type="checkbox" id="a11yVoice"><span data-i18n="a11y.voice">读给我听</span></label>
-        <span id="status" class="status"></span>
-      </div>
-    </form>
-  </main>
 
-  <!-- ── overview ──────────────────────────────────────────────────────── -->
-  <aside class="overview" id="overview" aria-label="Overview">
-    <div class="overview-head">
-      <h2 data-i18n="panel.overview">我的概览</h2>
+      <p class="chat-foot" data-i18n="home.preview.disclaimer">本实例的岗位、培训、补贴都是虚构样例，编号以 SAMPLE/ 开头。接入真实数据源前，请勿据此办事。</p>
+    </div>
+  </div>
+</section>
+
+<!-- ── how ───────────────────────────────────────────────────────────────── -->
+<section class="section" id="how">
+  <div class="wrap">
+    <p class="s-label reveal"><span class="s-num">02</span><span data-i18n="home.how.label">它怎么帮你</span></p>
+    <h2 class="reveal" data-i18n="home.how.title">五步，一步都不替你做决定</h2>
+
+    <ol class="steps">
+      <li class="reveal"><b data-i18n="home.how.s1t">问清楚</b><p data-i18n="home.how.s1b">你会什么、做过什么、在哪个城市、有什么走不开的事。只问必要的；问过一次就记住，除非你让它忘掉。</p></li>
+      <li class="reveal"><b data-i18n="home.how.s2t">找得到</b><p data-i18n="home.how.s2b">在语料库和全国网上检索里同时找岗位、培训、创业扶持和补贴。每一条都带出处，带发布时间——一条本地的旧信息和一条外地的新信息，浪费的是两种不同的东西。</p></li>
+      <li class="reveal"><b data-i18n="home.how.s3t">念条件</b><p data-i18n="home.how.s3b">把公开的门槛一条条读出来：已符合、未符合、不确定。它不替任何机构下结论——谁说了算，它会告诉你。</p></li>
+      <li class="reveal"><b data-i18n="home.how.s4t">帮你办</b><p data-i18n="home.how.s4b">材料替你起草。真要提交的那一步，先把要发出去的原文摆给你看；你点头之前，什么都没有发生。</p></li>
+      <li class="reveal"><b data-i18n="home.how.s5t">盯着办，或者转给人</b><p data-i18n="home.how.s5b">后续每一步都有人负责、有渠道、有先后。走不下去，它把已经写好的情况一起转给真人，你不用从头再说一遍。</p></li>
+    </ol>
+  </div>
+</section>
+
+<!-- ── who ───────────────────────────────────────────────────────────────── -->
+<section class="section" id="who">
+  <div class="wrap">
+    <p class="s-label reveal"><span class="s-num">03</span><span data-i18n="home.who.label">给谁用</span></p>
+    <h2 class="reveal" data-i18n="home.who.title">四类人，四条不同的路</h2>
+    <p class="sub reveal" data-i18n="home.who.sub">不是四个话术模板。每一类都有自己的目标、边界、可用工具、必要信息和验收标准，写在同一份注册表里——路由、权限、提示词、界面和评测都读它。</p>
+
+    <div class="grid grid-2">
+      <article class="card reveal">
+        <span class="ico card-ico" data-icon="user" aria-hidden="true"></span>
+        <h3 data-i18n="home.who.a1t">一个人 · 机会路径</h3>
+        <p data-i18n="home.who.a1b">你自己张罗工作、培训或补贴。记下你的技能、经历、城市和难处，匹配真实的岗位、培训、创业扶持和补贴，把公开条件念清楚，帮你起草材料，跟进后续，讲明白流程怎么走。</p>
+      </article>
+      <article class="card reveal">
+        <span class="ico card-ico" data-icon="cap" aria-hidden="true"></span>
+        <h3 data-i18n="home.who.a2t">走常规路太贵的人 · 无障碍支持</h3>
+        <p data-i18n="home.who.a2b">毕业生、转岗工人、灵活就业者、农民工、照护家庭。先解决话题之前的摩擦：大白话、大字号、可朗读、方言口吻、可由窗口的人协助；永远给得出一个电话或一个带办公时间的地址；该转人的时候早点转，并且情况已经替你写好了。</p>
+      </article>
+      <article class="card reveal">
+        <span class="ico card-ico" data-icon="route" aria-hidden="true"></span>
+        <h3 data-i18n="home.who.a3t">窗口和社区工作人员 · 服务串联</h3>
+        <p data-i18n="home.who.a3b">把就业、培训、社保、医保、托育、养老、住房的流程，按人串成一份可跟踪的清单：谁负责、走哪个渠道、哪一步依赖哪一步——让居民不用再自己当各个窗口之间的「接口人」。</p>
+      </article>
+      <article class="card reveal">
+        <span class="ico card-ico" data-icon="gear" aria-hidden="true"></span>
+        <h3 data-i18n="home.who.a4t">规划与政策 · 供需洞察</h3>
+        <p data-i18n="home.who.a4b">只看已授权、去标识的汇总。找出「岗位在这儿但人够不着」和「支持在那儿但没人来领」；带 k-匿名下限，每个数字旁边写着授权覆盖率，只讲相关，不讲因果。</p>
+      </article>
+    </div>
+  </div>
+</section>
+
+<!-- ── boundary ──────────────────────────────────────────────────────────── -->
+<section class="section band" id="boundary">
+  <div class="wrap">
+    <p class="s-label reveal"><span class="s-num">04</span><span data-i18n="home.bound.label">最要紧的一条边界</span></p>
+    <h2 class="reveal" data-i18n="home.bound.title">它不判定资格，也不给人打分</h2>
+    <p class="sub reveal" data-i18n="home.bound.sub">这不是免责声明。一个悄悄给人排名、再拿这个排名决定给谁看什么的系统，等于把它本来要绕开的那道关卡重建了一遍，而且比原来的窗口更难问责。所以下面这些是代码，不是文案：</p>
+
+    <!-- Three columns, and the third is the point: the identifier of the guard
+         that actually fires. It carries no data-i18n because it is a symbol in
+         the source, not prose — translating it would name something that does
+         not exist. Keeping it out of the swept text is also what lets the other
+         two columns stay plain strings; setLocale writes textContent, so any
+         markup inside a swept element would come back as literal angle brackets. -->
+    <div class="rules reveal">
+      <div class="rule-hd">
+        <span data-i18n="home.bound.colRule">规则</span>
+        <span data-i18n="home.bound.colBy">怎么保证</span>
+        <span data-i18n="home.bound.colGuard">拦它的那道闸</span>
+      </div>
+      <div class="rule">
+        <b data-i18n="home.bound.r1">不下资格结论</b>
+        <span data-i18n="home.bound.r1b">给出结论这件事在接口层就不存在；万一说了，回答会被拦下</span>
+        <code>criteria_explain · no_eligibility_verdict</code>
+      </div>
+      <div class="rule">
+        <b data-i18n="home.bound.r2">你的处境只会增加支持，不会减少</b>
+        <span data-i18n="home.bound.r2b">检索加权只做加法，且每一项都写明是哪一项；降权直接拦下</span>
+        <code>no_cohort_downranking</code>
+      </div>
+      <div class="rule">
+        <b data-i18n="home.bound.r3">不编造项目</b>
+        <span data-i18n="home.bound.r3b">回答里的每个编号都对着语料库核过</span>
+        <code>no_invented_identifiers</code>
+      </div>
+      <div class="rule">
+        <b data-i18n="home.bound.r4">不可逆的事，人先点头</b>
+        <span data-i18n="home.bound.r4b">同意绑在参数原文的哈希上——内容改了，之前的同意就不算数</span>
+        <code>approval</code>
+      </div>
+      <div class="rule">
+        <b data-i18n="home.bound.r5">关于你的事，先要你授权</b>
+        <span data-i18n="home.bound.r5b">四类授权，在任何工具正文运行之前检查</span>
+        <code>consent</code>
+      </div>
+      <div class="rule">
+        <b data-i18n="home.bound.r6">汇总里不出现个人</b>
+        <span data-i18n="home.bound.r6b">低于 k-匿名下限的格子直接不给，识别性字段拦下</span>
+        <code>k-anonymity · no_identifiers</code>
+      </div>
+      <div class="rule">
+        <b data-i18n="home.bound.r7">回答用你读得懂的语言</b>
+        <span data-i18n="home.bound.r7b">核的是发出去的那段字，不是那句指令</span>
+        <code>reply_language</code>
+      </div>
     </div>
 
-    <section class="card">
-      <div class="card-head">
-        <h3 data-i18n="panel.tasks">进行中任务</h3>
-        <span id="taskCount" class="card-note"></span>
-      </div>
-      <div id="tasks"></div>
-    </section>
+    <p class="note reveal" data-i18n="home.bound.note">被拦下的那一轮，界面会直说是哪条规则拦的，以及「什么都没做」。头像那张脸也会跟着把笑收起来。</p>
+  </div>
+</section>
 
-    <section class="mascot">
-      <div class="mascot-art">
-        <img class="mascot-img" id="mascotImg" src="/mascot.png" alt="" aria-hidden="true">
-        <span class="mascot-tag" data-i18n="mascot.tag">我是阿桥</span>
-      </div>
-      <p class="mascot-line" id="mascotLine" data-i18n="mascot.line">
-        条件我一条条念给你听。定不了的，我就说定不了。
-      </p>
-    </section>
+<!-- ── interface ─────────────────────────────────────────────────────────── -->
+<section class="section">
+  <div class="wrap">
+    <p class="s-label reveal"><span class="s-num">05</span><span data-i18n="home.feat.label">界面里看得到什么</span></p>
+    <h2 class="reveal" data-i18n="home.feat.title">改变了答案的东西，都在答案里</h2>
+    <p class="sub reveal" data-i18n="home.feat.sub">其余的折叠起来。调试它的人和读它的人看的是同一份记录，只是那份记录不再挡路。</p>
 
-    <section class="card">
-      <div class="card-head">
-        <h3 data-i18n="panel.records">档案记录</h3>
-        <button id="forget" class="link-danger" data-i18n="profile.clear">清空记录</button>
-      </div>
-      <div id="records"></div>
-    </section>
+    <div class="grid grid-3">
+      <article class="card sm reveal"><span class="ico card-ico" data-icon="route" aria-hidden="true"></span><h3 data-i18n="home.feat.f1t">路由徽章</h3><p data-i18n="home.feat.f1b">你看得见它把你归到哪一类，以及凭什么这样判。判错了，你可以自己改。</p></article>
+      <article class="card sm reveal"><span class="ico card-ico" data-icon="pin" aria-hidden="true"></span><h3 data-i18n="home.feat.f2t">机会卡</h3><p data-i18n="home.feat.f2b">名称和编号、金额或「学费全免」、地址、时间、电话、要带的材料，还有一个展开看公开条件和出处的入口。</p></article>
+      <article class="card sm reveal"><span class="ico card-ico" data-icon="check" aria-hidden="true"></span><h3 data-i18n="home.feat.f3t">审批卡</h3><p data-i18n="home.feat.f3b">要提交的原文先摆出来。在你点头之前，一个字都没发出去。</p></article>
+      <article class="card sm reveal"><span class="ico card-ico" data-icon="user" aria-hidden="true"></span><h3 data-i18n="home.feat.f4t">授权卡</h3><p data-i18n="home.feat.f4b">存什么、做什么用、存多久，用大白话写。四类授权都能随时收回。</p></article>
+      <article class="card sm reveal"><span class="ico card-ico" data-icon="gear" aria-hidden="true"></span><h3 data-i18n="home.feat.f5t">系统运行详情</h3><p data-i18n="home.feat.f5b">每一次工具调用、每一条发现、整条轨迹，默认折叠，想看随时展开。</p></article>
+      <article class="card sm reveal"><span class="ico card-ico" data-icon="mic" aria-hidden="true"></span><h3 data-i18n="home.feat.f6t">朗读与语音输入</h3><p data-i18n="home.feat.f6b">用浏览器自己的语音能力，音频不离开你的设备。浏览器不支持时，它直说，并给出线下那条路。</p></article>
+      <article class="card sm reveal"><span class="ico card-ico" data-icon="eye" aria-hidden="true"></span><h3 data-i18n="home.feat.f7t">大白话 · 大字号</h3><p data-i18n="home.feat.f7b">不是前端改写。走的是智能体自己那条无障碍设置的路，所以下一句回答本身就变了。</p></article>
+      <article class="card sm reveal"><span class="ico card-ico" data-icon="chat" aria-hidden="true"></span><h3 data-i18n="home.feat.f8t">中文 / English</h3><p data-i18n="home.feat.f8b">界面和回答都能切。切换影响的是下一句回答，不是下一个会话。</p></article>
+      <article class="card sm reveal"><span class="ico card-ico" data-icon="alert" aria-hidden="true"></span><h3 data-i18n="home.feat.f9t">查不了，就说查不了</h3><p data-i18n="home.feat.f9b">语料没覆盖、检索没配置，它会说这是「查不了」，不是「没有」，并给出官方入口和 12333。</p></article>
+    </div>
+  </div>
+</section>
 
-    <section class="card">
-      <div class="card-head">
-        <h3 data-i18n="panel.consent">授权</h3>
-      </div>
-      <div id="consents"></div>
-    </section>
-  </aside>
-</div>
+<!-- ── voice ─────────────────────────────────────────────────────────────── -->
+<section class="section band">
+  <div class="wrap voice">
+    <div class="voice-art reveal">
+      <img src="/mascot.png" alt="" width="260" height="260">
+      <span class="voice-mark" id="voiceAvatar" aria-hidden="true"></span>
+    </div>
+    <div class="voice-text">
+      <p class="s-label reveal"><span class="s-num">06</span><span data-i18n="home.voice.label">阿桥 是谁</span></p>
+      <h2 class="reveal" data-i18n="home.voice.title">一个对谁都没有权力的名字</h2>
+      <p class="reveal" data-i18n="home.voice.p1">桥，是这个产品自己的比喻。单字前面加「阿」，是叫熟人的叫法，不是叫官方的叫法——这就是设计上的决定：这套系统对谁都没有权力。它不判定资格，不给人打分，它说清楚谁说了算。叫「顾问」会宣称一种它没有的身份，而它面对的人，往往一听到官腔就想到自己办不完的手续。</p>
+      <p class="reveal" data-i18n="home.voice.p2">语气跟着这个来：话短，冷静，从不安慰。不说「别担心」。不知道就直说一次。它把你当成一个能自己做事的人。也正因为温情最容易磨掉一句诚实的「不行」，这个人设配的是一道检查而不是一个愿望：说了没有事实撑着的宽心话，就会被拦下。</p>
+      <p class="reveal" data-i18n="home.voice.p3">头像是一座读起来像脸的桥：桥面上两盏灯是眼睛，下面的拱是嘴。四种表情，真正重要的是那张严肃的脸——被拦下或被拒绝的时候，拱会拉平。一个在说「我把那句话拦下来了」的时候还在笑的界面，正是这个人设在文字上禁止的事。</p>
+    </div>
+  </div>
+</section>
 
-<script type="module" src="/app.js"></script>
+<!-- ── limits ────────────────────────────────────────────────────────────── -->
+<section class="section" id="limits">
+  <div class="wrap">
+    <p class="s-label reveal"><span class="s-num">07</span><span data-i18n="home.limits.label">真话</span></p>
+    <h2 class="reveal" data-i18n="home.limits.title">这个版本做不到的事</h2>
+    <p class="sub reveal" data-i18n="home.limits.sub">一个禁止自己说宽心话的产品，首页也不该说。</p>
+
+    <div class="grid grid-2">
+      <article class="card warn reveal"><h3 data-i18n="home.limits.l1t">语料是虚构的</h3><p data-i18n="home.limits.l1b">21 条岗位、12 份办事指南，形状照着真的做，好让整条链路能端到端跑通。编号以 SAMPLE/ 开头，这个前缀会一直显示到屏幕上。</p></article>
+      <article class="card warn reveal"><h3 data-i18n="home.limits.l2t">「提交」没有对接受理系统</h3><p data-i18n="home.limits.l2b">它记录并跟踪这次申报，同时明说你还得自己走一遍它展示出来的渠道。一个假装已经替你提交了的演示，比一个承认做不到的更糟。</p></article>
+      <article class="card warn reveal"><h3 data-i18n="home.limits.l3t">方言是口吻，不是方言</h3><p data-i18n="home.limits.l3b">它能把话说得更近人，但它不会假装自己听得懂或说得出你的方言。它照实说。</p></article>
+      <article class="card warn reveal"><h3 data-i18n="home.limits.l4t">全国实时检索要单独配置</h3><p data-i18n="home.limits.l4b">没配的时候，语料库没覆盖的城市只能给到官方入口和 12333，给不出具体的用人单位或课程。那是「查不了」，不是「没有」——界面上会这样写。</p></article>
+    </div>
+  </div>
+</section>
+
+<!-- ── cta ───────────────────────────────────────────────────────────────── -->
+<section class="section end">
+  <div class="wrap end-in reveal">
+    <h2 data-i18n="home.end.title">现在就问它一句</h2>
+    <p data-i18n="home.end.lede">用你自己的话说清处境就够了：在哪个城市，会点什么，卡在哪一步。</p>
+    <a class="cta cta-lg" href="/app" data-i18n="home.hero.start">开始对话</a>
+    <p class="note" data-i18n="home.end.note">注册需要邀请码。没有的话，问一下把链接发给你的人。</p>
+  </div>
+</section>
+
+</main>
+
+<footer class="foot">
+  <div class="wrap foot-in">
+    <p><b data-i18n="app.name">阿桥</b> · Opportunity Bridge Agent</p>
+    <p class="foot-links">
+      <a href="https://github.com/damonleelcx/Opportunity-Bridge-Agent" rel="noopener">GitHub</a>
+      <span aria-hidden="true">·</span>
+      <span data-i18n="home.foot.licence">Apache 2.0</span>
+    </p>
+    <p class="foot-note" data-i18n="home.foot.note">运行在 DeepSeek 上，默认中文作答，全国可用。</p>
+  </div>
+</footer>
+
+<script type="module" src="/home.js"></script>
 </body>
 </html>

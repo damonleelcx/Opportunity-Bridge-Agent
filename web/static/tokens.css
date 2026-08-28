@@ -1,0 +1,120 @@
+/* 阿桥 — the design tokens, and only the tokens.
+ *
+ * Split out of styles.css when the landing page arrived. Two documents now paint
+ * this product — the landing page at `/` and the app at `/app` — and a colour
+ * defined twice is a colour that drifts. Whichever document is being read, the
+ * brand blue, the ink ramp, the radii and all three themes come from here.
+ *
+ * Nothing in this file selects an element. Layout for the app is styles.css;
+ * layout for the landing page is home.css; both link this one first.
+ */
+
+/* Light is the default, and it is the default HERE rather than only in app.js.
+   A theme decided by a script paints the other one first on every load, and the
+   people this is for open it on borrowed and public machines whose OS setting is
+   not theirs. So bare :root — what the document has before any script runs, and
+   what it keeps unless somebody chooses otherwise — is light. Following the OS
+   is now an explicit opt-in and carries data-theme="system".
+   Why, and the encoding change it forced: docs/14-interface.md, "Theme". */
+:root, :root[data-theme="light"] { color-scheme: light; }
+:root[data-theme="dark"] { color-scheme: dark; }
+:root[data-theme="system"] { color-scheme: light dark; }
+
+:root {
+
+  --bg: #f4f6fa;
+  --surface: #ffffff;
+  --surface-2: #f8fafc;
+  --line: #e2e8f0;
+  --line-soft: #f1f5f9;
+
+  --brand: #0284c7;
+  --brand-hover: #0369a1;
+  --brand-soft: #f0f9ff;
+  --brand-border: #e0f2fe;
+  --brand-ink: #ffffff;
+
+  --ink-900: #0f172a;
+  --ink-700: #1e293b;
+  --ink-500: #64748b;
+  --ink-400: #94a3b8;
+
+  --ok: #059669; --ok-soft: #ecfdf5; --ok-border: #d1fae5;
+  --warn: #b45309; --warn-soft: #fffbeb; --warn-border: #fde68a;
+  --stop: #dc2626; --stop-soft: #fef2f2; --stop-border: #fecaca;
+
+  --av-bg: #e0f2fe; --av-glow: #ffffff; --av-ink: #0284c7; --av-water: #7dd3fc;
+
+  --r-xs: 8px; --r-sm: 12px; --r: 16px; --r-lg: 22px;
+  --fs: 15px;
+  --mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
+  --shadow-sm: 0 1px 2px rgba(15, 23, 42, .05);
+  --shadow: 0 4px 14px rgba(15, 23, 42, .07);
+}
+
+/* Dark tokens live in one block, applied twice: once for the OS preference — and
+   only for readers who asked to follow it — and once for an explicit dark choice.
+   Defining a colour ONLY inside a media query is how a theme toggle ends up
+   half-working. */
+@media (prefers-color-scheme: dark) {
+  :root[data-theme="system"] {
+    --bg: #0b1017;
+    --surface: #111823;
+    --surface-2: #161f2c;
+    --line: #24303f;
+    --line-soft: #1b2532;
+
+    --brand: #38bdf8;
+    --brand-hover: #7dd3fc;
+    --brand-soft: #10202e;
+    --brand-border: #1c3a4f;
+    --brand-ink: #06131d;
+
+    --ink-900: #e8eef6;
+    --ink-700: #cdd7e3;
+    --ink-500: #93a1b3;
+    --ink-400: #6c7c90;
+
+    --ok: #34d399; --ok-soft: #0e2a20; --ok-border: #1c4636;
+    --warn: #fbbf24; --warn-soft: #2a2110; --warn-border: #4a3a12;
+    --stop: #f87171; --stop-soft: #2b1414; --stop-border: #4d2020;
+
+    --av-bg: #14293b; --av-glow: #1b3448; --av-ink: #7dd3fc; --av-water: #3c5f7d;
+    --shadow-sm: 0 1px 2px rgba(0, 0, 0, .4);
+    --shadow: 0 6px 18px rgba(0, 0, 0, .45);
+  }
+}
+
+:root[data-theme="dark"] {
+  --bg: #0b1017;
+  --surface: #111823;
+  --surface-2: #161f2c;
+  --line: #24303f;
+  --line-soft: #1b2532;
+
+  --brand: #38bdf8;
+  --brand-hover: #7dd3fc;
+  --brand-soft: #10202e;
+  --brand-border: #1c3a4f;
+  --brand-ink: #06131d;
+
+  --ink-900: #e8eef6;
+  --ink-700: #cdd7e3;
+  --ink-500: #93a1b3;
+  --ink-400: #6c7c90;
+
+  --ok: #34d399; --ok-soft: #0e2a20; --ok-border: #1c4636;
+  --warn: #fbbf24; --warn-soft: #2a2110; --warn-border: #4a3a12;
+  --stop: #f87171; --stop-soft: #2b1414; --stop-border: #4d2020;
+
+  --av-bg: #14293b; --av-glow: #1b3448; --av-ink: #7dd3fc; --av-water: #3c5f7d;
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, .4);
+  --shadow: 0 6px 18px rgba(0, 0, 0, .45);
+}
+
+/* The type stack was inline in the app's `body` rule until the landing page
+   needed the same one. It is a token now for the same reason the colours are. */
+:root {
+  --font: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC",
+          "Hiragino Sans GB", "Noto Sans SC", "Microsoft YaHei", Roboto, sans-serif;
+}

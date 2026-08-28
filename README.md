@@ -23,6 +23,12 @@ DeepSeek, answering in Chinese, nationwide.
 See [docs/15-deployment.md](docs/15-deployment.md) (⚠️ public and
 unauthenticated; the exposure is a token bill, not data).
 
+`/` is the landing page — what it does, what it refuses to do, and what it
+cannot do yet. The conversation is at **`/app`**, and a signed-in reader opening
+`/` is forwarded there. Before this, `/` was the app, which meant a stranger who
+followed a link arrived at an unlabelled password box; the write-up is in
+[docs/14-interface.md](docs/14-interface.md), "The landing page".
+
 ```bash
 make demo          # offline, no API key: http://localhost:8787
 make env           # create .env from .env.example, then fill in your key
@@ -113,7 +119,15 @@ Full write-up: [docs/13-name-and-voice.md](docs/13-name-and-voice.md).
 
 ## What the interface shows
 
-Three columns: conversations on the left, the conversation in the middle, **我的
+`/` is the landing page: the claim, one sample conversation rendered exactly as
+the app renders it, the five steps, the four audiences, the boundary as a table
+of rule → guard, and the honest limits **above** the final call to action — a
+product that ships a check against false reassurance does not get to oversell
+itself on its own front page. It fetches nothing from the network, hides nothing
+without JavaScript, and exists in both languages; all three are fenced in
+`web/interface_test.go`.
+
+The conversation itself is at `/app`. Three columns: conversations on the left, the conversation in the middle, **我的
 概览** on the right — open tasks, 阿桥, everything held about the person, and the
 four permissions with a control to grant or withdraw each.
 

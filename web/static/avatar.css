@@ -1,0 +1,40 @@
+/* 阿桥's face.
+ *
+ * Split out of styles.css alongside tokens.css, for the same reason: two
+ * documents draw this mark now. avatar.js is the geometry, this is the ink, and
+ * both the app and the landing page link them together — the alternative is a
+ * second copy of these colours and a face that themes differently depending on
+ * which page you are on.
+ *
+ * The colours come from the --av-* tokens in tokens.css.
+ */
+
+.oba-avatar { width: 100%; height: 100%; display: block; }
+.av-bg { fill: var(--av-bg); }
+.av-glow { fill: var(--av-glow); opacity: .55; }
+.av-ink { fill: var(--av-ink); }
+.av-line { fill: none; stroke: var(--av-ink); stroke-width: 2.6; stroke-linecap: round; stroke-linejoin: round; }
+.av-thin { stroke: var(--av-water); stroke-width: 1.8; }
+.av-water { opacity: .8; }
+.av-mouth { transition: d .18s ease; }
+.av-walker { fill: var(--av-ink); opacity: 0; }
+.av-ears { opacity: 0; stroke: var(--av-ink); }
+
+.mood-thinking .av-walker { opacity: 1; animation: av-walk 1.9s ease-in-out infinite; }
+@keyframes av-walk {
+  0% { transform: translateX(0); opacity: 0 }
+  12% { opacity: 1 } 88% { opacity: 1 }
+  100% { transform: translateX(22px); opacity: 0 }
+}
+.mood-listening .av-ears { opacity: 1; animation: av-listen 1.4s ease-in-out infinite; }
+@keyframes av-listen { 0%,100% { opacity: .35 } 50% { opacity: 1 } }
+
+/* It does not smile while refusing; the arch flattens instead. The ink stays its
+   normal colour — greying the mark reads as "broken", and it is not broken. */
+.mood-serious .av-bg { fill: var(--surface-2); }
+.mood-serious .av-glow { opacity: .3; }
+
+@media (prefers-reduced-motion: reduce) {
+  .mood-thinking .av-walker { opacity: 1; animation: none; transform: translateX(12px); }
+  .mood-listening .av-ears { opacity: 1; animation: none; }
+}

@@ -1,0 +1,396 @@
+/* 阿桥 — the landing page at `/`.
+ *
+ * The app used to be the first screen, which meant a stranger who followed a
+ * link arrived at an unlabelled password box. This page is what they get
+ * instead. It has one job: say what 阿桥 does, what it refuses to do, and what
+ * it cannot do yet — and then get out of the way of the button.
+ *
+ * It inherits three constraints from the app, and they are why it looks the way
+ * it does rather than the way a landing page usually looks:
+ *
+ *   - Every byte is served by the binary. No CDN, no web font, no icon font.
+ *     The type is the reader's own system stack; the pictures are inline SVG.
+ *   - It has to survive 150% text and a phone. Nothing here has a fixed height,
+ *     the scale is clamp()-based, and every grid wraps rather than scrolls.
+ *   - Colour never carries meaning alone. The met / unsure / unmet rows in the
+ *     sample card are labelled in words as well as tinted, because a window
+ *     terminal in daylight loses hue before it loses text.
+ *
+ * Tokens come from tokens.css, shared with the app. Only the values that exist
+ * for this page — the sky wash, the glass of the header, the bridge's inks —
+ * are defined here, and they are defined for all three themes in the same
+ * shape tokens.css uses, so the toggle cannot half-work.
+ */
+
+:root {
+  --sky-a: #d6ecfb;
+  --sky-b: #e9f4ff;
+  --glass: rgba(255, 255, 255, .78);
+  --br-line: #b9d7ee;
+  --br-soft: #d7e7f5;
+  --br-water: #cfe0ee;
+  --band: #eef3f9;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root[data-theme="system"] {
+    --sky-a: #10283a;
+    --sky-b: #0d1a26;
+    --glass: rgba(17, 24, 35, .78);
+    --br-line: #2f5670;
+    --br-soft: #1e3547;
+    --br-water: #1a2a38;
+    --band: #0e151e;
+  }
+}
+
+:root[data-theme="dark"] {
+  --sky-a: #10283a;
+  --sky-b: #0d1a26;
+  --glass: rgba(17, 24, 35, .78);
+  --br-line: #2f5670;
+  --br-soft: #1e3547;
+  --br-water: #1a2a38;
+  --band: #0e151e;
+}
+
+* { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--ink-700);
+  font: var(--fs)/1.75 var(--font);
+  -webkit-font-smoothing: antialiased;
+  overflow-x: hidden;
+}
+
+.wrap { width: 100%; max-width: 1120px; margin: 0 auto; padding: 0 clamp(20px, 4vw, 40px); }
+
+a { color: var(--brand); }
+
+h1, h2, h3 { color: var(--ink-900); margin: 0; line-height: 1.35; font-weight: 700; }
+h1 { font-size: clamp(1.95rem, 4.6vw, 3.5rem); line-height: 1.25; letter-spacing: -.01em; }
+h2 { font-size: clamp(1.5rem, 2.9vw, 2.3rem); }
+h3 { font-size: 1.05rem; }
+p { margin: 0; }
+code { font-family: var(--mono); font-size: .84em; }
+
+/* The reader who never gets the script still gets the page.
+   `.reveal` is visible by default and only hidden once the inline head script
+   has stamped `js` on <html> — so a blocked, failed or slow module leaves a
+   readable document rather than a column of empty space. */
+.reveal { transition: opacity .55s ease, transform .55s ease; }
+html.js .reveal { opacity: 0; transform: translateY(14px); }
+html.js .reveal.in { opacity: 1; transform: none; }
+
+@media (prefers-reduced-motion: reduce) {
+  html.js .reveal { opacity: 1; transform: none; transition: none; }
+  .b-walker { animation: none !important; }
+}
+
+.skip {
+  position: absolute; left: -9999px; top: 8px; z-index: 100;
+  background: var(--surface); color: var(--ink-900);
+  border: 1px solid var(--line); border-radius: var(--r-sm); padding: 10px 14px;
+}
+.skip:focus { left: 12px; }
+
+:where(a, button):focus-visible {
+  outline: 2px solid var(--brand); outline-offset: 3px; border-radius: var(--r-xs);
+}
+
+/* ── the header ─────────────────────────────────────────────────────────── */
+
+.nav {
+  position: sticky; top: 0; z-index: 40;
+  background: var(--glass);
+  border-bottom: 1px solid transparent;
+  backdrop-filter: saturate(150%) blur(14px);
+  -webkit-backdrop-filter: saturate(150%) blur(14px);
+  transition: border-color .25s ease;
+}
+.nav.is-stuck { border-bottom-color: var(--line); }
+.nav-in { display: flex; align-items: center; gap: 18px; min-height: 62px; flex-wrap: wrap; }
+
+.brand { display: inline-flex; align-items: center; gap: 10px; text-decoration: none; margin-right: auto; }
+.brand-mark { width: 34px; height: 34px; display: inline-flex; flex: none; }
+.brand-mark svg { width: 100%; height: 100%; }
+.brand-text { display: flex; flex-direction: column; line-height: 1.15; }
+.brand-text b { color: var(--ink-900); font-size: 1rem; }
+.brand-text small { color: var(--ink-400); font-size: .68rem; letter-spacing: .06em; text-transform: uppercase; }
+
+.nav-links { display: none; gap: 22px; }
+.nav-links a { color: var(--ink-500); text-decoration: none; font-size: .88em; }
+.nav-links a:hover { color: var(--brand); }
+
+.nav-tools { display: flex; align-items: center; gap: 8px; }
+.lang { display: inline-flex; align-items: center; gap: 2px; }
+.lang .ghost.is-on { color: var(--brand); background: var(--brand-soft); }
+
+@media (min-width: 900px) { .nav-links { display: flex; } }
+
+/* The header is sticky, so anything it wraps onto a second row it keeps, for
+   the whole page. At 360px the brand plus four controls wrapped and cost 97px
+   of a 780px screen permanently. What goes, in this order: the section links
+   (they duplicate scrolling), then the theme control (a preference, and the
+   default is already the right one for most readers), then the wordmark under
+   阿桥 — never the language pair, because the first screen of a bilingual
+   product has to be reachable in both languages, and never the button the whole
+   page exists to point at. */
+@media (max-width: 620px) { .nav-links, #themeBtn { display: none; } }
+@media (max-width: 560px) {
+  .brand-text small { display: none; }
+  .nav-in { gap: 10px; }
+  .ghost { padding: 7px 9px; }
+  .cta-sm { padding: 9px 14px; }
+}
+
+/* ── shared controls ────────────────────────────────────────────────────── */
+
+.cta {
+  display: inline-flex; align-items: center; justify-content: center;
+  background: var(--brand); color: var(--brand-ink); border: 1px solid var(--brand);
+  border-radius: 999px; text-decoration: none; font-weight: 600;
+  padding: 9px 18px; font-size: .9em; white-space: nowrap;
+  transition: background .18s ease, transform .18s ease, box-shadow .18s ease;
+}
+.cta:hover { background: var(--brand-hover); border-color: var(--brand-hover); transform: translateY(-1px); }
+.cta-lg { padding: 14px 30px; font-size: 1.02em; box-shadow: 0 10px 26px rgba(2, 132, 199, .26); }
+.cta-lg:hover { box-shadow: 0 14px 32px rgba(2, 132, 199, .32); }
+
+.ghost {
+  display: inline-flex; align-items: center; justify-content: center;
+  background: transparent; border: 1px solid transparent; border-radius: 999px;
+  color: var(--ink-500); cursor: pointer; font: inherit; font-size: .84em;
+  padding: 7px 12px; text-decoration: none;
+}
+.ghost:hover { color: var(--ink-900); background: var(--surface-2); }
+.ghost-lg {
+  padding: 13px 26px; font-size: 1em; font-weight: 500;
+  border-color: var(--line); background: var(--surface); color: var(--ink-700);
+}
+.ghost-lg:hover { border-color: var(--brand-border); color: var(--brand); }
+
+/* ── the hero ───────────────────────────────────────────────────────────── */
+
+.hero { position: relative; overflow: hidden; padding: clamp(56px, 9vw, 104px) 0 clamp(200px, 26vw, 300px); }
+
+/* Two washes and a horizon. The page's own background shows through beneath,
+   so the whole thing themes from --bg with no second set of colours. */
+.sky {
+  position: absolute; inset: 0; pointer-events: none;
+  background:
+    radial-gradient(120% 78% at 50% -8%, var(--sky-a) 0%, transparent 62%),
+    radial-gradient(70% 50% at 12% 8%, var(--sky-b) 0%, transparent 70%),
+    radial-gradient(70% 50% at 88% 4%, var(--sky-b) 0%, transparent 70%);
+}
+
+.hero-in { position: relative; text-align: center; max-width: 900px; }
+.eyebrow {
+  color: var(--brand); font-size: .78rem; font-weight: 600;
+  letter-spacing: .1em; margin-bottom: 18px;
+}
+.hero h1 { margin-bottom: 22px; }
+.lede { color: var(--ink-500); font-size: clamp(1rem, 1.35vw, 1.12rem); max-width: 46em; margin: 0 auto; }
+
+.hero-act { display: flex; gap: 12px; justify-content: center; flex-wrap: wrap; margin: 34px 0 26px; }
+
+.pills { display: flex; flex-wrap: wrap; gap: 8px; justify-content: center; list-style: none; margin: 0; padding: 0; }
+.pills li {
+  border: 1px solid var(--line); background: var(--surface); color: var(--ink-500);
+  border-radius: 999px; padding: 6px 14px; font-size: .8em;
+}
+
+/* ── the bridge ─────────────────────────────────────────────────────────── */
+
+.bridge-wrap { position: absolute; left: 0; right: 0; bottom: 0; height: clamp(180px, 24vw, 280px); }
+.bridge { width: 100%; height: 100%; display: block; }
+.bridge path { fill: none; stroke-linecap: round; }
+.b-arch { stroke: var(--br-line); stroke-width: 3; }
+.b-deck { stroke: var(--br-line); stroke-width: 4; }
+.b-pier { stroke: var(--br-line); stroke-width: 5; }
+.b-hanger { stroke: var(--br-soft); stroke-width: 2; }
+.b-water { stroke: var(--br-water); stroke-width: 2; }
+.b-lantern { fill: var(--brand); opacity: .85; }
+.b-reflect { opacity: .16; }
+
+/* One dot crossing the deck, which is the whole product in one gesture:
+   somebody gets from this side to that one. Decoration only — it carries no
+   information, so switching it off for prefers-reduced-motion costs nothing. */
+.b-walker { fill: var(--brand); animation: cross 18s linear infinite; }
+@keyframes cross {
+  0%   { transform: translateX(-40px); opacity: 0; }
+  6%   { opacity: 1; }
+  94%  { opacity: 1; }
+  100% { transform: translateX(1240px); opacity: 0; }
+}
+
+/* ── sections ───────────────────────────────────────────────────────────── */
+
+.section { padding: clamp(56px, 8vw, 96px) 0; }
+/* The header is sticky, so an in-page link would otherwise land its target
+   underneath it — the reader clicks "它的边界" and arrives mid-paragraph with
+   the heading hidden. */
+.section[id], #main { scroll-margin-top: 84px; }
+.band { background: var(--band); }
+
+.s-label { display: flex; align-items: baseline; gap: 12px; color: var(--ink-400); font-size: .82em; margin-bottom: 12px; }
+.s-num { font-family: var(--mono); color: var(--brand); font-size: .82em; letter-spacing: .08em; }
+.sub { color: var(--ink-500); max-width: 58em; margin-top: 14px; }
+.section h2 + .grid, .section h2 + .steps, .sub + .grid, .sub + .steps, .sub + .rules, .section h2 + .rules { margin-top: 40px; }
+.note { color: var(--ink-400); font-size: .85em; margin-top: 20px; }
+
+.grid { display: grid; gap: 18px; }
+/* Exactly two, not auto-fit. Both .grid-2 sections hold FOUR cards, and an
+   auto-fit track lands on three-plus-one at desktop widths — the orphan reads
+   as a card that failed to load rather than as the fourth of a set. */
+.grid-2 { grid-template-columns: 1fr; }
+@media (min-width: 760px) { .grid-2 { grid-template-columns: 1fr 1fr; } }
+.grid-3 { grid-template-columns: repeat(auto-fit, minmax(258px, 1fr)); }
+
+.card {
+  background: var(--surface); border: 1px solid var(--line); border-radius: var(--r-lg);
+  padding: 24px; box-shadow: var(--shadow-sm);
+  transition: transform .2s ease, box-shadow .2s ease, border-color .2s ease;
+}
+.card:hover { transform: translateY(-2px); box-shadow: var(--shadow); border-color: var(--brand-border); }
+.card h3 { margin-bottom: 8px; }
+.card p { color: var(--ink-500); font-size: .92em; }
+.card.sm { padding: 20px; }
+.card.warn { background: var(--warn-soft); border-color: var(--warn-border); }
+.card.warn h3 { color: var(--warn); }
+.card.warn p { color: var(--ink-700); }
+.card.warn:hover { border-color: var(--warn); }
+
+.card-ico { display: inline-flex; width: 22px; height: 22px; color: var(--brand); margin-bottom: 12px; }
+.card-ico svg { width: 100%; height: 100%; }
+
+/* ── the sample conversation ────────────────────────────────────────────── */
+
+.preview-sec .chat {
+  margin-top: 36px; background: var(--surface); border: 1px solid var(--line);
+  border-radius: var(--r-lg); box-shadow: var(--shadow); padding: clamp(20px, 3vw, 34px);
+  max-width: 820px;
+}
+.chat-tag {
+  display: inline-block; font-size: .72em; letter-spacing: .08em; color: var(--ink-400);
+  border: 1px dashed var(--line); border-radius: 999px; padding: 3px 12px; margin-bottom: 20px;
+}
+.bubble {
+  background: var(--brand); color: var(--brand-ink); border-radius: var(--r) var(--r) 4px var(--r);
+  padding: 12px 16px; margin-left: auto; max-width: 34em; width: fit-content; font-size: .95em;
+}
+.turn { display: flex; gap: 12px; margin-top: 24px; }
+.turn-face { width: 34px; height: 34px; flex: none; }
+.turn-face svg { width: 100%; height: 100%; }
+.turn-body { min-width: 0; flex: 1; }
+
+.badge {
+  display: inline-block; background: var(--brand-soft); color: var(--brand);
+  border: 1px solid var(--brand-border); border-radius: 999px;
+  padding: 4px 12px; font-size: .76em; margin-bottom: 12px;
+}
+.say { color: var(--ink-700); font-size: .95em; }
+
+.ocard { margin-top: 16px; border: 1px solid var(--line); border-radius: var(--r); padding: 18px; background: var(--surface-2); }
+.ocard-head { display: flex; flex-wrap: wrap; align-items: baseline; gap: 8px; }
+.ocard-id { font-family: var(--mono); font-size: .7em; color: var(--ink-400); }
+.tag-free {
+  display: inline-block; margin-top: 10px; background: var(--ok-soft); color: var(--ok);
+  border: 1px solid var(--ok-border); border-radius: var(--r-xs); padding: 3px 10px; font-size: .78em; font-weight: 600;
+}
+.ocard-meta { display: grid; gap: 6px; margin: 14px 0 0; }
+.ocard-meta > div { display: flex; gap: 10px; font-size: .86em; }
+.ocard-meta dt { color: var(--ink-400); flex: none; min-width: 3.2em; }
+.ocard-meta dd { margin: 0; color: var(--ink-700); }
+.ocard-need { margin-top: 12px; font-size: .86em; color: var(--ink-500); }
+
+.crit-title { margin-top: 18px; font-size: .8em; color: var(--ink-400); letter-spacing: .06em; }
+.crit { list-style: none; margin: 8px 0 0; padding: 0; display: grid; gap: 8px; }
+/* Tint AND a word. The word is the part that survives a bad screen. */
+.crit li { display: flex; gap: 10px; align-items: baseline; font-size: .86em; border-left: 3px solid var(--line); padding-left: 12px; }
+.crit b { flex: none; font-size: .92em; }
+.crit span { color: var(--ink-500); }
+li.is-ok { border-left-color: var(--ok); }
+li.is-ok b { color: var(--ok); }
+li.is-unknown { border-left-color: var(--warn); }
+li.is-unknown b { color: var(--warn); }
+li.is-unmet { border-left-color: var(--ink-400); }
+li.is-unmet b { color: var(--ink-400); }
+
+.trace { margin-top: 16px; font-size: .78em; color: var(--ink-400); font-family: var(--mono); }
+.chat-foot { margin-top: 22px; padding-top: 16px; border-top: 1px solid var(--line-soft); font-size: .8em; color: var(--ink-400); }
+
+/* ── the five steps ─────────────────────────────────────────────────────── */
+
+.steps { list-style: none; margin: 40px 0 0; padding: 0; counter-reset: step; display: grid; gap: 2px; }
+.steps li {
+  counter-increment: step; position: relative;
+  padding: 22px 0 22px 62px; border-top: 1px solid var(--line-soft);
+}
+.steps li:last-child { border-bottom: 1px solid var(--line-soft); }
+/* The number is a bridge pier: a node on a hairline that runs the whole column. */
+.steps li::before {
+  content: counter(step, decimal-leading-zero);
+  position: absolute; left: 0; top: 22px;
+  font-family: var(--mono); font-size: .8em; color: var(--brand);
+  background: var(--brand-soft); border: 1px solid var(--brand-border);
+  border-radius: 999px; width: 40px; height: 28px;
+  display: flex; align-items: center; justify-content: center;
+}
+.steps li b { display: block; color: var(--ink-900); font-size: 1.05rem; margin-bottom: 6px; }
+.steps li p { color: var(--ink-500); font-size: .93em; max-width: 62em; }
+
+/* ── the rules ──────────────────────────────────────────────────────────── */
+
+.rules { border: 1px solid var(--line); border-radius: var(--r-lg); overflow: hidden; background: var(--surface); }
+.rule-hd, .rule { display: grid; gap: 4px 20px; padding: 16px clamp(16px, 2.4vw, 24px); }
+.rule-hd {
+  display: none; background: var(--surface-2); color: var(--ink-400);
+  font-size: .76em; letter-spacing: .07em;
+}
+.rule { border-top: 1px solid var(--line-soft); }
+.rule:first-of-type { border-top: 0; }
+.rule b { color: var(--ink-900); font-size: .95em; }
+.rule span { color: var(--ink-500); font-size: .9em; }
+.rule code { color: var(--brand); word-break: break-word; }
+
+@media (min-width: 880px) {
+  .rule-hd, .rule { grid-template-columns: 1.05fr 1.5fr .85fr; align-items: baseline; }
+  .rule-hd { display: grid; }
+}
+
+/* ── the voice section ──────────────────────────────────────────────────── */
+
+.voice { display: grid; gap: clamp(28px, 5vw, 56px); align-items: start; }
+@media (min-width: 900px) { .voice { grid-template-columns: 300px 1fr; } }
+
+.voice-art { position: relative; justify-self: center; }
+.voice-art img {
+  display: block; width: clamp(180px, 40vw, 260px); height: auto; border-radius: var(--r-lg);
+  background: var(--surface); border: 1px solid var(--line); box-shadow: var(--shadow);
+}
+.voice-mark {
+  position: absolute; right: -10px; bottom: -10px; width: 64px; height: 64px;
+  border-radius: 18px; overflow: hidden; box-shadow: var(--shadow);
+}
+.voice-mark svg { width: 100%; height: 100%; display: block; }
+.voice-text > p:not(.s-label) { color: var(--ink-500); margin-top: 16px; max-width: 54em; }
+.voice-text h2 { margin-bottom: 4px; }
+
+/* ── the closing call ───────────────────────────────────────────────────── */
+
+.end { text-align: center; }
+.end-in { max-width: 640px; margin: 0 auto; }
+.end h2 { margin-bottom: 14px; }
+.end p { color: var(--ink-500); }
+.end .cta { margin-top: 28px; }
+
+.foot { border-top: 1px solid var(--line); padding: 34px 0; background: var(--surface); }
+.foot-in { display: flex; flex-wrap: wrap; gap: 8px 24px; align-items: center; font-size: .85em; color: var(--ink-500); }
+.foot-in b { color: var(--ink-900); }
+.foot-links { display: flex; gap: 10px; align-items: center; }
+.foot-links a { text-decoration: none; }
+.foot-links a:hover { text-decoration: underline; }
+.foot-note { flex-basis: 100%; color: var(--ink-400); font-size: .92em; }

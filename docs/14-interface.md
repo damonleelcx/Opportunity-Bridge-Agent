@@ -170,6 +170,106 @@ already chosen.
 > in together. `git log` on the theme code lands on a commit about search
 > results, so this note is the pointer; `git log -S DEFAULT_THEME` finds it.
 
+## The landing page
+
+Until this, `/` **was** the app, and the app opens with a sign-in gate. So the
+address on every poster, every forwarded link and every QR code resolved, for
+anybody without an account, to an unlabelled username-and-password box. Nothing
+on that screen said what 阿桥 is, what it will not do, or that an invite code is
+what they are missing. The people this product is for are exactly the ones who
+read an unexplained login form as *this is not for me*.
+
+`/` is now a landing page and the app is at `/app`.
+
+### The shape
+
+Seven sections, in the order somebody decides with:
+
+| | |
+|---|---|
+| Hero | the one-line claim, both buttons, and the bridge |
+| 01 · a sample conversation | the product, rendered — routing badge, opportunity card, criteria as met / unsure / unmet, the collapsed trace |
+| 02 · five steps | ask → find → read out the criteria → draft and file → follow up or hand over |
+| 03 · four audiences | the four intents, in the reader's terms rather than the registry's |
+| 04 · the boundary | **it decides no eligibility and scores nobody**, as a table of rule → how it holds → which guard fires |
+| 05 · the interface | nine things the reader will actually see |
+| 06 · who 阿桥 is | the name, the voice, the four moods |
+| 07 · honest limits | the invented corpus, the unwired `application_submit`, register-not-dialect, the unconfigured live lookup |
+
+Section 07 is the one worth defending. A product whose persona ships a check
+against false reassurance (`no_false_reassurance`) does not get to oversell
+itself on its own front page. The limits are on the page, above the final call
+to action, in a warning-toned card — not in a footnote.
+
+Section 04 is the differentiator, and it is deliberately the most detailed thing
+on the page. Every other claim here is one an ordinary product could make.
+
+### The redirect, and the escape hatch
+
+A signed-in reader asked for the conversation, not the pitch, so the landing
+page forwards them to `/app`. It has to *ask* — the sign-in cookie is HttpOnly,
+so `GET /api/auth/me` is the only way this document can know — which means one
+local round trip during which they see the top of the landing page. The
+alternative, caching "signed in" in `localStorage` to redirect before paint, is
+a value that goes stale the moment somebody signs out in another tab, and a
+stale one sends a signed-**out** reader to a login form instead of to this page.
+The brief flash is the cheaper mistake.
+
+`/?stay=1` opts out of the forward. That is how the page stays reachable for
+anybody who already has an account — including whoever is reviewing a change to
+it.
+
+### What it shares with the app, and why the files moved
+
+The landing page is a second document, and a second document is where a product
+starts disagreeing with itself: a different blue, a different name for the same
+thing, a face drawn two ways. So the shared parts were split out rather than
+copied.
+
+| File | Holds | Read by |
+|---|---|---|
+| `tokens.css` | every colour, radius, the type scale, all three themes | both |
+| `avatar.css` | the ink for 阿桥's mark | both |
+| `avatar.js` | the geometry of the mark | both |
+| `icons.js` | the inlined glyphs | both |
+| `i18n.js` | every user-visible string, both languages | both |
+| `styles.css` | the app shell's layout | `app.html` |
+| `home.css` | the landing page's layout | `index.html` |
+
+`index.html` is the landing page; the conversational shell moved to `app.html`
+and is served by name at `/app`, so the URL people bookmark and paste has no
+`.html` in it.
+
+### Constraints it inherits
+
+The same three the app has, and they are why it does not look like a landing
+page usually looks:
+
+- **Every byte comes from the binary.** No CDN, no web font, no icon font. The
+  type is the reader's own system stack; the hero picture is inline SVG. This is
+  the deployability claim — a service window on a closed network — and it is
+  fenced by `TestLandingPageFetchesNothingFromTheNetwork`.
+- **Nothing is hidden unless the script is known to be running.** Sections fade
+  in on scroll, but the rule that hides them is guarded on `html.js`, stamped by
+  an inline script in the head. A reader whose script was blocked or delayed
+  gets a readable page rather than a column of empty space. Fenced by
+  `TestLandingPageHidesNothingWithoutJavaScript`.
+- **Both languages, or neither.** A missing string does not throw — `t()` falls
+  back to the key, so the headline renders as `home.hero.title`, in whichever
+  language the author was not reading. Fenced by
+  `TestLandingPageStringsExistInBothLanguages`.
+- **The markup and the table say the same thing.** The page ships its Chinese as
+  real text so it reads before any script runs, which means every Chinese string
+  exists twice. Edit only the markup and the page looks right until somebody
+  touches the language control, at which point `setLocale` sweeps `textContent`
+  and the older wording snaps back over the newer one. Nothing throws; the page
+  quietly un-edits itself. Fenced by
+  `TestLandingPageMarkupAgreesWithTheChineseTable`.
+
+The routing itself is fenced by
+`TestTheLandingPageAndTheAppAreBothServedSignedOut` in `internal/httpapi`: both
+documents must be served, and both must be reachable without an account.
+
 ## Kept from before
 
 Streaming SSE, the approval gate showing the exact arguments, the consent card,
