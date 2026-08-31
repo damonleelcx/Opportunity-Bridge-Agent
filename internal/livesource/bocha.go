@@ -40,6 +40,15 @@ type Bocha struct {
 	// Log records a window that failed while others succeeded. Without it a
 	// partial lookup is indistinguishable from a thin one.
 	Log *slog.Logger
+
+	// MaxInFlight caps how many requests this provider has on the wire at once.
+	// Zero means defaultMaxInFlight. See acquire for why the cap exists.
+	MaxInFlight int
+
+	// The gate is built on first use rather than in NewBocha so that a Bocha
+	// assembled as a struct literal is not silently ungated.
+	gateOnce sync.Once
+	gate     chan struct{}
 }
 
 const DefaultBochaEndpoint = "https://api.bochaai.com/v1/web-search"
@@ -87,6 +96,81 @@ var bochaWindows = []string{"oneWeek", "oneMonth", "noLimit"}
 // work today. Results are additionally ordered newest-first, so age is visible
 // even within what survives.
 const maxListingAge = 730 * 24 * time.Hour
+
+// defaultMaxInFlight is one, and one is measured rather than chosen.
+//
+// Swept against the live API on 2026-08-31, shaped like a real turn — three
+// lookups back to back, eighteen requests in total — and run in both orders so
+// that one width's leftovers could not be mistaken for the next width's result:
+//
+//	width  results  429s  windows lost  elapsed
+//	  1      15       0        0          4.8s
+//	  2      12       8        8          1.7s
+//	  3      10      10       10          1.2s
+//	  1      15       0        0          5.5s   (repeat, straight after width 3)
+//
+// Two at a time already fails badly, and serialising is not slow: eighteen
+// requests take about five seconds, inside a turn that is allowed 180.
+//
+// ── The measurement that nearly shipped the wrong number ─────────────────────
+//
+// An earlier probe concluded the ceiling was three, because three concurrent
+// requests succeeded repeatedly. Those probes were single lookups spaced six
+// seconds apart: that measures a BURST against an idle vendor, not the sustained
+// traffic a real turn produces. Set to three, a live turn still lost four
+// windows to 429. Whatever the vendor is counting, it refills slower than we
+// empty it, so the only width that holds is the one that never has two requests
+// outstanding.
+//
+// This is a property of the account, not of the code. A deployment on a larger
+// plan raises Bocha.MaxInFlight; it is not an env var because there is one
+// deployment and a knob nobody sets is a knob that goes stale.
+const defaultMaxInFlight = 1
+
+// acquire blocks until this provider may issue another request, or the context
+// ends.
+//
+// Why a gate exists at all. One Lookup fans out six requests - two intents by
+// three freshness windows - and a single turn issues several lookups, so an
+// ordinary question put roughly eighteen requests on the wire simultaneously.
+// The vendor refused most of them, and the refusals are not evenly damaging:
+// what dies is whichever window loses the race, which in the measured 深圳 turn
+// was `oneWeek`, three times out of three. Losing the freshest window drops the
+// answer back to `noLimit`, and that is how somebody was handed openings
+// eighteen months old while every log line said the lookup had succeeded - the
+// failure docs/bugfix/2026-08-28-live-listings-were-years-old.md exists to
+// prevent, arriving through a different door.
+//
+// What the cap trades. It converts "some requests fail, and the freshest one
+// fails first" into "some requests wait". Waiting is bounded by the caller's
+// context: the turn's own wall-clock budget already stops a lookup that takes
+// too long AND tells the person it stopped, which a silently stale listing does
+// not. At the measured width the whole fan-out costs about five seconds, well
+// inside the 180s a turn is allowed.
+//
+// The cap is per provider instance, not per Lookup, because the ceiling belongs
+// to the vendor account - two people asking at the same time share it.
+// See docs/bugfix/2026-08-31-honest-limits-were-not-honest.md
+func (b *Bocha) acquire(ctx context.Context) error {
+	b.gateOnce.Do(func() {
+		n := b.MaxInFlight
+		if n <= 0 {
+			n = defaultMaxInFlight
+		}
+		b.gate = make(chan struct{}, n)
+	})
+	select {
+	case b.gate <- struct{}{}:
+		return nil
+	case <-ctx.Done():
+		// Distinct from SEARCH_UNREACHABLE and SEARCH_RATE_LIMITED on purpose:
+		// this request was never sent, and an operator reading the logs should
+		// not go looking at the vendor for it.
+		return fmt.Errorf("SEARCH_NOT_ATTEMPTED: waited for a search slot and the turn ended first: %w", ctx.Err())
+	}
+}
+
+func (b *Bocha) release() { <-b.gate }
 
 func NewBocha(endpoint, key string) *Bocha {
 	if endpoint == "" {
@@ -297,6 +381,11 @@ type bochaHit struct {
 // fetchWindow performs one search. Everything it knows about failure is here, so
 // the caller can treat a window uniformly whether it answered or not.
 func (b *Bocha) fetchWindow(ctx context.Context, query, window string, count int) ([]bochaHit, error) {
+	if err := b.acquire(ctx); err != nil {
+		return nil, err
+	}
+	defer b.release()
+
 	body, err := json.Marshal(bochaRequest{
 		Query: query, Freshness: window, Summary: true, Count: count,
 	})

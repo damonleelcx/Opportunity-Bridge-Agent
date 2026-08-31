@@ -140,3 +140,29 @@ func TestFishRefusesEmptyText(t *testing.T) {
 		t.Fatal("empty text was accepted")
 	}
 }
+
+// An unrecognised backbone must be reported as one that trains.
+//
+// This table decides a sentence telling a person whether the answer they are
+// about to have read aloud may be trained on. Over-warning costs a reader some
+// caution they did not need; under-warning costs them something they cannot take
+// back. See docs/bugfix/2026-08-31-the-privacy-claim-was-false.md
+func TestUnknownBackboneIsAssumedToTrain(t *testing.T) {
+	for _, c := range []struct {
+		model string
+		train bool
+		why   string
+	}{
+		{"s2.1-pro-free", true, "the free backbone's terms permit it"},
+		{"", true, "empty resolves to the free default, exactly as NewFish resolves it"},
+		{"s2.1-pro", false, "the paid backbone's terms do not"},
+		{"s2-pro", false, "likewise"},
+		{"s1", true, "terms not checked, so it warns"},
+		{"s3-whatever-ships-next", true, "a backbone nobody has checked must not be assumed safe"},
+		{"S2.1-PRO", true, "matching is exact; a near-miss must not silently read as paid"},
+	} {
+		if got := tts.TrainsOnRequests(c.model); got != c.train {
+			t.Errorf("TrainsOnRequests(%q) = %v, want %v — %s", c.model, got, c.train, c.why)
+		}
+	}
+}

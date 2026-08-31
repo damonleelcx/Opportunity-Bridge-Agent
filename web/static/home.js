@@ -131,12 +131,16 @@ function renderDeploymentFacts() {
   if (!deployment) {
     fact("#corpusTally", "");
     fact("#liveStatus", "");
+    fact("#speechVendor", "");
     return;
   }
   fact("#corpusTally", t("home.limits.l1count")
     .replace("{records}", deployment.records)
     .replace("{guides}", deployment.guides));
   fact("#liveStatus", t(deployment.live ? "home.limits.l4on" : "home.limits.l4off"));
+  fact("#speechVendor", t(!deployment.speechVendor
+    ? "home.feat.f6off"
+    : deployment.speechTrains ? "home.feat.f6trained" : "home.feat.f6sent"));
 }
 
 function loadDeploymentFacts() {
@@ -149,15 +153,32 @@ function loadDeploymentFacts() {
     .then((m) => {
       const records = Number(m.corpus_opportunities);
       const guides = Number(m.corpus_knowledge_docs);
-      // A missing field arrives as NaN and an empty corpus as 0. Rendering
-      // either would put a new false sentence where the old one was, so the
-      // facts are dropped and the reason is said out loud rather than swallowed.
-      if (!Number.isFinite(records) || !Number.isFinite(guides) || records <= 0 || guides <= 0) {
+      // A missing field arrives as NaN, and that is the only unusable case.
+      //
+      // ⚠️ ZERO IS NOT A SHAPE MISMATCH. This guard originally refused `guides <= 0`
+      // as well, on the reasoning that a zero count meant a broken payload. Then
+      // the twelve invented procedure guides left the product and zero became the
+      // true answer — so the guard dropped ALL THREE deployment facts, including
+      // the live-lookup line, and the section rendered with three blank slots.
+      // A count of zero is a fact about a deployment; only an absent one is a bug.
+      // See docs/bugfix/2026-08-31-the-invented-corpus-left-the-product.md
+      if (!Number.isFinite(records) || !Number.isFinite(guides) || records < 1 || guides < 0) {
         console.warn("META_UNUSABLE: /api/meta carried no usable corpus counts; " +
           "the deployment facts under \"honest limits\" are omitted", m);
         return;
       }
-      deployment = { records, guides, live: m.live_search_enabled === true };
+      deployment = {
+        records, guides,
+        live: m.live_search_enabled === true,
+        // Absent or non-boolean is treated as "there is a vendor", because the
+        // sentence this picks is a privacy warning: guessing wrong towards
+        // "nothing is sent" is the guess that misleads somebody.
+        speechVendor: m.speech_vendor_enabled !== false,
+        // Same direction: absent or non-boolean means "assume it trains". The
+        // backbone is derived server-side, so this only ever guesses when
+        // /api/health answered something unexpected.
+        speechTrains: m.speech_vendor_trains_on_text !== false,
+      };
       renderDeploymentFacts();
     })
     .catch((e) => {

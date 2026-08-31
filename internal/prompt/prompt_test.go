@@ -125,3 +125,60 @@ func TestCharterForbidsMarkdown(t *testing.T) {
 		}
 	}
 }
+
+// Dialect is a text capability, and it has to be reachable without a tool call.
+//
+// The policy used to be a refusal reachable only through the AccessDialect
+// delivery rule. A live turn showed what that costs: somebody wrote in
+// Cantonese, asked in Cantonese to be answered in Cantonese, the agent never
+// called accessibility_set, and the answer came back in Mandarin opening with
+// "我写不到标准广东话". Writing in a variety IS the request.
+// See docs/bugfix/2026-08-31-dialect-moved-into-the-text.md
+// flat collapses whitespace so an assertion about WORDING is not also an
+// assertion about where the prompt constant happens to wrap its lines.
+func flat(s string) string { return strings.Join(strings.Fields(strings.ToLower(s)), " ") }
+
+func TestDialectPolicyAppliesWithoutAnyToolCall(t *testing.T) {
+	// No access needs set at all — the state the live failure was in.
+	ctx := flat(prompt.ContextLayer(opts("zh-CN")))
+	if !strings.Contains(ctx, "answer in the variety the person is using") {
+		t.Errorf("a person who simply writes in their own variety gets no dialect rule; "+
+			"the capability is wired to a state nobody sets\n\n%s", ctx)
+	}
+}
+
+// Three things have to survive, and the old policy had no test at all — which is
+// exactly how a rule gets quietly rewritten.
+func TestDialectRuleProtectsWhatThePersonMustReuse(t *testing.T) {
+	for _, locale := range []string{"zh-CN", "match"} {
+		low := flat(prompt.LanguageDirective(locale))
+		for _, want := range []struct{ phrase, why string }{
+			{"answer in the variety the person is using",
+				"the capability itself: without it the rule reads as a restriction again"},
+			{"official written form",
+				"a programme name or phone number rendered in dialect is one the counter does not recognise"},
+			{"say so",
+				"the honesty fallback: where it cannot write the variety it must admit that, not imitate"},
+			{"no dialect voice",
+				"read-aloud speaks these characters in Mandarin, and the answer must not promise otherwise"},
+		} {
+			if !strings.Contains(low, want.phrase) {
+				t.Errorf("[%s] the dialect policy no longer says %q — %s", locale, want.phrase, want.why)
+			}
+		}
+	}
+}
+
+// The saved preference must add persistence, not a second copy of the policy.
+// Two copies in one prompt is how two copies drift apart.
+func TestSavedDialectPreferenceDoesNotRestateThePolicy(t *testing.T) {
+	o := opts("zh-CN")
+	o.Session.AccessNeeds = []domain.AccessNeed{domain.AccessDialect}
+	ctx := prompt.ContextLayer(o)
+	if n := strings.Count(flat(ctx), "answer in the variety the person is using"); n != 1 {
+		t.Errorf("the dialect policy appears %d times in one prompt; it must be stated once", n)
+	}
+	if !strings.Contains(ctx, "standing preference") {
+		t.Error("the saved preference adds nothing: a turn written in standard Chinese would lose the dialect")
+	}
+}

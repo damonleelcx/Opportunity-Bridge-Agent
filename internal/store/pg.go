@@ -177,6 +177,9 @@ func (b *pgBackend) Load(ctx context.Context, s *snapshot) error {
 	if err := b.loadSignals(ctx, s); err != nil {
 		return err
 	}
+	if err := b.loadOutreach(ctx, s); err != nil {
+		return err
+	}
 	if err := b.loadAccounts(ctx, s); err != nil {
 		return err
 	}
@@ -242,6 +245,26 @@ func (b *pgBackend) loadTasks(ctx context.Context, s *snapshot) error {
 			return fmt.Errorf("LOAD_FAILED: case_tasks: %w", err)
 		}
 		s.Tasks[t.ID] = &t
+	}
+	return rows.Err()
+}
+
+func (b *pgBackend) loadOutreach(ctx context.Context, s *snapshot) error {
+	rows, err := b.pool.Query(ctx, `SELECT doc FROM outreach`)
+	if err != nil {
+		return fmt.Errorf("LOAD_FAILED: outreach: %w", err)
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var raw []byte
+		if err := rows.Scan(&raw); err != nil {
+			return fmt.Errorf("LOAD_FAILED: outreach: %w", err)
+		}
+		var o domain.Outreach
+		if err := json.Unmarshal(raw, &o); err != nil {
+			return fmt.Errorf("LOAD_FAILED: outreach: %w", err)
+		}
+		s.Outreach[o.ID] = &o
 	}
 	return rows.Err()
 }
@@ -414,6 +437,9 @@ func (b *pgBackend) Save(ctx context.Context, s *snapshot) error {
 	if err := b.saveApprovals(ctx, tx, s); err != nil {
 		return err
 	}
+	if err := b.saveOutreach(ctx, tx, s); err != nil {
+		return err
+	}
 	if err := b.saveSignals(ctx, tx, s); err != nil {
 		return err
 	}
@@ -492,6 +518,27 @@ func (b *pgBackend) saveTasks(ctx context.Context, tx pgx.Tx, s *snapshot) error
 		keep = append(keep, id)
 	}
 	return sweep(ctx, tx, "case_tasks", "id", keep)
+}
+
+func (b *pgBackend) saveOutreach(ctx context.Context, tx pgx.Tx, s *snapshot) error {
+	keep := make([]string, 0, len(s.Outreach))
+	for id, o := range s.Outreach {
+		doc, err := json.Marshal(o)
+		if err != nil {
+			return fmt.Errorf("SAVE_FAILED: outreach %s: %w", id, err)
+		}
+		if _, err := tx.Exec(ctx, `
+			INSERT INTO outreach (id, subject_id, recruiter_id, status, doc, created_at)
+			VALUES ($1,$2,$3,$4,$5,$6)
+			ON CONFLICT (id) DO UPDATE SET
+			  subject_id = EXCLUDED.subject_id, recruiter_id = EXCLUDED.recruiter_id,
+			  status = EXCLUDED.status, doc = EXCLUDED.doc`,
+			o.ID, o.SubjectID, o.RecruiterID, string(o.Status), doc, o.CreatedAt); err != nil {
+			return fmt.Errorf("SAVE_FAILED: outreach %s: %w", id, err)
+		}
+		keep = append(keep, id)
+	}
+	return sweep(ctx, tx, "outreach", "id", keep)
 }
 
 func (b *pgBackend) saveConsent(ctx context.Context, tx pgx.Tx, s *snapshot) error {

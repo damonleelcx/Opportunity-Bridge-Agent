@@ -46,6 +46,12 @@ const (
 	StateWritten     Name = "agent.state.written"
 	ConsentChecked   Name = "agent.consent.checked"
 	EscalationRaised Name = "agent.escalation.raised"
+	// The recruiter side. These are separate names rather than plain tool events
+	// because they are the ones an operator has to be able to audit on their own:
+	// who searched the opt-in pool, who was approached, and what people answered.
+	CandidateSearched Name = "agent.candidate.searched"
+	OutreachRequested Name = "agent.outreach.requested"
+	OutreachDecided   Name = "agent.outreach.decided"
 )
 
 // Level is coarse on purpose - the event name carries the detail.

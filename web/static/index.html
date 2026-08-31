@@ -45,8 +45,8 @@
     <nav class="nav-links" aria-label="Sections">
       <a href="#how" data-i18n="home.nav.how">它怎么帮你</a>
       <a href="#who" data-i18n="home.nav.who">给谁用</a>
-      <a href="#boundary" data-i18n="home.nav.boundary">它的边界</a>
-      <a href="#limits" data-i18n="home.nav.limits">真话</a>
+      <a href="#boundary" data-i18n="home.nav.boundary">不判定资格</a>
+      <a href="#limits" data-i18n="home.nav.limits">它的边界</a>
     </nav>
 
     <div class="nav-tools">
@@ -188,7 +188,7 @@
         </div>
       </div>
 
-      <p class="chat-foot" data-i18n="home.preview.disclaimer">本实例的岗位、培训、补贴都是虚构样例，每条记录的依据编号以 SAMPLE/ 开头。接入真实数据源前，请勿据此办事。</p>
+      <p class="chat-foot" data-i18n="home.preview.disclaimer">出厂语料只有全国性制度，条件对着官方原文核过，出处可点开。本地岗位和课程来自实时检索的公开网页，标着「未核实」。两者都不是我们替你核实过的结论。</p>
     </div>
   </div>
 </section>
@@ -312,9 +312,11 @@
       <article class="card sm glass reveal"><span class="ico card-ico" data-icon="route" aria-hidden="true"></span><h3 data-i18n="home.feat.f1t">路由徽章</h3><p data-i18n="home.feat.f1b">你看得见它把你归到哪一类，以及凭什么这样判。判错了，你可以自己改。</p></article>
       <article class="card sm glass reveal"><span class="ico card-ico" data-icon="pin" aria-hidden="true"></span><h3 data-i18n="home.feat.f2t">机会卡</h3><p data-i18n="home.feat.f2b">名称和编号、金额或「学费全免」、地址、时间、电话、要带的材料，还有一个展开看公开条件和出处的入口。</p></article>
       <article class="card sm glass reveal"><span class="ico card-ico" data-icon="check" aria-hidden="true"></span><h3 data-i18n="home.feat.f3t">审批卡</h3><p data-i18n="home.feat.f3b">要提交的原文先摆出来。在你点头之前，一个字都没发出去。</p></article>
-      <article class="card sm glass reveal"><span class="ico card-ico" data-icon="user" aria-hidden="true"></span><h3 data-i18n="home.feat.f4t">授权卡</h3><p data-i18n="home.feat.f4b">存什么、做什么用、存多久，用大白话写。四类授权都能随时收回。</p></article>
+      <article class="card sm glass reveal"><span class="ico card-ico" data-icon="user" aria-hidden="true"></span><h3 data-i18n="home.feat.f4t">授权卡</h3><p data-i18n="home.feat.f4b">存什么、做什么用、存多久，用大白话写。每一项授权都能随时收回，设置里一项一个开关。</p></article>
       <article class="card sm glass reveal"><span class="ico card-ico" data-icon="gear" aria-hidden="true"></span><h3 data-i18n="home.feat.f5t">系统运行详情</h3><p data-i18n="home.feat.f5b">每一次工具调用、每一条发现、整条轨迹，默认折叠，想看随时展开。</p></article>
-      <article class="card sm glass reveal"><span class="ico card-ico" data-icon="mic" aria-hidden="true"></span><h3 data-i18n="home.feat.f6t">朗读与语音输入</h3><p data-i18n="home.feat.f6b">用浏览器自己的语音能力，音频不离开你的设备。浏览器不支持时，它直说，并给出线下那条路。</p></article>
+      <article class="card sm glass reveal"><span class="ico card-ico" data-icon="mic" aria-hidden="true"></span><h3 data-i18n="home.feat.f6t">朗读与语音输入</h3><p data-i18n="home.feat.f6b">语音输入由你的浏览器做识别，通常是在浏览器厂商的服务器上完成——也就是说，你说的话会离开你的设备。它不经过我们，我们也拿不到。朗读默认用浏览器自带的音色。两者浏览器都不支持时，它直说，并给出线下那条路。</p><!-- Filled from /api/health by home.js: whether THIS deployment sends answer text to a
+           speech vendor. See docs/bugfix/2026-08-31-the-privacy-claim-was-false.md -->
+        <p class="tally" id="speechVendor" hidden></p></article>
       <article class="card sm glass reveal"><span class="ico card-ico" data-icon="eye" aria-hidden="true"></span><h3 data-i18n="home.feat.f7t">大白话 · 大字号</h3><p data-i18n="home.feat.f7b">不是前端改写。走的是智能体自己那条无障碍设置的路，所以下一句回答本身就变了。</p></article>
       <article class="card sm glass reveal"><span class="ico card-ico" data-icon="chat" aria-hidden="true"></span><h3 data-i18n="home.feat.f8t">中文 / English</h3><p data-i18n="home.feat.f8b">界面和回答都能切。切换影响的是下一句回答，不是下一个会话。</p></article>
       <article class="card sm glass reveal"><span class="ico card-ico" data-icon="alert" aria-hidden="true"></span><h3 data-i18n="home.feat.f9t">查不了，就说查不了</h3><p data-i18n="home.feat.f9b">语料没覆盖、检索没配置，它会说这是「查不了」，不是「没有」，并给出官方入口和 12333。</p></article>
@@ -343,11 +345,11 @@
 <section class="section" id="limits">
   <div class="wrap">
     <p class="s-label reveal"><span class="s-num">07</span><span data-i18n="home.limits.label">真话</span></p>
-    <h2 class="reveal" data-i18n="home.limits.title">这个版本做不到的事</h2>
+    <h2 class="reveal" data-i18n="home.limits.title">它的边界</h2>
     <p class="sub reveal" data-i18n="home.limits.sub">一个禁止自己说宽心话的产品，首页也不该说。</p>
 
     <div class="grid grid-2">
-      <article class="card warn glass reveal"><h3 data-i18n="home.limits.l1t">语料是虚构的</h3><p data-i18n="home.limits.l1b">这里的岗位、培训、创业扶持、补贴和办事指南全部是我们编的，形状照着真的做，好让整条链路能端到端跑通。每条记录的依据编号以 SAMPLE/ 开头，对话界面上「演示语料」这个标记一直亮着。接入真实数据源前，请勿据此办事。</p><!-- Filled from /api/meta by home.js, empty until it answers: the count must have one
+      <article class="card warn glass reveal"><h3 data-i18n="home.limits.l1t">出厂语料很薄，本地岗位全靠实时检索</h3><p data-i18n="home.limits.l1b">出厂只带全国性制度：失业金、培训补贴、灵活就业社保补贴、创业担保贷款、公共就业服务。它们是真的，条件按官方原文核对过，每条都能点开出处自己看。本地的岗位和课程一条都不带：那些走实时检索，来自公开网页，标着「未核实」，带发布日期和链接。所以这里没有编造的用人单位，但也没有替你核实过的本地清单——那两件事都得你自己打电话确认。</p><!-- Filled from /api/meta by home.js, empty until it answers: the count must have one
            producer, and the claim above must still read correctly when the request does not
            arrive. See docs/bugfix/2026-08-31-honest-limits-were-not-honest.md -->
         <p class="tally" id="corpusTally" hidden></p></article>
@@ -366,7 +368,7 @@
     <h2 data-i18n="home.end.title">现在就问它一句</h2>
     <p data-i18n="home.end.lede">用你自己的话说清处境就够了：在哪个城市，会点什么，卡在哪一步。</p>
     <a class="cta cta-lg" href="/app" data-i18n="home.hero.start">开始对话</a>
-    <p class="note" data-i18n="home.end.note">注册需要邀请码。没有的话，问一下把链接发给你的人。</p>
+    <p class="note" data-i18n="home.end.note">注册需要邀请码和一个邮箱。没有邀请码的话，问一下把链接发给你的人；邮箱是万一忘了密码时唯一能把账号找回来的办法。</p>
   </div>
 </section>
 

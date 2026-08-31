@@ -1,6 +1,7 @@
 package guardrail
 
 import (
+	"encoding/json"
 	"fmt"
 	"regexp"
 	"strings"
@@ -62,13 +63,31 @@ var verifiers = map[string]Verifier{
 	"no_false_reassurance":       verifyNoFalseReassurance,
 	"reply_language":             verifyReplyLanguage,
 	"answers_the_city":           verifyAnswersTheCity,
+	"no_candidate_scoring":       verifyNoCandidateScoring,
+	"candidate_anonymity":        verifyCandidateAnonymity,
+	"outreach_is_an_ask":         verifyOutreachIsAsk,
 }
 
-// Verify runs the named checks in order and returns every finding.
-// An unknown name is itself a finding: a typo in the intent registry must not
-// silently disable a check.
+// universalVerifiers run on every turn, whatever intent is answering and
+// whatever that intent lists.
+//
+// The registry's named verifiers encode an intent's policy: what a good answer
+// about jobs, or about a population, has to contain. These encode something
+// prior to that - what an answer IS. Keeping them out of the `verifiers` map is
+// the point: an intent cannot switch them off, and a new intent cannot forget
+// to name them.
+//
+// See docs/bugfix/2026-08-31-routing-json-shown-as-answer.md
+var universalVerifiers = []Verifier{verifyAnswerIsProse}
+
+// Verify runs the universal checks, then the named ones in order, and returns
+// every finding. An unknown name is itself a finding: a typo in the intent
+// registry must not silently disable a check.
 func Verify(names []string, in VerifyInput) []Finding {
 	var out []Finding
+	for _, v := range universalVerifiers {
+		out = append(out, v(in)...)
+	}
 	for _, n := range names {
 		v, ok := verifiers[n]
 		if !ok {
@@ -151,6 +170,11 @@ func metaInt(c ToolCallRecord, key string) (int, bool) {
 		return int(n), true
 	}
 	return 0, false
+}
+
+func metaStr(c ToolCallRecord, key string) string {
+	s, _ := c.Meta[key].(string)
+	return s
 }
 
 func metaBool(c ToolCallRecord, key string) bool {
@@ -799,4 +823,208 @@ func hasDigit(s string) bool {
 		}
 	}
 	return false
+}
+
+// ------------------------------------------------------- answer is for a human
+
+// routingObject matches this service's own routing decision in the shape the
+// classifier emits it. Both keys are required, as JSON keys: an answer that
+// happens to use the word "intent" is prose; an answer carrying `"intent"` and
+// `"confidence"` beside each other is our internal object.
+var routingObject = regexp.MustCompile(
+	`"intent"\s*:[\s\S]{0,240}?"confidence"\s*:|"confidence"\s*:[\s\S]{0,240}?"intent"\s*:`)
+
+// verifyAnswerIsProse refuses to publish a machine object as an answer.
+//
+// What went wrong. The router asks the model "whose problem is this?" and gets
+// back {"intent": ..., "confidence": ..., "rationale": ...}. That object is an
+// internal signal; the interface already renders it as the route chip above the
+// conversation. It reached a person's screen as the answer itself. Every other
+// verifier then dutifully reported that this "answer" named no record, gave no
+// phone number and was not in the reply language - four true findings that
+// buried the one that mattered, and the person read a JSON blob followed by an
+// apology for it.
+//
+// Why Block rather than Repair. A Repair that fails twice is delivered anyway
+// with a note attached (the unresolved path in the agent loop), and "the JSON,
+// plus an apology" is not an improvement on the JSON. Block still gets one
+// redraft first - the loop redrafts on Block too - so a model that merely
+// slipped gets its second chance, and a model that slips twice produces a
+// refusal a person can act on instead of an object they cannot read.
+//
+// Why it is universal rather than named by each intent. Nothing about this is
+// specific to jobs, or to populations. An intent that could omit it would be an
+// intent allowed to show people machine output.
+//
+// See docs/bugfix/2026-08-31-routing-json-shown-as-answer.md
+func verifyAnswerIsProse(in VerifyInput) []Finding {
+	body := strings.TrimSpace(in.Answer)
+	if body == "" {
+		// An empty answer is the agent loop's own case and has its own message.
+		return nil
+	}
+	var out []Finding
+	if isWholeJSONValue(body) {
+		out = append(out, Finding{
+			Guard: "verify", Code: "ANSWER_IS_MACHINE_OUTPUT", Severity: Block,
+			Message:  "The entire answer is a machine object, not something written for a person to read.",
+			Evidence: []string{clip(body, 160)},
+			Remedy: "Write the answer as sentences addressed to the person. " +
+				"JSON belongs in tool arguments; it is never the answer.",
+		})
+	}
+	if routingObject.MatchString(body) {
+		out = append(out, Finding{
+			Guard: "verify", Code: "ROUTING_OBJECT_LEAKED", Severity: Block,
+			Message: "The answer carries the internal routing decision. That object is for the route chip in the interface, " +
+				"never for the reader.",
+			Evidence: []string{clip(body, 160)},
+			Remedy:   "Do not restate which intent this was routed to. Answer the person's question in their language.",
+		})
+	}
+	return out
+}
+
+// isWholeJSONValue reports whether the text is one JSON object or array and
+// nothing else. Leading `{`/`[` is required so that a plain sentence, which
+// json.Valid rejects anyway, is never re-examined, and so that a fenced code
+// block quoting JSON inside a real answer does not match.
+func isWholeJSONValue(s string) bool {
+	if s[0] != '{' && s[0] != '[' {
+		return false
+	}
+	return json.Valid([]byte(s))
+}
+
+func clip(s string, n int) string {
+	r := []rune(s)
+	if len(r) <= n {
+		return s
+	}
+	return string(r[:n]) + "…"
+}
+
+// ---------------------------------------------------------------- recruiter
+//
+// Three checks, one per way the recruiter feature can hurt somebody. They are
+// written as separate verifiers rather than one because they fail for different
+// reasons and want different remedies, and a merged check would report the wrong
+// one. See docs/16-recruiter-and-outreach.md.
+
+// screeningWords are the ways an answer says "this person is worth less".
+//
+// The list is about PEOPLE being ranked, which is why it does not overlap with
+// exclusionWords above: that list catches telling a person not to apply, this
+// one catches telling an employer whom to prefer. Both are the same act seen
+// from the two ends of the bridge.
+var screeningWords = []string{
+	"best candidate", "top candidate", "strongest candidate", "weakest",
+	"better than", "worse than", "highest score", "ranked", "ranking",
+	"rating", "grade a", "tier 1", "a-list",
+	"最佳人选", "最优人选", "最强", "最差", "排名", "评分", "打分", "优于", "不如", "等级",
+}
+
+// scoreShaped catches a number presented as a person's worth: "8/10", "score:
+// 87", "匹配度 92%". The pattern is deliberately narrow - a bare percentage is
+// not a score, and a salary is not a score - because a broad one would fire on
+// every honest answer that mentions years of experience.
+var scoreShaped = regexp.MustCompile(`(?i)(score|rating|match(?:ing)?\s*(?:score|rate)|评分|打分|匹配度)\s*[:：]?\s*\d+`)
+
+// verifyNoCandidateScoring: the product's founding promise is that it does not
+// score people. A recruiter surface is where that promise is under the most
+// pressure, because ranking people is exactly what a recruiter wants.
+//
+// What is allowed instead: candidate_search returns matched_skills, so an answer
+// can say WHY somebody appeared and let the reader disagree. What is refused is
+// collapsing that into a verdict the reader cannot argue with.
+func verifyNoCandidateScoring(in VerifyInput) []Finding {
+	if !ranTool(in, "candidate_search") {
+		return nil
+	}
+	var hits []string
+	for _, s := range splitSentences(in.Answer) {
+		low := strings.ToLower(s)
+		if containsAnyLower(low, screeningWords) || scoreShaped.MatchString(s) {
+			hits = append(hits, strings.TrimSpace(s))
+		}
+	}
+	if len(hits) == 0 {
+		return nil
+	}
+	return []Finding{{
+		Guard: "verify", Code: "CANDIDATE_SCORING", Severity: Block,
+		Message:  "The answer ranks or scores people. This service does not score people, including for employers.",
+		Evidence: hits,
+		Remedy: "Say which skills each person listed that the role asked for, and let the employer judge. " +
+			"Do not order people by worth, do not name a best one, and do not attach a number to a person.",
+	}}
+}
+
+// verifyCandidateAnonymity: a search result is a set of strangers who agreed to
+// be findable, not to be identified. Anything that names or reaches one of them
+// may appear only after that person accepted a specific request.
+//
+// It reads the tools' Meta rather than the answer's shape: contact_shared is
+// asserted by outreach_respond when a person actually released a channel, so the
+// check cannot be talked around by phrasing.
+func verifyCandidateAnonymity(in VerifyInput) []Finding {
+	if !ranTool(in, "candidate_search", "outreach_request", "outreach_list") {
+		return nil
+	}
+	released := false
+	for _, c := range in.ToolCalls {
+		if c.Err != "" {
+			continue
+		}
+		if metaBool(c, "contact_shared") {
+			released = true
+		}
+		// outreach_list on the recruiter's side returns a channel for accepted
+		// requests; that is a legitimate disclosure and must not trip the check.
+		if c.Name == "outreach_list" && metaStr(c, "side") == "recruiter" {
+			released = true
+		}
+	}
+	if released {
+		return nil
+	}
+	var out []Finding
+	if f := HasPII(in.Answer); len(f) > 0 {
+		out = append(out, Finding{
+			Guard: "verify", Code: "CANDIDATE_IDENTIFIED", Severity: Block,
+			Message: "The answer contains a personal identifier for somebody who has not agreed to be contacted.",
+			Remedy: "Refer to people by their candidate_ref only. A name or a number here would be a disclosure " +
+				"the person never authorised - and if it is not in the tool result, it was invented.",
+		})
+	}
+	return out
+}
+
+// verifyOutreachIsAsk: an outreach request is a question, and an answer that
+// reports it as an arranged contact sets the employer up to expect a call that
+// may never come - and misrepresents to the person what they agreed to.
+func verifyOutreachIsAsk(in VerifyInput) []Finding {
+	if !ranTool(in, "outreach_request") {
+		return nil
+	}
+	pending := false
+	for _, c := range in.ToolCalls {
+		if c.Name == "outreach_request" && c.Err == "" && metaStr(c, "status") == "pending" {
+			pending = true
+		}
+	}
+	if !pending {
+		return nil
+	}
+	if containsAny(in.Answer,
+		"decide", "decides", "accept", "accepts", "if they", "whether they", "up to them", "waiting",
+		"由他", "由她", "由本人", "对方决定", "是否接受", "等待", "同意后") {
+		return nil
+	}
+	return []Finding{{
+		Guard: "verify", Code: "OUTREACH_STATED_AS_CONTACT", Severity: Repair,
+		Message: "A contact request was sent, and the answer does not say that the person still has to accept it.",
+		Remedy: "Say plainly that the request is waiting on that person, that they may say no, and that no " +
+			"contact details have been shared.",
+	}}
 }

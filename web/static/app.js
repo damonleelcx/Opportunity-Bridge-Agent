@@ -41,6 +41,10 @@ const state = {
   showTech: false,
   account: null, // who is signed in; null until /api/auth/me answers
   gateMode: "signin",
+  // Set from ?reset=… in a link somebody opened from their mail. Held in memory
+  // only: it is a credential, and the URL it arrived in is scrubbed immediately.
+  resetToken: null,
+  verifiedResult: null,
   gatePeek: false, // is the gate's password shown in the clear
 };
 
@@ -55,11 +59,29 @@ async function boot() {
   brandMood("calm");
 
   wireGate();
+  // Read before the account check, and it decides what the gate opens as: a
+  // reset link belongs to somebody who CANNOT sign in, so it must not be
+  // discarded by the branch that decides they are not signed in.
+  const authParams = applyAuthParams();
+  // Whether the gate may offer "forgotten your password" at all. This is the one
+  // fetch that has to happen before a sign-in, so it uses the open endpoint
+  // rather than /api/meta, which is behind the gate.
+  try {
+    state.meta = { ...(state.meta || {}), ...(await api("GET", "/api/health")) };
+  } catch {
+    // Not fatal. The forgot control stays hidden, which is the safe direction:
+    // better absent than present and silently doing nothing.
+    console.warn("HEALTH_UNAVAILABLE: could not read /api/health before the gate; " +
+      "the password-reset control stays hidden");
+  }
   // Who is asking has to be settled before anything else is fetched: every
   // other endpoint answers 401 without it, and a shell that loads and then
   // fails five requests reads as broken rather than as locked.
   state.account = await currentAccount();
-  if (!state.account) {
+  if (!state.account || authParams.reset) {
+    // A reset link opens the gate even for a browser that still holds a valid
+    // sign-in: the person clicking it is usually on a different device, and the
+    // one case where they are not is somebody whose account may be compromised.
     showGate();
     return;
   }
@@ -500,7 +522,7 @@ function finalise(turn, final, streamed) {
       `${t("tech.title")} · ${turn.techCount} ${t("tech.steps")}`;
   }
   renderSuggestions(turn, final.tool_calls || []);
-  if (state.speak && final.answer) speak(final.answer);
+  if (state.speak && final.answer) speak(final.answer, turn);
   scroll();
 }
 
@@ -1010,9 +1032,20 @@ async function renderOverview() {
     }
   }
 
+  renderEmailPanel();
+
   const cons = $("#consents");
   cons.innerHTML = "";
-  const scopes = ["store_profile", "share_with_caseworker", "submit_on_behalf", "aggregate_deidentified"];
+  // From the server, not from a copy kept here. A scope this list had not been
+  // taught about was one the person could be asked for and then could not
+  // withdraw — which makes "you can withdraw this at any time" something this
+  // service says and does not do.
+  // See docs/bugfix/2026-08-31-read-aloud-needs-consent.md
+  const scopes = state.meta?.consent_scopes || [];
+  if (!scopes.length) {
+    console.warn("CONSENT_SCOPES_MISSING: /api/meta listed no consent scopes, so the permissions panel " +
+      "is empty and nothing can be withdrawn from it");
+  }
   const held = Object.fromEntries((d.consent || []).map((g) => [g.scope, g.granted]));
   for (const scope of scopes) {
     const on = !!held[scope];
@@ -1143,10 +1176,10 @@ function stopSpeaking() {
   }
 }
 
-async function speak(text) {
+async function speak(text, turn) {
   stopSpeaking();
   const body = text.slice(0, MAX_SPOKEN_CHARS);
-  if (vendorVoice !== false && await speakWithVendor(body)) return;
+  if (vendorVoice !== false && await speakWithVendor(body, turn)) return;
   speakLocally(body);
 }
 
@@ -1155,16 +1188,30 @@ async function speak(text) {
 // Every failure path returns false and says nothing to the person: the answer is
 // already on their screen, and a message about a speech vendor is noise to
 // somebody who just wanted it read out. The fallback is the recovery.
-async function speakWithVendor(text) {
+async function speakWithVendor(text, turn) {
   try {
     const r = await fetch("/api/tts", {
       method: "POST",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify({ text }),
+      // The session identifies the person whose permission this is. Without it
+      // the server has no subject to check and refuses.
+      body: JSON.stringify({ text, session_id: state.session?.id }),
     });
     if (r.status === 503) {
       // Not configured. Stop asking for the rest of the session.
       vendorVoice = false;
+      return false;
+    }
+    // 403 is the one failure that is NOT silent. Every other path here stays
+    // quiet on purpose — the answer is already on screen and the built-in voice
+    // is about to read it. This one is a question only the person can answer,
+    // and swallowing it would mean read-aloud quietly never using the better
+    // voice with nobody ever told why.
+    // vendorVoice is deliberately NOT latched to false: they may grant it, and
+    // the next answer should use it. See docs/bugfix/2026-08-31-read-aloud-needs-consent.md
+    if (r.status === 403) {
+      const body = await r.json().catch(() => null);
+      if (body?.code === "CONSENT_REQUIRED" && body.consent && turn) consentCard(turn, body.consent);
       return false;
     }
     if (!r.ok) return false;
@@ -1382,13 +1429,37 @@ async function currentAccount() {
   }
 }
 
+// applyAuthParams turns a link somebody clicked in their mail into a screen.
+// Called before the gate is shown, so the right mode is the first thing drawn
+// rather than a flicker from sign-in to something else.
+function applyAuthParams() {
+  const p = readAuthParams();
+  if (p.reset) {
+    state.resetToken = p.reset;
+    state.gateMode = "newpass";
+  }
+  if (p.verified) {
+    state.verifiedResult = p.verified;
+  }
+  return p;
+}
+
 function showGate() {
   $("#gate").hidden = false;
   // A revealed password is never inherited across a sign-out, a session
   // expiry or a reload. Whoever opens this next did not ask to see it.
   state.gatePeek = false;
   setGateMode(state.gateMode);
-  $("#gateUser").focus();
+  if (state.verifiedResult) {
+    gateMessage(t(state.verifiedResult === "ok" ? "email.verifiedNow" : "email.verifyFailed"),
+      state.verifiedResult === "ok" ? "good" : "");
+    state.verifiedResult = null;
+  }
+  // Focus whichever field this mode actually starts with, or the cursor lands
+  // in a hidden input and the keyboard opens over nothing.
+  (state.gateMode === "reset" ? $("#gateEmail")
+    : state.gateMode === "newpass" ? $("#gatePass")
+      : $("#gateUser")).focus();
 }
 
 function hideGate() {
@@ -1396,11 +1467,52 @@ function hideGate() {
   gateError("");
 }
 
+// The gate has four modes, not two. Two of them belong to somebody who cannot
+// get in at all — which is precisely who a sign-in screen is worst at serving.
+//
+//   signin  | signup   the original pair
+//   reset             ask for the address, we send a link
+//   newpass           arrived from that link, choose a password
+//
+// One form rather than four, for the reason the original comment gives: a second
+// form is where the password rule, the error rendering and the language switch
+// stop matching. See docs/bugfix/2026-08-31-email-verification-and-reset.md
 function setGateMode(mode) {
   state.gateMode = mode;
   const up = mode === "signup";
+  const reset = mode === "reset";
+  const newpass = mode === "newpass";
+
+  // Which fields this mode needs. `required` tracks `hidden` in every case: a
+  // required field that is hidden blocks submission with a validation message
+  // pointing at something the person cannot see.
+  $("#gateUser").closest(".gate-field").hidden = reset || newpass;
+  $("#gateUser").required = !(reset || newpass);
+  $("#gatePass").closest(".gate-field").hidden = reset;
+  $("#gatePass").required = !reset;
+  $("#gateEmailField").hidden = !(up || reset);
+  $("#gateEmail").required = up || reset;
+  $("#gateForgot").hidden = !(mode === "signin") || state.meta?.mail_enabled === false;
+
+  if (reset || newpass) {
+    $("#gateInviteField").hidden = true;
+    $("#gateInvite").required = false;
+    $("#gateTitle").textContent = t(newpass ? "gate.resetNewTitle" : "gate.resetTitle");
+    $("#gateLede").textContent = t(newpass ? "gate.resetNewLede" : "gate.resetLede");
+    $("#gateSubmit").textContent = t(newpass ? "gate.resetSave" : "gate.resetSend");
+    $("#gateSwitch").textContent = t("gate.backToSignIn");
+    $("#gatePass").setAttribute("autocomplete", "new-password");
+    setPeek(state.gatePeek);
+    return;
+  }
+  $("#gateLede").textContent = t("gate.lede");
   $("#gateInviteField").hidden = !up;
   $("#gateInvite").required = up;
+  // Required to create an account, absent when signing in. It is the only route
+  // back into an account whose password is forgotten.
+  // See docs/bugfix/2026-08-31-email-verification-and-reset.md
+  $("#gateEmailField").hidden = !up;
+  $("#gateEmail").required = up;
   $("#gatePass").setAttribute("autocomplete", up ? "new-password" : "current-password");
   // The heading says which of the two things this form is. It used to be pinned
   // to "先登录" by data-i18n, so somebody who tapped 去注册 was still being told to
@@ -1443,7 +1555,10 @@ function gateError(msg) {
 
 function wireGate() {
   $("#gateSwitch").addEventListener("click", () =>
-    setGateMode(state.gateMode === "signup" ? "signin" : "signup"));
+    setGateMode(state.gateMode === "signup" ? "signin"
+      : state.gateMode === "signin" ? "signup" : "signin"));
+
+  $("#gateForgot").addEventListener("click", () => setGateMode("reset"));
 
   $("#gatePeek").addEventListener("click", () => setPeek(!state.gatePeek));
 
@@ -1467,11 +1582,30 @@ function wireGate() {
     btn.textContent = t("gate.signingIn");
     gateError("");
     try {
+      if (state.gateMode === "reset") {
+        await submitResetRequest($("#gateEmail").value);
+        btn.disabled = false;
+        btn.textContent = wasLabel;
+        return;
+      }
+      if (state.gateMode === "newpass") {
+        await submitNewPassword(state.resetToken, $("#gatePass").value);
+        $("#gatePass").value = "";
+        // The token is spent and every device is signed out; from here the only
+        // thing to do is sign in with the new password.
+        state.resetToken = null;
+        setGateMode("signin");
+        gateMessage(t("gate.resetDone"), "good");
+        btn.disabled = false;
+        btn.textContent = t("gate.signIn");
+        return;
+      }
       const up = state.gateMode === "signup";
       state.account = await api("POST", up ? "/api/auth/signup" : "/api/auth/signin", {
         username: $("#gateUser").value,
         password: $("#gatePass").value,
         invite_code: up ? $("#gateInvite").value : undefined,
+        email: up ? $("#gateEmail").value : undefined,
       });
       $("#gatePass").value = "";
       // Reload rather than calling boot() again: boot() binds the interface's
@@ -1498,4 +1632,117 @@ function paintWho() {
   who.hidden = false;
   $("#whoName").textContent = state.account.username;
   $("#whoName").title = `${t("gate.signedInAs")}: ${state.account.username}`;
+}
+
+// ── forgotten passwords, and confirming an address ─────────────────────────
+//
+// Two flows sharing the gate, because both belong to somebody who is looking at
+// a sign-in screen and cannot get past it.
+//
+//   ?reset=<token>  arrives from the link in a reset mail: show the new-password
+//                   form instead of the sign-in form.
+//   ?verified=<r>   arrives from the confirmation link: say what happened, on
+//                   whichever screen they land on.
+//
+// Both parameters are stripped from the URL as soon as they are read. A reset
+// token in an address bar survives in history, in a shared screenshot and in
+// whatever the browser syncs — and it is a credential until it is spent.
+// See docs/bugfix/2026-08-31-email-verification-and-reset.md
+
+function readAuthParams() {
+  const q = new URLSearchParams(location.search);
+  const out = { reset: q.get("reset"), verified: q.get("verified") };
+  if (out.reset || out.verified) {
+    q.delete("reset");
+    q.delete("verified");
+    const rest = q.toString();
+    history.replaceState(null, "", location.pathname + (rest ? "?" + rest : "") + location.hash);
+  }
+  return out;
+}
+
+// gateMessage puts one sentence above the form. Used for both the "we sent it"
+// acknowledgement and the confirmation result, so there is one place a person
+// looks for what just happened.
+function gateMessage(text, kind) {
+  const el = $("#gateError");
+  el.textContent = text || "";
+  el.hidden = !text;
+  el.classList.toggle("is-good", kind === "good");
+}
+
+async function submitResetRequest(email) {
+  // The server answers the same way whether or not the address is registered,
+  // and so does this: repeating the server's own wording rather than inventing
+  // a friendlier one that might differ between the two cases.
+  await api("POST", "/api/auth/reset", { email });
+  gateMessage(t("gate.resetSent"), "good");
+}
+
+async function submitNewPassword(token, password) {
+  await api("POST", "/api/auth/reset/confirm", { token, password });
+  gateMessage(t("gate.resetDone"), "good");
+}
+
+// renderEmailPanel shows the address, which of the three states it is in, and
+// the control that moves it on.
+//
+// Three states, not two: no address at all (an account from before this
+// existed), an address awaiting confirmation, and a confirmed one. Collapsing
+// the first two would tell somebody with no address to check their inbox.
+// See docs/bugfix/2026-08-31-email-verification-and-reset.md
+function renderEmailPanel() {
+  const el = $("#emailPanel");
+  if (!el) return;
+  el.innerHTML = "";
+  const a = state.account || {};
+  const mailOff = state.meta?.mail_enabled === false;
+
+  const line = el.appendChild(el.ownerDocument.createElement("p"));
+  line.className = "consent-row";
+  if (mailOff) {
+    // Said first and plainly. Offering "add an address" on a deployment that
+    // cannot send is offering a button that does nothing.
+    line.textContent = t("email.off");
+    return;
+  }
+  const state3 = !a.email ? "none" : a.email_verified ? "verified" : "unverified";
+  line.textContent = (a.email ? a.email + " — " : "") + t("email." + state3);
+
+  const actions = el.appendChild(el.ownerDocument.createElement("div"));
+  actions.className = "decide-actions";
+
+  if (state3 === "unverified") {
+    const resend = actions.appendChild(el.ownerDocument.createElement("button"));
+    resend.className = "btn";
+    resend.textContent = t("email.resend");
+    resend.addEventListener("click", async () => {
+      resend.disabled = true;
+      try {
+        await api("POST", "/api/auth/verify", {});
+        line.textContent = t("email.sent");
+      } catch (e) {
+        line.textContent = String(e?.message || e);
+      }
+      resend.disabled = false;
+    });
+  }
+
+  const change = actions.appendChild(el.ownerDocument.createElement("button"));
+  change.className = state3 === "none" ? "btn btn-primary" : "btn";
+  change.textContent = t(state3 === "none" ? "email.add" : "email.change");
+  change.addEventListener("click", async () => {
+    // prompt() rather than an inline form: this is a control most people use
+    // once, and a second form in this panel is a second place the validation
+    // and the error rendering can drift from the gate's.
+    const next = window.prompt(t("email.add"), a.email || "");
+    if (!next) return;
+    try {
+      const out = await api("POST", "/api/auth/email", { email: next });
+      state.account = { ...state.account, email: out.email, email_verified: out.email_verified };
+      renderEmailPanel();
+    } catch (e) {
+      line.textContent = String(e?.message || e);
+    }
+  });
 }

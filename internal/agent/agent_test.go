@@ -28,7 +28,7 @@ type harness struct {
 
 func newHarness(t *testing.T, role domain.Role, script llm.Script, consent ...domain.ConsentScope) *harness {
 	t.Helper()
-	c, err := corpus.Load("../../data")
+	c, err := corpus.Load("../../testdata/corpus")
 	if err != nil {
 		t.Fatalf("corpus: %v", err)
 	}
@@ -445,5 +445,49 @@ func TestBudgetBlockedToolAnnouncesNoStart(t *testing.T) {
 	}
 	if starts > results {
 		t.Errorf("%d tool_start against %d tool_result: a call the budget refused was reported as started", starts, results)
+	}
+}
+
+// The failure this reproduces: a model turn returned the router's decision
+// object as its answer, the redraft returned it again, and the loop delivered
+// it with an apology appended. What the person read was JSON.
+//
+// The fence is at the agent boundary on purpose. Blocking inside the verifier
+// is necessary but not sufficient - what mattered was that the unresolved path,
+// which delivers a still-failing draft "because it is usually most of an
+// answer", must never be the path a machine object takes to the screen.
+// See docs/bugfix/2026-08-31-routing-json-shown-as-answer.md
+func TestRoutingObjectNeverReachesTheReader(t *testing.T) {
+	const leaked = `{"intent": "individual_pathway", "confidence": 0.92, ` +
+		`"rationale": "Same person, same objective; they are asking to have the step tracked."}`
+
+	// Twice: the first is the draft, the second is the redraft. A model that
+	// slips once gets a second chance; one that slips twice must be refused.
+	h := newHarness(t, domain.RoleResident, llm.Script{Turns: []llm.ScriptedTurn{
+		{Text: leaked},
+		{Text: leaked},
+	}})
+	res := h.run(t, "帮我把这一步记下来。", intent.IndividualPathway)
+
+	if strings.Contains(res.Answer, `"confidence"`) || strings.Contains(res.Answer, `"rationale"`) {
+		t.Fatalf("the routing object was delivered to the reader:\n%s", res.Answer)
+	}
+	if res.StopReason != agent.StopRefused {
+		t.Errorf("stop reason = %q, want %q: an undeliverable draft must refuse, not pass quietly",
+			res.StopReason, agent.StopRefused)
+	}
+	// The refusal has to say what happened and where to go instead; a blank
+	// screen would be the same failure wearing different clothes.
+	if len(res.Answer) < 20 {
+		t.Errorf("refusal is too short to act on: %q", res.Answer)
+	}
+	var blocked bool
+	for _, f := range res.Findings {
+		if f.Code == "ANSWER_IS_MACHINE_OUTPUT" || f.Code == "ROUTING_OBJECT_LEAKED" {
+			blocked = true
+		}
+	}
+	if !blocked {
+		t.Errorf("nothing recorded why the draft was stopped; findings = %v", res.Findings)
 	}
 }
