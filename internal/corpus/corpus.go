@@ -19,6 +19,26 @@ import (
 	"github.com/damonleelcx/Opportunity-Bridge-Agent/internal/domain"
 )
 
+// DocKind separates what a document IS, because the two kinds cannot be cited
+// the same way and pretending otherwise is how a guide becomes a false claim.
+//
+//	policy    restates a published rule. It carries the official URL it was
+//	          checked against, and a reader can go and read the same sentence.
+//	guidance  is this service's own operational advice — how to read a set of
+//	          conditions, what order to do things in, when a counter beats an
+//	          app. There IS no regulation to cite, and inventing a citation for
+//	          it would be exactly the failure the corpus rule exists to prevent.
+//
+// The distinction is carried rather than hidden so the answer can say which it
+// is giving somebody. Advice presented as regulation is worse than either.
+// See docs/bugfix/2026-08-31-the-guides-came-back-verified.md
+type DocKind string
+
+const (
+	DocPolicy   DocKind = "policy"
+	DocGuidance DocKind = "guidance"
+)
+
 // Doc is a retrievable prose document: a procedure guide or policy explainer.
 type Doc struct {
 	ID        string   `json:"id"`
@@ -28,7 +48,14 @@ type Doc struct {
 	Cohorts   []string `json:"cohorts,omitempty"`
 	City      string   `json:"city,omitempty"`
 	SourceRef string   `json:"source_ref"`
+	// Kind defaults to policy when absent, so an untagged document is held to
+	// the stricter rule rather than quietly excused from it.
+	Kind DocKind `json:"kind,omitempty"`
 }
+
+// IsGuidance reports whether this document is this service's own advice rather
+// than a restatement of a published rule.
+func (d Doc) IsGuidance() bool { return d.Kind == DocGuidance }
 
 type Corpus struct {
 	Opportunities []domain.Opportunity

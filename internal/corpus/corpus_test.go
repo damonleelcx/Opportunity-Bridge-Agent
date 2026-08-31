@@ -93,3 +93,47 @@ func TestShippedCorpusCarriesNoInventedRecords(t *testing.T) {
 		t.Error("the fixture corpus no longer contains invented records; either it moved or this fence is vacuous")
 	}
 }
+
+// A policy document must cite something a reader can open; a guidance document
+// must not pretend to.
+//
+// The twelve guides came back after being removed, and six of them restate
+// published rules while six are this service's own operating advice. Giving the
+// second kind an official-looking citation would be the corpus rule's own
+// failure mode — a plausible source for something no authority ever said.
+// Reading the sources also found two errors in the first kind: 居住证 processing
+// is 15 days, not 15 WORKING days, and the arbitration time limit was stated as
+// a number nobody had checked.
+// See docs/bugfix/2026-08-31-the-guides-came-back-verified.md
+func TestGuidesAreEitherSourcedOrOwned(t *testing.T) {
+	c, err := corpus.Load("../../data")
+	if err != nil {
+		t.Fatalf("shipped corpus: %v", err)
+	}
+	if len(c.Docs) == 0 {
+		t.Fatal("no documents ship; this fence no longer guards anything")
+	}
+	var policy, guidance int
+	for _, d := range c.Docs {
+		switch d.Kind {
+		case corpus.DocPolicy:
+			policy++
+			if !strings.HasPrefix(d.SourceRef, "http") {
+				t.Errorf("%s is policy but cites %q, which nobody can open and check", d.ID, d.SourceRef)
+			}
+		case corpus.DocGuidance:
+			guidance++
+			if strings.HasPrefix(d.SourceRef, "http") {
+				t.Errorf("%s is this service's own advice but cites %q, which reads as an authority saying it",
+					d.ID, d.SourceRef)
+			}
+		default:
+			t.Errorf("%s has no kind. Untagged defaults to policy, which then fails the citation check "+
+				"above — but say which it is rather than relying on that", d.ID)
+		}
+	}
+	if policy == 0 || guidance == 0 {
+		t.Errorf("policy=%d guidance=%d: with only one kind present this fence cannot tell them apart",
+			policy, guidance)
+	}
+}
