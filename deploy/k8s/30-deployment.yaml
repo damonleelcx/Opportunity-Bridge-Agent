@@ -80,6 +80,14 @@ spec:
                 name: opportunity-bridge-auth
             - secretRef:
                 name: opportunity-bridge-db
+            # optional: the external talent scan is off until somebody mints the
+            # key, and a missing Secret here must not stop the pod from starting.
+            # Without this flag the container fails with CreateContainerConfigError
+            # and the whole service is down because an OPTIONAL feature is unwired.
+            # See opportunity-bridge-talent in 10-secrets.yaml.
+            - secretRef:
+                name: opportunity-bridge-talent
+                optional: true
           # Startup is fail-fast on anything that would make the agent dishonest
           # — an unreadable corpus, a missing model credential — so a pod that
           # is Running has a corpus it can cite and a key it can use.
