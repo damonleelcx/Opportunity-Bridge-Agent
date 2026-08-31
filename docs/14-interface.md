@@ -194,7 +194,7 @@ Seven sections, in the order somebody decides with:
 | 04 · the boundary | **it decides no eligibility and scores nobody**, as a table of rule → how it holds → which guard fires |
 | 05 · the interface | nine things the reader will actually see |
 | 06 · who 阿桥 is | the name, the voice, the four moods |
-| 07 · honest limits | the invented corpus, the unwired `application_submit`, register-not-dialect, the unconfigured live lookup |
+| 07 · honest limits | the invented corpus, the unwired `application_submit`, dialect-in-the-text-not-the-voice, the unconfigured live lookup |
 
 Section 07 is the one worth defending. A product whose persona ships a check
 against false reassurance (`no_false_reassurance`) does not get to oversell
@@ -240,6 +240,68 @@ copied.
 and is served by name at `/app`, so the URL people bookmark and paste has no
 `.html` in it.
 
+### The design system
+
+Two references, one per theme, and the palette in each was **sampled rather than
+chosen**: the frames were grid-reduced and the cells sorted by saturation ×
+lightness, so the hues in `tokens.css` are the ones actually in the pictures.
+
+| | dark | light |
+|---|---|---|
+| reference | an iridescent soap bubble on near-black | a violet blob |
+| hue | 34–42° champagne → amber → bronze, with a 213–220° blue refraction | 244–249° indigo-violet, ~25–30% saturation, one brighter lavender (`#9c81da`) |
+| canvas | `#08080a` | `#f8f7fc` |
+| filled surface | gold, carrying dark ink | violet, carrying white |
+
+The violet is deliberately **desaturated**. An earlier pass used a vivid
+neon violet across both themes and it fought everything around it; the restraint
+is the character of the reference, not a compromise.
+
+**Three jobs a colour can have, and why they are three tokens.** Collapsing them
+is how a palette ends up with unreadable buttons, and the wrong one always has
+the more obvious name:
+
+- `--brand` is the **accent** — text, icons, hairlines. It must read against the
+  canvas, so it is light on dark and dark on light. Putting white on it gives
+  2.6:1.
+- `--brand-fill` is the **primary action**, and it inverts with the theme exactly
+  as the reference does: a white pill on the dark page, a near-black one on the
+  light page. No hue, maximum contrast — 17.14:1 and 18.43:1.
+- `--aurora-fill` is the **one filled colour surface**: the person's own message
+  and the send button. Per-theme, because the two references disagree about what
+  colour it is.
+
+`TestFilledSurfacesUseTheFillTokenNotTheAccent` refuses `background: var(--brand)`
+anywhere, so the obvious-but-wrong token cannot be reached for by accident.
+
+**The words stay plain.** No gradient type, no coloured headings. All the colour
+on the page comes from the picture, and that contrast is the whole composition —
+tinting the headline flattens it. `--aur-*` are decorative only, and
+`TestPaletteMeetsContrast` enforces that exemption rather than assuming it: use
+one as a text colour and the fence tells you to add it to the checked pairs.
+
+### The bubble, and two things that were wrong about it
+
+It is layered CSS radial gradients, not a render — an iridescent form costs that
+when you cannot ship a texture. Its colours and alphas are per-theme tokens.
+
+- **It was clipped, and a clipped blur reads as a rendering fault.**
+  `overflow: hidden` cut the glow dead against the next section. The reference
+  gets away with a hard bottom edge because its whole page sits inside a rounded
+  card, so the crop is obviously deliberate; full-bleed it just looks broken. It
+  is now faded out with a `mask-image` before the section ends.
+- **The animation repainted every frame and could not be seen.** It animated
+  `border-radius`, which is imperceptible under an 11px blur and forces a full
+  repaint of a 1180px filtered element sixty times a second. It animates
+  `transform` only now: the blur is rasterised once and the compositor moves it.
+  This audience is on cheap phones, and a hero animation that costs a repaint a
+  frame is one that drains a battery to make a shape wobble nobody can see.
+
+**A moving picture cannot be relied on for contrast.** The lede sat on the
+bubble's bright core for part of the loop — a failure no static check catches,
+because in any single frame it looks fine. `.hero-in::before` puts a soft scrim
+between the two, keyed to the theme and off in light.
+
 ### Constraints it inherits
 
 The same three the app has, and they are why it does not look like a landing
@@ -282,6 +344,18 @@ page usually looks:
   and the older wording snaps back over the newer one. Nothing throws; the page
   quietly un-edits itself. Fenced by
   `TestLandingPageMarkupAgreesWithTheChineseTable`.
+
+Two more guard the system itself:
+
+- `TestEveryTokenIsDefinedInEveryTheme` — every `var(--x)` any stylesheet reaches
+  for resolves, and anything defined for one theme is defined for the other. A
+  token dropped in a palette rewrite resolves to *nothing*, silently.
+- `TestPaletteMeetsContrast` — every ink tier and semantic colour is measured
+  against the surface it actually sits on, at 4.5:1. Comments carrying measured
+  ratios do not re-measure themselves when somebody nudges a hex two shades
+  brighter to make a mockup look better; this does. It has caught four real
+  misses so far, including `--ink-400` at 4.24:1 and three light values that had
+  been checked against `#ffffff` instead of against the canvas.
 
 The routing itself is fenced by
 `TestTheLandingPageAndTheAppAreBothServedSignedOut` in `internal/httpapi`: both

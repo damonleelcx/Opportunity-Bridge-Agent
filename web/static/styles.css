@@ -34,7 +34,7 @@ body {
 }
 
 .skip { position: absolute; left: -9999px; top: 0; padding: 10px 16px; z-index: 100;
-        background: var(--brand); color: var(--brand-ink); }
+        background: var(--brand-fill); color: var(--brand-ink); }
 .skip:focus { left: 0; }
 
 button, select, textarea, input { font: inherit; color: inherit; }
@@ -91,7 +91,7 @@ button, select, textarea, input { font: inherit; color: inherit; }
 
 .btn {
   display: inline-flex; align-items: center; justify-content: center; gap: 8px;
-  padding: 10px 14px; border-radius: var(--r-sm); cursor: pointer;
+  padding: 10px 16px; border-radius: var(--r-pill); cursor: pointer;
   border: 1px solid var(--line); background: var(--surface); color: var(--ink-700);
   font-size: .87em; font-weight: 500;
 }
@@ -148,7 +148,11 @@ button, select, textarea, input { font: inherit; color: inherit; }
 }
 .bubble-agent { background: var(--surface-2); border: 1px solid var(--line-soft); color: var(--ink-900); }
 .bubble-agent.is-blocked { border-color: var(--stop-border); background: var(--stop-soft); }
-.bubble-user { background: var(--brand); color: var(--brand-ink); box-shadow: var(--shadow-sm); }
+/* The same pair as the primary button, not a colour of its own. This had a gold
+   of its own and it read as a muddy tan against the page; one filled treatment,
+   used for the primary action and for the person's own message, is both calmer
+   and the highest-contrast thing on the screen. See tokens.css. */
+.bubble-user { background: var(--brand-fill); color: var(--brand-ink); box-shadow: var(--shadow-sm); }
 .bubble-greeting { background: var(--brand-soft); border-color: var(--brand-border); }
 
 /* Shown until the first text delta arrives. DeepSeek can think for a long time
@@ -259,8 +263,11 @@ button, select, textarea, input { font: inherit; color: inherit; }
 }
 .decide-actions { display: flex; gap: 8px; flex-wrap: wrap; }
 .decide.is-done { border-color: var(--line); opacity: .75; }
-.btn-primary { background: var(--brand); color: var(--brand-ink); border-color: var(--brand); }
-.btn-primary:hover { background: var(--brand-hover); border-color: var(--brand-hover); }
+/* --brand-fill, never --brand. --brand is the ACCENT: light on dark, so it is
+   readable as text on the canvas — and putting white on it gives 2.6:1. The two
+   tokens exist so this cannot be got wrong by reaching for the obvious name. */
+.btn-primary { background: var(--brand-fill); color: var(--brand-ink); border-color: var(--brand-fill); }
+.btn-primary:hover { filter: brightness(1.12); }
 
 /* ── the technical section, collapsed by default ───────────────────────── */
 .tech { margin-left: 48px; }
@@ -324,11 +331,11 @@ button, select, textarea, input { font: inherit; color: inherit; }
 .input-actions { display: flex; align-items: center; gap: 6px; padding-bottom: 2px; }
 .btn-send {
   width: 38px; height: 38px; border-radius: 50%; border: 0; cursor: pointer;
-  background: var(--brand); color: var(--brand-ink);
+  background: var(--brand-fill); color: var(--brand-ink);
   display: inline-flex; align-items: center; justify-content: center;
-  box-shadow: 0 4px 12px color-mix(in srgb, var(--brand) 35%, transparent);
+  box-shadow: var(--glow);
 }
-.btn-send:hover { background: var(--brand-hover); }
+.btn-send:hover { filter: brightness(1.12); }
 .btn-send:disabled { opacity: .5; cursor: not-allowed; box-shadow: none; }
 
 .composer-foot {
@@ -414,15 +421,11 @@ button, select, textarea, input { font: inherit; color: inherit; }
 .mascot-tag {
   position: absolute; top: -6px; right: -14px;
   padding: 3px 10px; border-radius: 999px; white-space: nowrap;
-  background: var(--brand); color: var(--brand-ink); font-size: .68em; box-shadow: var(--shadow-sm);
+  background: var(--brand-fill); color: var(--brand-ink); font-size: .68em; box-shadow: var(--shadow-sm);
 }
 .mascot-line { margin: 14px 0 0; font-size: .8em; line-height: 1.7; color: var(--ink-500); font-style: italic; }
 
-/* 阿桥's face is in avatar.css — the landing page draws the same mark. */
-
-@media (prefers-reduced-motion: reduce) {
-  .ocard, .btn, .icon-btn { transition: none; }
-}
+/* 阿桥's face is in avatar.css — both documents draw the same one. */
 
 /* ── narrow ──────────────────────────────────────────────────────────────
    The three columns become one column plus two drawers, rather than a stack.

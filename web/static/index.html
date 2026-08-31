@@ -57,6 +57,14 @@
         <button type="button" class="ghost" data-lang="zh-CN">中文</button>
         <button type="button" class="ghost" data-lang="en">English</button>
       </div>
+      <!-- One icon, and it links somewhere that exists. The reference puts four
+           social marks here; 阿桥 has a public repository and no Discord, no
+           Reddit and no Twitter, and drawing marks for accounts nobody can
+           follow is a lie told in SVG. -->
+      <a class="nav-icon" href="https://github.com/damonleelcx/Opportunity-Bridge-Agent"
+         rel="noopener" data-i18n-aria="a11y.sourceCode" aria-label="GitHub">
+        <svg viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27s1.36.09 2 .27c1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.01 8.01 0 0 0 16 8c0-4.42-3.58-8-8-8z"/></svg>
+      </a>
       <a class="cta cta-sm" href="/app" data-i18n="home.cta.enter">进入对话</a>
     </div>
   </div>
@@ -66,44 +74,75 @@
 
 <!-- ── hero ──────────────────────────────────────────────────────────────── -->
 <section class="hero">
-  <div class="sky" aria-hidden="true"></div>
+  <!-- Dust, then the bubble, then the words. The bubble is the only thing on
+       this page with colour in it, which is the whole composition: plain white
+       type over one luminous object. Tinting the headline would flatten it. -->
+  <div class="stars" aria-hidden="true"></div>
+
+  <!-- The bubble. ThreeUI's "Liquid Form" shader, raymarched on WebGL and
+       tinted from the page's own --bub-* tokens, so it is gold on the dark
+       theme and violet on the light one. Vendored (MIT) rather than depended
+       on; see the header of liquid-form.js for the source and for what was
+       changed. Replaces a video of a recorded mockup, whose usable crop turned
+       out to sit entirely inside the bubble and so carried no silhouette. -->
+  <div class="bubble-wrap" aria-hidden="true">
+    <canvas class="bubble-gl"></canvas>
+  </div>
+  </div>
+  </div>
 
   <div class="wrap hero-in">
     <p class="eyebrow reveal" data-i18n="home.hero.eyebrow">就业 · 培训 · 创业扶持 · 补贴 · 办事流程</p>
-    <h1 class="reveal" data-i18n="home.hero.title">把「不知道能做什么、去哪里办、够不够格」，变成一条走得通的路</h1>
-    <p class="lede reveal" data-i18n="home.hero.lede">阿桥 是一个会办事的对话智能体。先问清楚你的情况，再去找真实存在的岗位、培训、创业扶持和补贴；把公开的条件一条条念给你听——哪些已经符合，哪些不符合，哪些它也不确定；帮你把材料写出来，盯着后续，办不了就转给人。</p>
+
+    <h1 class="reveal">
+      <span data-i18n="home.hero.title">找得到的机会。</span>
+      <span data-i18n="home.hero.title2">说得清的条件。</span>
+    </h1>
+
+    <p class="lede reveal" data-i18n="home.hero.lede">把「不知道能做什么、去哪里办、够不够格」变成一条走得通的路。阿桥 先问清楚你的情况，再去找真实存在的岗位、培训、创业扶持和补贴，把公开的条件一条条念给你听——哪些已经符合，哪些不符合，哪些它也不确定。</p>
 
     <div class="hero-act reveal">
-      <a class="cta cta-lg" href="/app" data-i18n="home.hero.start">开始对话</a>
-      <a class="ghost ghost-lg" href="#how" data-i18n="home.hero.seeHow">看它怎么工作</a>
+      <a class="cta cta-lg" href="/app"><span data-i18n="home.hero.start">开始对话</span><span class="cta-arrow" aria-hidden="true">↗</span></a>
     </div>
 
-    <ul class="pills reveal">
-      <li data-i18n="home.hero.pill1">中文作答 · 全国可用</li>
-      <li data-i18n="home.hero.pill2">不判定资格，不给人打分</li>
-      <li data-i18n="home.hero.pill3">不知道，就说不知道</li>
-    </ul>
   </div>
 
-  <!-- The bridge is the product's own metaphor, drawn once at full width: two
-       piers, an arch, the deck people actually cross, and its reflection. The
-       lanterns are the avatar's eyes at another scale, so the mark in the corner
-       and the picture behind the headline are recognisably the same object. -->
-  <div class="bridge-wrap" aria-hidden="true">
-    <svg class="bridge" viewBox="0 0 1200 300" preserveAspectRatio="xMidYMax slice">
-      <path class="b-arch" d="M170 196 Q600 22 1030 196"/>
-      <path class="b-hanger" d="M300 196 V128 M420 196 V88 M540 196 V64 M660 196 V64 M780 196 V88 M900 196 V128"/>
-      <path class="b-deck" d="M0 196 H1200"/>
-      <path class="b-pier" d="M170 196 V262 M1030 196 V262"/>
-      <circle class="b-lantern" cx="170" cy="182" r="7"/>
-      <circle class="b-lantern" cx="1030" cy="182" r="7"/>
-      <circle class="b-walker" cx="0" cy="187" r="6"/>
-      <path class="b-water" d="M0 262 H1200 M120 280 H520 M660 280 H1080"/>
-      <g class="b-reflect">
-        <path class="b-arch" d="M170 328 Q600 502 1030 328"/>
-        <path class="b-deck" d="M0 328 H1200"/>
-      </g>
-    </svg>
+  <!-- A sibling of .hero-in, not a child of it. Absolute positioning resolves
+       against the nearest POSITIONED ancestor, and .hero-in is relative — so
+       while these lived inside it they were pinned to the text block and landed
+       across the headline at every width. Out here the containing block is
+       .hero, which is the tall one with the bubble in it.
+
+       Above 860px the wrapper dissolves (display: contents) and each panel
+       floats over the bubble where the reference puts them. Below that it
+       becomes a real grid and they stack under the button, because two absolute
+       panels over a bubble is a desktop composition and on a phone it is just
+       three things on top of each other. -->
+  <div class="stats">
+
+      <!-- Both numbers are real. 31 is the count in data/service_directory.json;
+           0 is the number of eligibility verdicts this product will ever issue,
+           which is the thesis of the whole thing and the only figure worth
+           setting that large. -->
+      <div class="stat stat-a glass reveal">
+        <div class="stat-top">
+          <span class="stat-label" data-i18n="home.stat.aLabel">官方服务入口</span>
+          <a class="stat-go" href="#how" aria-hidden="true" tabindex="-1">↗</a>
+        </div>
+        <p class="stat-val" data-i18n="home.stat.aVal">31 个</p>
+        <p class="stat-sub" data-i18n="home.stat.aSub">每一个地址都核对过</p>
+        <div class="stat-bar"><i style="width:100%"></i></div>
+      </div>
+
+      <div class="stat stat-b glass reveal">
+        <div class="stat-top">
+          <span class="stat-label" data-i18n="home.stat.bLabel">资格判定</span>
+          <a class="stat-go" href="#boundary" aria-hidden="true" tabindex="-1">↗</a>
+        </div>
+        <p class="stat-val" data-i18n="home.stat.bVal">0 次</p>
+        <p class="stat-sub" data-i18n="home.stat.bSub">它从不替任何机构下结论</p>
+        <div class="stat-bar"><i style="width:0"></i></div>
+      </div>
   </div>
 </section>
 
@@ -113,10 +152,10 @@
     <p class="s-label reveal"><span class="s-num">01</span><span data-i18n="home.preview.label">一次真实形状的对话</span></p>
     <h2 class="reveal" data-i18n="home.preview.title">你说一句处境，它给一条能走的路</h2>
 
-    <div class="chat reveal">
+    <div class="chat glass reveal">
       <p class="chat-tag" data-i18n="home.preview.sample">示例对话</p>
 
-      <div class="bubble bubble-you" data-i18n="home.preview.ask">我在成都，做过五年流水线，工厂关了，能做什么？</div>
+      <div class="bubble-you" data-i18n="home.preview.ask">我在成都，做过五年流水线，工厂关了，能做什么？</div>
 
       <div class="turn">
         <span class="turn-face" id="chatAvatar" aria-hidden="true"></span>
@@ -149,7 +188,7 @@
         </div>
       </div>
 
-      <p class="chat-foot" data-i18n="home.preview.disclaimer">本实例的岗位、培训、补贴都是虚构样例，编号以 SAMPLE/ 开头。接入真实数据源前，请勿据此办事。</p>
+      <p class="chat-foot" data-i18n="home.preview.disclaimer">本实例的岗位、培训、补贴都是虚构样例，每条记录的依据编号以 SAMPLE/ 开头。接入真实数据源前，请勿据此办事。</p>
     </div>
   </div>
 </section>
@@ -178,22 +217,22 @@
     <p class="sub reveal" data-i18n="home.who.sub">不是四个话术模板。每一类都有自己的目标、边界、可用工具、必要信息和验收标准，写在同一份注册表里——路由、权限、提示词、界面和评测都读它。</p>
 
     <div class="grid grid-2">
-      <article class="card reveal">
+      <article class="card glass reveal">
         <span class="ico card-ico" data-icon="user" aria-hidden="true"></span>
         <h3 data-i18n="home.who.a1t">一个人 · 机会路径</h3>
         <p data-i18n="home.who.a1b">你自己张罗工作、培训或补贴。记下你的技能、经历、城市和难处，匹配真实的岗位、培训、创业扶持和补贴，把公开条件念清楚，帮你起草材料，跟进后续，讲明白流程怎么走。</p>
       </article>
-      <article class="card reveal">
+      <article class="card glass reveal">
         <span class="ico card-ico" data-icon="cap" aria-hidden="true"></span>
         <h3 data-i18n="home.who.a2t">走常规路太贵的人 · 无障碍支持</h3>
-        <p data-i18n="home.who.a2b">毕业生、转岗工人、灵活就业者、农民工、照护家庭。先解决话题之前的摩擦：大白话、大字号、可朗读、方言口吻、可由窗口的人协助；永远给得出一个电话或一个带办公时间的地址；该转人的时候早点转，并且情况已经替你写好了。</p>
+        <p data-i18n="home.who.a2b">毕业生、转岗工人、灵活就业者、农民工、照护家庭。先解决话题之前的摩擦：大白话、大字号、可朗读、用你说的那种话回你、可由窗口的人协助；永远给得出一个电话或一个带办公时间的地址；该转人的时候早点转，并且情况已经替你写好了。</p>
       </article>
-      <article class="card reveal">
+      <article class="card glass reveal">
         <span class="ico card-ico" data-icon="route" aria-hidden="true"></span>
         <h3 data-i18n="home.who.a3t">窗口和社区工作人员 · 服务串联</h3>
         <p data-i18n="home.who.a3b">把就业、培训、社保、医保、托育、养老、住房的流程，按人串成一份可跟踪的清单：谁负责、走哪个渠道、哪一步依赖哪一步——让居民不用再自己当各个窗口之间的「接口人」。</p>
       </article>
-      <article class="card reveal">
+      <article class="card glass reveal">
         <span class="ico card-ico" data-icon="gear" aria-hidden="true"></span>
         <h3 data-i18n="home.who.a4t">规划与政策 · 供需洞察</h3>
         <p data-i18n="home.who.a4b">只看已授权、去标识的汇总。找出「岗位在这儿但人够不着」和「支持在那儿但没人来领」；带 k-匿名下限，每个数字旁边写着授权覆盖率，只讲相关，不讲因果。</p>
@@ -215,7 +254,7 @@
          not exist. Keeping it out of the swept text is also what lets the other
          two columns stay plain strings; setLocale writes textContent, so any
          markup inside a swept element would come back as literal angle brackets. -->
-    <div class="rules reveal">
+    <div class="rules glass reveal">
       <div class="rule-hd">
         <span data-i18n="home.bound.colRule">规则</span>
         <span data-i18n="home.bound.colBy">怎么保证</span>
@@ -270,15 +309,15 @@
     <p class="sub reveal" data-i18n="home.feat.sub">其余的折叠起来。调试它的人和读它的人看的是同一份记录，只是那份记录不再挡路。</p>
 
     <div class="grid grid-3">
-      <article class="card sm reveal"><span class="ico card-ico" data-icon="route" aria-hidden="true"></span><h3 data-i18n="home.feat.f1t">路由徽章</h3><p data-i18n="home.feat.f1b">你看得见它把你归到哪一类，以及凭什么这样判。判错了，你可以自己改。</p></article>
-      <article class="card sm reveal"><span class="ico card-ico" data-icon="pin" aria-hidden="true"></span><h3 data-i18n="home.feat.f2t">机会卡</h3><p data-i18n="home.feat.f2b">名称和编号、金额或「学费全免」、地址、时间、电话、要带的材料，还有一个展开看公开条件和出处的入口。</p></article>
-      <article class="card sm reveal"><span class="ico card-ico" data-icon="check" aria-hidden="true"></span><h3 data-i18n="home.feat.f3t">审批卡</h3><p data-i18n="home.feat.f3b">要提交的原文先摆出来。在你点头之前，一个字都没发出去。</p></article>
-      <article class="card sm reveal"><span class="ico card-ico" data-icon="user" aria-hidden="true"></span><h3 data-i18n="home.feat.f4t">授权卡</h3><p data-i18n="home.feat.f4b">存什么、做什么用、存多久，用大白话写。四类授权都能随时收回。</p></article>
-      <article class="card sm reveal"><span class="ico card-ico" data-icon="gear" aria-hidden="true"></span><h3 data-i18n="home.feat.f5t">系统运行详情</h3><p data-i18n="home.feat.f5b">每一次工具调用、每一条发现、整条轨迹，默认折叠，想看随时展开。</p></article>
-      <article class="card sm reveal"><span class="ico card-ico" data-icon="mic" aria-hidden="true"></span><h3 data-i18n="home.feat.f6t">朗读与语音输入</h3><p data-i18n="home.feat.f6b">用浏览器自己的语音能力，音频不离开你的设备。浏览器不支持时，它直说，并给出线下那条路。</p></article>
-      <article class="card sm reveal"><span class="ico card-ico" data-icon="eye" aria-hidden="true"></span><h3 data-i18n="home.feat.f7t">大白话 · 大字号</h3><p data-i18n="home.feat.f7b">不是前端改写。走的是智能体自己那条无障碍设置的路，所以下一句回答本身就变了。</p></article>
-      <article class="card sm reveal"><span class="ico card-ico" data-icon="chat" aria-hidden="true"></span><h3 data-i18n="home.feat.f8t">中文 / English</h3><p data-i18n="home.feat.f8b">界面和回答都能切。切换影响的是下一句回答，不是下一个会话。</p></article>
-      <article class="card sm reveal"><span class="ico card-ico" data-icon="alert" aria-hidden="true"></span><h3 data-i18n="home.feat.f9t">查不了，就说查不了</h3><p data-i18n="home.feat.f9b">语料没覆盖、检索没配置，它会说这是「查不了」，不是「没有」，并给出官方入口和 12333。</p></article>
+      <article class="card sm glass reveal"><span class="ico card-ico" data-icon="route" aria-hidden="true"></span><h3 data-i18n="home.feat.f1t">路由徽章</h3><p data-i18n="home.feat.f1b">你看得见它把你归到哪一类，以及凭什么这样判。判错了，你可以自己改。</p></article>
+      <article class="card sm glass reveal"><span class="ico card-ico" data-icon="pin" aria-hidden="true"></span><h3 data-i18n="home.feat.f2t">机会卡</h3><p data-i18n="home.feat.f2b">名称和编号、金额或「学费全免」、地址、时间、电话、要带的材料，还有一个展开看公开条件和出处的入口。</p></article>
+      <article class="card sm glass reveal"><span class="ico card-ico" data-icon="check" aria-hidden="true"></span><h3 data-i18n="home.feat.f3t">审批卡</h3><p data-i18n="home.feat.f3b">要提交的原文先摆出来。在你点头之前，一个字都没发出去。</p></article>
+      <article class="card sm glass reveal"><span class="ico card-ico" data-icon="user" aria-hidden="true"></span><h3 data-i18n="home.feat.f4t">授权卡</h3><p data-i18n="home.feat.f4b">存什么、做什么用、存多久，用大白话写。四类授权都能随时收回。</p></article>
+      <article class="card sm glass reveal"><span class="ico card-ico" data-icon="gear" aria-hidden="true"></span><h3 data-i18n="home.feat.f5t">系统运行详情</h3><p data-i18n="home.feat.f5b">每一次工具调用、每一条发现、整条轨迹，默认折叠，想看随时展开。</p></article>
+      <article class="card sm glass reveal"><span class="ico card-ico" data-icon="mic" aria-hidden="true"></span><h3 data-i18n="home.feat.f6t">朗读与语音输入</h3><p data-i18n="home.feat.f6b">用浏览器自己的语音能力，音频不离开你的设备。浏览器不支持时，它直说，并给出线下那条路。</p></article>
+      <article class="card sm glass reveal"><span class="ico card-ico" data-icon="eye" aria-hidden="true"></span><h3 data-i18n="home.feat.f7t">大白话 · 大字号</h3><p data-i18n="home.feat.f7b">不是前端改写。走的是智能体自己那条无障碍设置的路，所以下一句回答本身就变了。</p></article>
+      <article class="card sm glass reveal"><span class="ico card-ico" data-icon="chat" aria-hidden="true"></span><h3 data-i18n="home.feat.f8t">中文 / English</h3><p data-i18n="home.feat.f8b">界面和回答都能切。切换影响的是下一句回答，不是下一个会话。</p></article>
+      <article class="card sm glass reveal"><span class="ico card-ico" data-icon="alert" aria-hidden="true"></span><h3 data-i18n="home.feat.f9t">查不了，就说查不了</h3><p data-i18n="home.feat.f9b">语料没覆盖、检索没配置，它会说这是「查不了」，不是「没有」，并给出官方入口和 12333。</p></article>
     </div>
   </div>
 </section>
@@ -308,10 +347,15 @@
     <p class="sub reveal" data-i18n="home.limits.sub">一个禁止自己说宽心话的产品，首页也不该说。</p>
 
     <div class="grid grid-2">
-      <article class="card warn reveal"><h3 data-i18n="home.limits.l1t">语料是虚构的</h3><p data-i18n="home.limits.l1b">21 条岗位、12 份办事指南，形状照着真的做，好让整条链路能端到端跑通。编号以 SAMPLE/ 开头，这个前缀会一直显示到屏幕上。</p></article>
-      <article class="card warn reveal"><h3 data-i18n="home.limits.l2t">「提交」没有对接受理系统</h3><p data-i18n="home.limits.l2b">它记录并跟踪这次申报，同时明说你还得自己走一遍它展示出来的渠道。一个假装已经替你提交了的演示，比一个承认做不到的更糟。</p></article>
-      <article class="card warn reveal"><h3 data-i18n="home.limits.l3t">方言是口吻，不是方言</h3><p data-i18n="home.limits.l3b">它能把话说得更近人，但它不会假装自己听得懂或说得出你的方言。它照实说。</p></article>
-      <article class="card warn reveal"><h3 data-i18n="home.limits.l4t">全国实时检索要单独配置</h3><p data-i18n="home.limits.l4b">没配的时候，语料库没覆盖的城市只能给到官方入口和 12333，给不出具体的用人单位或课程。那是「查不了」，不是「没有」——界面上会这样写。</p></article>
+      <article class="card warn glass reveal"><h3 data-i18n="home.limits.l1t">语料是虚构的</h3><p data-i18n="home.limits.l1b">这里的岗位、培训、创业扶持、补贴和办事指南全部是我们编的，形状照着真的做，好让整条链路能端到端跑通。每条记录的依据编号以 SAMPLE/ 开头，对话界面上「演示语料」这个标记一直亮着。接入真实数据源前，请勿据此办事。</p><!-- Filled from /api/meta by home.js, empty until it answers: the count must have one
+           producer, and the claim above must still read correctly when the request does not
+           arrive. See docs/bugfix/2026-08-31-honest-limits-were-not-honest.md -->
+        <p class="tally" id="corpusTally" hidden></p></article>
+      <article class="card warn glass reveal"><h3 data-i18n="home.limits.l2t">「提交」没有对接受理系统</h3><p data-i18n="home.limits.l2b">它记录并跟踪这次申报，同时明说你还得自己走一遍它展示出来的渠道。一个假装已经替你提交了的演示，比一个承认做不到的更糟。</p></article>
+      <article class="card warn glass reveal"><h3 data-i18n="home.limits.l3t">方言只在文字里</h3><p data-i18n="home.limits.l3b">它会用你说的那种话回你——粤语就写粤语口语，四川话就写四川话，不是普通话加几个语气词。但读给我听没有方言音色，那些字会被念成普通话音。写得好不好因方言而异，写不好它会直说并换回大白话普通话，不硬凑。办事的名称、编号、电话、地址一律保持官方写法——那是你到窗口要说、要往表格里填的东西。</p></article>
+      <article class="card warn glass reveal"><h3 data-i18n="home.limits.l4t">全国实时检索要单独配置</h3><p data-i18n="home.limits.l4b">这项检索要单独配上一个搜索服务的 key。没配的时候，语料库没覆盖的城市只能给到官方入口和 12333，给不出具体的用人单位或课程。那是「查不了」，不是「没有」——界面上会这样写。</p><!-- Filled from /api/meta by home.js: whether THIS deployment has the lookup. Empty
+           until it answers, so the limitation still reads correctly on its own. -->
+        <p class="tally" id="liveStatus" hidden></p></article>
     </div>
   </div>
 </section>

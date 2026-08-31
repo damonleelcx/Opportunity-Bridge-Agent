@@ -12,6 +12,7 @@
 // copy of any of them is a second place for the product to disagree with itself.
 
 import { t, setLocale, locale } from "/i18n.js";
+import { mountLiquidForm } from "/liquid-form.js";
 import { avatar, faviconDataURI } from "/avatar.js";
 import { paintIcons } from "/icons.js";
 
@@ -68,6 +69,10 @@ function boot() {
   if (chat) chat.innerHTML = face;
   const icon = $("#favicon");
   if (icon) icon.href = faviconDataURI();
+  // The voice section shows the same face at full size rather than a second
+  // asset: one illustration, one agent.
+  const big = $("#voiceArt");
+  if (big) big.innerHTML = avatar("calm", "阿桥");
 
   paintIcons();
 
@@ -75,7 +80,90 @@ function boot() {
   applyTheme(localStorage.getItem("oba.theme") || "light");
   bindControls();
   stickyHeader();
+  paintBubble();
+  loadDeploymentFacts();
   forwardIfSignedIn();
+}
+
+// The hero bubble is ThreeUI's Liquid Form shader. Everything about it -- the
+// GL lifecycle, the palette, reduced motion, visibility gating -- lives in
+// liquid-form.js; this only supplies the element it draws into.
+function paintBubble() {
+  const host = $(".bubble-wrap");
+  const canvas = $(".bubble-gl");
+  if (host && canvas) mountLiquidForm(host, canvas);
+}
+
+// ── what THIS instance actually has ────────────────────────────────────────
+//
+// The "honest limits" section makes two claims that are facts about a
+// deployment rather than about the product, and it used to write both of them
+// down by hand:
+//
+//   the size of the corpus   — said 21 while the answer was 26. The national
+//                              layer added five records and the sentence did
+//                              not move.
+//   the live nationwide lookup — described only as "not configured", which
+//                              stops being true the moment somebody configures
+//                              it, and then the honesty section is the one part
+//                              of the page that is lying.
+//
+// Both now come from /api/meta, which is the same place the app reads them for
+// its own flags, so the page and the conversation cannot disagree.
+//
+// They are extra sentences rather than values interpolated into the claims,
+// because the claims have to read correctly when this request does not arrive.
+// A reader on a bad connection gets the limitation without the deployment
+// detail. Nobody gets a stale 21, and nobody ever gets a stray "{records}".
+// See docs/bugfix/2026-08-31-honest-limits-were-not-honest.md
+
+let deployment = null;
+
+function fact(id, text) {
+  const el = $(id);
+  if (!el) return;
+  if (!text) { el.hidden = true; return; }
+  el.textContent = text;
+  el.hidden = false;
+}
+
+function renderDeploymentFacts() {
+  if (!deployment) {
+    fact("#corpusTally", "");
+    fact("#liveStatus", "");
+    return;
+  }
+  fact("#corpusTally", t("home.limits.l1count")
+    .replace("{records}", deployment.records)
+    .replace("{guides}", deployment.guides));
+  fact("#liveStatus", t(deployment.live ? "home.limits.l4on" : "home.limits.l4off"));
+}
+
+function loadDeploymentFacts() {
+  // /api/health, not /api/meta: this page's readers are not signed in, and the
+  // sign-in gate's list of open paths is short on purpose. Both endpoints get
+  // these three values from one producer in httpapi, so reading the public one
+  // cannot disagree with what the conversation shows.
+  fetch("/api/health", { headers: { accept: "application/json" } })
+    .then((r) => (r.ok ? r.json() : Promise.reject(new Error(`HTTP ${r.status}`))))
+    .then((m) => {
+      const records = Number(m.corpus_opportunities);
+      const guides = Number(m.corpus_knowledge_docs);
+      // A missing field arrives as NaN and an empty corpus as 0. Rendering
+      // either would put a new false sentence where the old one was, so the
+      // facts are dropped and the reason is said out loud rather than swallowed.
+      if (!Number.isFinite(records) || !Number.isFinite(guides) || records <= 0 || guides <= 0) {
+        console.warn("META_UNUSABLE: /api/meta carried no usable corpus counts; " +
+          "the deployment facts under \"honest limits\" are omitted", m);
+        return;
+      }
+      deployment = { records, guides, live: m.live_search_enabled === true };
+      renderDeploymentFacts();
+    })
+    .catch((e) => {
+      console.warn("META_UNAVAILABLE: could not read /api/meta; " +
+        "the deployment facts under \"honest limits\" are omitted", e);
+    });
 }
 
 // ── language ───────────────────────────────────────────────────────────────
@@ -87,6 +175,7 @@ function applyLocale(l) {
   setLocale(l);
   for (const b of $$("[data-lang]")) b.classList.toggle("is-on", b.dataset.lang === locale());
   setThemeLabel();
+  renderDeploymentFacts();
   document.title = `${t("app.name")} · Opportunity Bridge Agent`;
 }
 
@@ -106,6 +195,9 @@ function applyTheme(choice) {
   setThemeLabel();
 }
 
+// The label is the theme it is IN, not the one it will switch to. A control
+// that names its own next state is a control you have to click to find out
+// where you are.
 function setThemeLabel() {
   const btn = $("#themeBtn");
   if (!btn) return;
