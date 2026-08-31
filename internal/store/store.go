@@ -63,6 +63,20 @@ type Turn struct {
 	Intent string    `json:"intent,omitempty"`
 	At     time.Time `json:"at"`
 	RunID  string    `json:"run_id,omitempty"`
+	// Cards are the tool results this turn drew, kept so that reopening a
+	// conversation shows what the reader saw rather than the prose alone.
+	//
+	// Only results the interface actually renders are stored - see
+	// agent.cardBearingTools. Keeping every result would put a turn's whole
+	// working set in the session record, and most of it has no reader.
+	Cards []TurnCard `json:"cards,omitempty"`
+}
+
+// TurnCard is one rendered tool result, stored verbatim as the interface
+// received it so that a replay and a live turn draw from the same shape.
+type TurnCard struct {
+	Tool   string          `json:"tool"`
+	Result json.RawMessage `json:"result"`
 }
 
 // PendingApproval is a high-risk tool call frozen mid-loop, waiting for a human

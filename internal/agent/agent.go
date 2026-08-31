@@ -215,6 +215,7 @@ func (a *Agent) Run(ctx context.Context, in Input) (Result, error) {
 	var (
 		answer      string
 		toolRecords []guardrail.ToolCallRecord
+		turnCards   []store.TurnCard
 		pending     []store.PendingApproval
 		consents    []tools.ConsentPrompt
 		// seenConsent keeps one turn from raising the same permission card
@@ -439,6 +440,9 @@ func (a *Agent) Run(ctx context.Context, in Input) (Result, error) {
 			payload := mustJSON(res.Content)
 			record.Result = payload
 			toolRecords = append(toolRecords, record)
+			if cardBearingTools[use.ToolName] {
+				turnCards = append(turnCards, store.TurnCard{Tool: use.ToolName, Result: json.RawMessage(payload)})
+			}
 			rec.Info(obs.ToolSucceeded, "tool succeeded",
 				map[string]any{"tool": use.ToolName, "result_bytes": len(payload)})
 			results = append(results, llm.ToolResult(use.ToolUseID, payload, false))
@@ -474,6 +478,7 @@ func (a *Agent) Run(ctx context.Context, in Input) (Result, error) {
 	_ = a.Store.MutateSession(ses.ID, func(s *store.Session) error {
 		s.History = append(s.History, store.Turn{
 			Role: "assistant", Text: answer, Intent: string(dec.ID), At: time.Now().UTC(), RunID: runID,
+			Cards: turnCards,
 		})
 		s.Task.Step++
 		return nil
@@ -684,6 +689,28 @@ func needStrings(ns []domain.AccessNeed) []string {
 		out[i] = string(n)
 	}
 	return out
+}
+
+// cardBearingTools are the tools whose results the interface DRAWS, and so the
+// only ones worth carrying in a session record.
+//
+// It is a whitelist rather than "store everything" because most results have no
+// reader: knowledge_search returns prose the answer already quotes, and
+// consent_check returns a flag the panel re-reads live. Storing those would put
+// a turn's whole working set on disk for nothing, and session records are
+// written on every turn.
+//
+// It must stay in step with cardFor() in web/static/app.js. A tool listed here
+// with no renderer wastes space; a renderer with no entry here draws on a live
+// turn and vanishes on reload, which is the bug this exists to fix.
+var cardBearingTools = map[string]bool{
+	"opportunity_search":   true,
+	"criteria_explain":     true,
+	"gap_analysis":         true,
+	"handoff_to_human":     true,
+	"document_prepare":     true,
+	"candidate_search":     true,
+	"external_talent_scan": true,
 }
 
 func mustJSON(v any) string {
