@@ -361,7 +361,9 @@ func (s *Server) getSession(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, map[string]any{
-		"session":   ses,
+		// Consent is applied again on the way out, so a reopened conversation
+		// shows the pool as it is rather than as it was. See freshenCards.
+		"session":   freshenCards(s.Store, ses),
 		"profile":   s.Store.Profile(ses.SubjectID),
 		"tasks":     s.Store.TasksFor(ses.SubjectID),
 		"consent":   s.Store.ConsentAll(ses.SubjectID),

@@ -410,8 +410,27 @@ async function openSession(id) {
   $("#transcript").innerHTML = "";
   greeting();
   for (const turn of d.session.history || []) {
-    if (turn.role === "user") userTurn(turn.text);
-    else agentTurn().bubble.textContent = turn.text;
+    if (turn.role === "user") {
+      userTurn(turn.text);
+      continue;
+    }
+    const t2 = agentTurn();
+    t2.typing = false;
+    t2.bubble.textContent = turn.text;
+    // The cards this turn drew, redrawn from what the server kept. Without this
+    // a reopened conversation showed the prose and none of the opportunity,
+    // candidate or scan cards that were on screen when it was written — the
+    // answer referred to records the reader could no longer see.
+    //
+    // candidate_search results have already been re-checked against consent as
+    // it stands now, server-side, so a person who withdrew is simply not in the
+    // card any more. See freshenCards in internal/httpapi/replay.go.
+    for (const card of turn.cards || []) {
+      const node = cardFor(card.tool, card.result);
+      if (!node) continue;
+      show(t2.results);
+      t2.results.append(node);
+    }
   }
   crumb(d.session.intent || null);
   await loadIntents();
