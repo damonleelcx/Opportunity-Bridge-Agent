@@ -105,7 +105,7 @@ async function boot() {
   // which rejects it, and the app would fail to boot on a stale preference.
   const wanted = recall("oba.role", "");
   if (wanted && (state.meta.roles || []).includes(wanted)) $("#role").value = wanted;
-  await newSession($("#role").value);
+  if (!(await reopenLast())) await newSession($("#role").value);
   await refreshSessions();
 }
 
@@ -245,6 +245,7 @@ function wire() {
 async function newSession(role) {
   abortTurn();
   state.session = await api("POST", "/api/sessions", { role, locale: locale() });
+  remember("oba.session", state.session.id);
   state.pinnedIntent = "";
   $("#transcript").innerHTML = "";
   crumb(null);
@@ -252,6 +253,32 @@ async function newSession(role) {
   await loadIntents();
   await renderOverview();
   await refreshSessions();
+}
+
+// reopenLast puts the reader back in the conversation they were last in.
+//
+// A refresh used to mint a new session every time, so the transcript was empty
+// and the previous one was only reachable from the session list — the page
+// looked like it had forgotten, even though nothing had been lost.
+//
+// It returns false rather than throwing on ANY failure, and the caller then
+// opens a fresh session. That path is normal, not exceptional: the id is stale
+// after the state file is cleared, and it belongs to somebody else after a
+// different account signs in on the same browser. The server decides which —
+// it takes the subject from the session cookie and refuses an id that is not
+// that account's, which is what stops this restoring one person's conversation
+// into another person's window.
+// See docs/bugfix/2026-08-28-data-exposure-no-ownership-checks.md
+async function reopenLast() {
+  const id = recall("oba.session", "");
+  if (!id) return false;
+  try {
+    await openSession(id);
+    return true;
+  } catch {
+    remember("oba.session", "");
+    return false;
+  }
 }
 
 function greeting() {
@@ -375,6 +402,7 @@ async function openSession(id) {
   abortTurn();
   const d = await api("GET", `/api/sessions/${id}`);
   state.session = d.session;
+  remember("oba.session", d.session.id);
   $("#role").value = d.session.role;
   // Opening somebody's earlier conversation is also a choice of role, so the
   // next refresh should land back in it rather than in resident.
@@ -1827,6 +1855,9 @@ function wireGate() {
 
   $("#signOut").addEventListener("click", async () => {
     // Server-side too, not just this browser: see auth.go.
+    // The server would refuse the id anyway, but leaving it behind means the
+    // next person's first load spends a failing request to be told so.
+    remember("oba.session", "");
     try { await api("POST", "/api/auth/signout", {}); } catch { /* going anyway */ }
     location.reload();
   });

@@ -1173,6 +1173,23 @@ func TestSettingsDrawerSurvivesARefresh(t *testing.T) {
 		t.Error("the remembered intent is restored without checking it is reachable in this role; " +
 			"a stale pin makes every turn fail with INTENT_NOT_PERMITTED_FOR_ROLE")
 	}
+
+	// The conversation comes back too, and its failure path is the load-bearing
+	// part. A remembered id is stale once the state file is cleared, and it
+	// belongs to somebody ELSE once a different account signs in on this browser.
+	// reopenLast must therefore fall back to a fresh session rather than throw —
+	// a boot that dies on a stale preference is worse than one that forgets.
+	if !strings.Contains(app, `"oba.session"`) {
+		t.Error("app.js never stores the session id, so a refresh mints a new conversation and the " +
+			"transcript comes back empty")
+	}
+	if !strings.Contains(app, "reopenLast") {
+		t.Fatal("reopenLast is gone; this fence no longer guards the restore")
+	}
+	if !strings.Contains(app, "await reopenLast()") || !strings.Contains(app, "await newSession(") {
+		t.Error("boot no longer falls back to newSession when the remembered conversation cannot be " +
+			"opened; a stale or foreign id would leave the app with no session at all")
+	}
 }
 
 // A capped list must say what it capped.
