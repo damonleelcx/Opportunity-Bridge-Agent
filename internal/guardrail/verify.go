@@ -63,6 +63,9 @@ var verifiers = map[string]Verifier{
 	"no_false_reassurance":       verifyNoFalseReassurance,
 	"reply_language":             verifyReplyLanguage,
 	"answers_the_city":           verifyAnswersTheCity,
+	"no_candidate_scoring":       verifyNoCandidateScoring,
+	"candidate_anonymity":        verifyCandidateAnonymity,
+	"outreach_is_an_ask":         verifyOutreachIsAsk,
 }
 
 // universalVerifiers run on every turn, whatever intent is answering and
@@ -167,6 +170,11 @@ func metaInt(c ToolCallRecord, key string) (int, bool) {
 		return int(n), true
 	}
 	return 0, false
+}
+
+func metaStr(c ToolCallRecord, key string) string {
+	s, _ := c.Meta[key].(string)
+	return s
 }
 
 func metaBool(c ToolCallRecord, key string) bool {
@@ -871,7 +879,7 @@ func verifyAnswerIsProse(in VerifyInput) []Finding {
 			Message: "The answer carries the internal routing decision. That object is for the route chip in the interface, " +
 				"never for the reader.",
 			Evidence: []string{clip(body, 160)},
-			Remedy: "Do not restate which intent this was routed to. Answer the person's question in their language.",
+			Remedy:   "Do not restate which intent this was routed to. Answer the person's question in their language.",
 		})
 	}
 	return out
@@ -894,4 +902,129 @@ func clip(s string, n int) string {
 		return s
 	}
 	return string(r[:n]) + "…"
+}
+
+// ---------------------------------------------------------------- recruiter
+//
+// Three checks, one per way the recruiter feature can hurt somebody. They are
+// written as separate verifiers rather than one because they fail for different
+// reasons and want different remedies, and a merged check would report the wrong
+// one. See docs/16-recruiter-and-outreach.md.
+
+// screeningWords are the ways an answer says "this person is worth less".
+//
+// The list is about PEOPLE being ranked, which is why it does not overlap with
+// exclusionWords above: that list catches telling a person not to apply, this
+// one catches telling an employer whom to prefer. Both are the same act seen
+// from the two ends of the bridge.
+var screeningWords = []string{
+	"best candidate", "top candidate", "strongest candidate", "weakest",
+	"better than", "worse than", "highest score", "ranked", "ranking",
+	"rating", "grade a", "tier 1", "a-list",
+	"最佳人选", "最优人选", "最强", "最差", "排名", "评分", "打分", "优于", "不如", "等级",
+}
+
+// scoreShaped catches a number presented as a person's worth: "8/10", "score:
+// 87", "匹配度 92%". The pattern is deliberately narrow - a bare percentage is
+// not a score, and a salary is not a score - because a broad one would fire on
+// every honest answer that mentions years of experience.
+var scoreShaped = regexp.MustCompile(`(?i)(score|rating|match(?:ing)?\s*(?:score|rate)|评分|打分|匹配度)\s*[:：]?\s*\d+`)
+
+// verifyNoCandidateScoring: the product's founding promise is that it does not
+// score people. A recruiter surface is where that promise is under the most
+// pressure, because ranking people is exactly what a recruiter wants.
+//
+// What is allowed instead: candidate_search returns matched_skills, so an answer
+// can say WHY somebody appeared and let the reader disagree. What is refused is
+// collapsing that into a verdict the reader cannot argue with.
+func verifyNoCandidateScoring(in VerifyInput) []Finding {
+	if !ranTool(in, "candidate_search") {
+		return nil
+	}
+	var hits []string
+	for _, s := range splitSentences(in.Answer) {
+		low := strings.ToLower(s)
+		if containsAnyLower(low, screeningWords) || scoreShaped.MatchString(s) {
+			hits = append(hits, strings.TrimSpace(s))
+		}
+	}
+	if len(hits) == 0 {
+		return nil
+	}
+	return []Finding{{
+		Guard: "verify", Code: "CANDIDATE_SCORING", Severity: Block,
+		Message:  "The answer ranks or scores people. This service does not score people, including for employers.",
+		Evidence: hits,
+		Remedy: "Say which skills each person listed that the role asked for, and let the employer judge. " +
+			"Do not order people by worth, do not name a best one, and do not attach a number to a person.",
+	}}
+}
+
+// verifyCandidateAnonymity: a search result is a set of strangers who agreed to
+// be findable, not to be identified. Anything that names or reaches one of them
+// may appear only after that person accepted a specific request.
+//
+// It reads the tools' Meta rather than the answer's shape: contact_shared is
+// asserted by outreach_respond when a person actually released a channel, so the
+// check cannot be talked around by phrasing.
+func verifyCandidateAnonymity(in VerifyInput) []Finding {
+	if !ranTool(in, "candidate_search", "outreach_request", "outreach_list") {
+		return nil
+	}
+	released := false
+	for _, c := range in.ToolCalls {
+		if c.Err != "" {
+			continue
+		}
+		if metaBool(c, "contact_shared") {
+			released = true
+		}
+		// outreach_list on the recruiter's side returns a channel for accepted
+		// requests; that is a legitimate disclosure and must not trip the check.
+		if c.Name == "outreach_list" && metaStr(c, "side") == "recruiter" {
+			released = true
+		}
+	}
+	if released {
+		return nil
+	}
+	var out []Finding
+	if f := HasPII(in.Answer); len(f) > 0 {
+		out = append(out, Finding{
+			Guard: "verify", Code: "CANDIDATE_IDENTIFIED", Severity: Block,
+			Message: "The answer contains a personal identifier for somebody who has not agreed to be contacted.",
+			Remedy: "Refer to people by their candidate_ref only. A name or a number here would be a disclosure " +
+				"the person never authorised - and if it is not in the tool result, it was invented.",
+		})
+	}
+	return out
+}
+
+// verifyOutreachIsAsk: an outreach request is a question, and an answer that
+// reports it as an arranged contact sets the employer up to expect a call that
+// may never come - and misrepresents to the person what they agreed to.
+func verifyOutreachIsAsk(in VerifyInput) []Finding {
+	if !ranTool(in, "outreach_request") {
+		return nil
+	}
+	pending := false
+	for _, c := range in.ToolCalls {
+		if c.Name == "outreach_request" && c.Err == "" && metaStr(c, "status") == "pending" {
+			pending = true
+		}
+	}
+	if !pending {
+		return nil
+	}
+	if containsAny(in.Answer,
+		"decide", "decides", "accept", "accepts", "if they", "whether they", "up to them", "waiting",
+		"由他", "由她", "由本人", "对方决定", "是否接受", "等待", "同意后") {
+		return nil
+	}
+	return []Finding{{
+		Guard: "verify", Code: "OUTREACH_STATED_AS_CONTACT", Severity: Repair,
+		Message: "A contact request was sent, and the answer does not say that the person still has to accept it.",
+		Remedy: "Say plainly that the request is waiting on that person, that they may say no, and that no " +
+			"contact details have been shared.",
+	}}
 }

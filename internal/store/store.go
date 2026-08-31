@@ -117,7 +117,9 @@ type snapshot struct {
 	Consent   map[string]map[domain.ConsentScope]domain.ConsentGrant `json:"consent"`
 	Signals   []domain.DemandSignal                                  `json:"demand_signals"`
 	Approvals map[string]*PendingApproval                            `json:"approvals"`
-	Seq       int                                                    `json:"seq"`
+	// Outreach is the recruiter/candidate contact handshake. See outreach.go.
+	Outreach map[string]*domain.Outreach `json:"outreach,omitempty"`
+	Seq      int                         `json:"seq"`
 }
 
 type Store struct {
@@ -171,6 +173,7 @@ func newSnapshot() snapshot {
 		Tasks:     map[string]*domain.CaseTask{},
 		Consent:   map[string]map[domain.ConsentScope]domain.ConsentGrant{},
 		Approvals: map[string]*PendingApproval{},
+		Outreach:  map[string]*domain.Outreach{},
 		Accounts:  map[string]*Account{},
 		SignIns:   map[string]*SignIn{},
 		// Not optional: a nil map here panics on the first verification link a

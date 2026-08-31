@@ -266,6 +266,10 @@ func irreversibleImpact(name string) string {
 	case "application_submit":
 		return "Sends an application to an external authority on this person's behalf. It cannot be recalled, " +
 			"and a wrong or duplicate filing can cost them the attempt."
+	case "outreach_request":
+		return "Puts a named employer's approach in front of a real person, under this recruiter's name. " +
+			"It cannot be unsent. No contact details are released by it - the person still decides - but " +
+			"their attention is spent either way, and a mistargeted approach is the cost they pay."
 	}
 	return "This action leaves our boundary and cannot be undone."
 }

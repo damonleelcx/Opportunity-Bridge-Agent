@@ -276,8 +276,37 @@ func ConsentScopes() []ConsentScope {
 		ConsentSubmitOnBehalf,
 		ConsentAggregate,
 		ConsentReadAloudVendor,
-		ConsentDiscoverable,
 	}
+}
+
+// notYetOfferedScopes exist in this file but are deliberately NOT offered to
+// anybody yet, because nothing reads them.
+//
+// ConsentDiscoverable is here because the outreach path is unfinished: the store
+// can filter on it (Store.DiscoverableProfiles) but no route or tool reaches
+// that, so granting it would put somebody into a pool nothing searches. A
+// permission that does nothing is worse than an absent one - it teaches people
+// that granting things here has no consequence.
+//
+// It is a LIST, not a deletion, so the omission is a written decision rather
+// than a line somebody forgot. TestEveryScopeIsOfferedOrExplained refuses to let
+// a scope be in neither list, which is the failure this replaces: a scope
+// missing from ConsentScopes() is one the API rejects, the model cannot ask for,
+// and the interface renders no control to withdraw - all silently.
+// See docs/bugfix/2026-08-31-read-aloud-needs-consent.md
+func notYetOfferedScopes() []ConsentScope {
+	return []ConsentScope{ConsentDiscoverable}
+}
+
+// NotYetOffered reports whether a scope exists but is withheld. Exported so an
+// operator surface can say "known, not switched on" rather than "unknown".
+func NotYetOffered(s string) bool {
+	for _, k := range notYetOfferedScopes() {
+		if string(k) == s {
+			return true
+		}
+	}
+	return false
 }
 
 // IsConsentScope reports whether a string names a permission this service asks

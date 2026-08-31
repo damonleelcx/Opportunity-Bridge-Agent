@@ -22,6 +22,7 @@ func Default() *Registry {
 		documentPrepare(), caseTaskCreate(), caseTaskUpdate(), caseTaskList(),
 		applicationSubmit(), handoffToHuman(), accessibilitySet(),
 		consentRequest(), consentCheck(), gapAnalysis(),
+		candidateSearch(), outreachRequest(), outreachList(), outreachRespond(),
 	)
 }
 

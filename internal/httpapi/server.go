@@ -266,7 +266,7 @@ func (s *Server) meta(w http.ResponseWriter, r *http.Request) {
 		// person could be asked for and then could not withdraw.
 		// See docs/bugfix/2026-08-31-read-aloud-needs-consent.md
 		"consent_scopes": consentScopeNames(),
-		"roles":          []string{string(domain.RoleResident), string(domain.RoleCaseworker), string(domain.RoleAnalyst)},
+		"roles":          roleStrings(),
 	}
 	for k, v := range s.deploymentFacts() {
 		out[k] = v
@@ -541,6 +541,21 @@ func consentScopeNames() []string {
 	out := make([]string, 0, len(domain.ConsentScopes()))
 	for _, s := range domain.ConsentScopes() {
 		out = append(out, string(s))
+	}
+	return out
+}
+
+// roleStrings renders the role vocabulary for /api/meta.
+//
+// It reads domain.Roles() rather than listing them, because the hand-written
+// list here had already fallen out of step once: a role that exists in the
+// domain but not in this payload cannot be selected in the interface, and the
+// intent behind it becomes dead code that still passes every test it has.
+func roleStrings() []string {
+	rs := domain.Roles()
+	out := make([]string, 0, len(rs))
+	for _, r := range rs {
+		out = append(out, string(r))
 	}
 	return out
 }

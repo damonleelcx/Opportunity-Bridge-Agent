@@ -29,6 +29,11 @@ const (
 	ServiceOrchestration ID = "service_orchestration"
 	// SupplyDemandInsight - 为社会.
 	SupplyDemandInsight ID = "supply_demand_insight"
+	// TalentSourcing - 为用人单位. The one intent that runs the other way down the
+	// bridge: an employer looking for people, rather than a person looking for
+	// work. It is reachable only by RoleRecruiter and it is the narrowest intent
+	// here on purpose.
+	TalentSourcing ID = "talent_sourcing"
 	// Unknown means "not routed yet"; the only legal action is to ask.
 	Unknown ID = "unknown"
 )
@@ -133,6 +138,7 @@ var registry = []Intent{
 			"profile_upsert", "knowledge_search", "opportunity_search", "criteria_explain",
 			"document_prepare", "case_task_create", "case_task_update", "case_task_list",
 			"application_submit", "handoff_to_human", "accessibility_set", "consent_request",
+			"outreach_list", "outreach_respond",
 		},
 		Verifiers: []string{"citations_present", "no_eligibility_verdict", "actionable_next_step",
 			"next_step_is_tracked", "no_invented_identifiers", "no_false_reassurance", "reply_language",
@@ -201,6 +207,7 @@ Sequence: understand -> plan -> act -> verify -> respond.
 		AllowedTools: []string{
 			"accessibility_set", "profile_upsert", "knowledge_search", "opportunity_search",
 			"criteria_explain", "handoff_to_human", "case_task_create", "case_task_list", "consent_request",
+			"outreach_list", "outreach_respond",
 		},
 		Verifiers: []string{"plain_language", "offline_route_present", "no_cohort_downranking",
 			"citations_present", "no_false_reassurance", "reply_language", "answers_the_city"},
@@ -262,6 +269,7 @@ a missing document, or the cost of one more failed attempt.
 		AllowedTools: []string{
 			"consent_check", "consent_request", "case_task_create", "case_task_update", "case_task_list",
 			"knowledge_search", "criteria_explain", "opportunity_search", "handoff_to_human", "document_prepare",
+			"outreach_list", "outreach_respond",
 		},
 		Verifiers: []string{"consent_on_file", "task_has_owner_and_channel", "no_silent_closure",
 			"citations_present", "reply_language"},
@@ -337,6 +345,87 @@ You report on populations, never on people.
 - Report: the gap, its direction, its size, the arithmetic, and what would test it.
 - Do not say "because". Say "is associated with", and name the confound you can see.
 - If the question is really about one person or one employer, refuse and say why.`,
+	},
+	{
+		ID:       TalentSourcing,
+		Audience: "An employer or agency looking for people to hire.",
+		Roles:    []domain.Role{domain.RoleRecruiter},
+		Goal: "Let an employer reach people who ASKED to be reachable, without turning anybody into a " +
+			"searchable record they did not agree to be, and without the service ever ranking people.",
+		SuccessCriteria: []string{
+			"Every person shown opted in, and would recognise this as what they agreed to.",
+			"The employer sees why somebody matched - which of the required skills they listed - and no score.",
+			"No name and no contact detail moves until that person accepts a specific, named job.",
+			"A person who declines is not asked again for the same role, and no reason is demanded of them.",
+			"The employer is told plainly how small the pool is, rather than being left to infer a market from it.",
+		},
+		CanDo: []string{
+			"Search the opt-in pool by skill, city, sector and years of experience.",
+			"Show de-identified candidate cards with the skills that matched the requirement.",
+			"Send one contact request about one named job, after a human has approved it.",
+			"Report where each request stands, and hand over a contact detail once it is accepted.",
+		},
+		CannotDo: []string{
+			"Show anybody who has not granted discoverable_by_employers.",
+			"Reveal a name, phone number, email or address before that person accepts.",
+			"Rank, score, grade or compare people, or name a best candidate.",
+			"Filter or sort on age, gender, household registration (户籍), marital or caregiving status, " +
+				"disability, or any cohort label - these are not fields in the pool and never will be.",
+			"Answer on a candidate's behalf, chase a non-answer, or re-send a declined request.",
+			"Assess whether somebody is suitable. It reports what they listed; the employer decides.",
+		},
+		EscalateWhen: []string{
+			"The employer asks for a protected attribute, or to screen one out.",
+			"The employer asks for contact details before acceptance, or for a way around the handshake.",
+			"The role described looks unlawful, unsafe, or is recruitment for work the person cannot verify.",
+			"A candidate reports that an employer contacted them outside an accepted request.",
+		},
+		Workflow: []Step{
+			{Stage: "understand", Does: "Get the concrete requirement: the job, the skills it actually needs, the city, the pay. Refuse attribute filters here, at the point they are asked."},
+			{Stage: "plan", Does: "Decide the skill terms to search on and say them out loud, so the employer can correct the search rather than the result."},
+			{Stage: "act", Does: "Search the opt-in pool; then, only for people the employer names, prepare one contact request each."},
+			{Stage: "verify", Does: "Check no answer ranks a person, no identifier appears for anybody who has not accepted, and the pool size is stated."},
+			{Stage: "respond", Does: "Report what matched and why, how small the pool is, and that every next step is the candidate's decision."},
+		},
+		Slots: []Slot{
+			{Name: "position", Ask: "slot.position", Required: true},
+			{Name: "skills", Ask: "slot.required_skills", Required: true},
+			{Name: "city", Ask: "slot.city"},
+			{Name: "pay", Ask: "slot.pay"},
+		},
+		AllowedTools: []string{
+			"candidate_search", "outreach_request", "outreach_list",
+			"knowledge_search", "handoff_to_human",
+		},
+		Verifiers: []string{
+			"no_candidate_scoring", "candidate_anonymity", "outreach_is_an_ask",
+			"no_cohort_downranking", "no_false_reassurance", "reply_language",
+		},
+		MaxIterations: 6,
+		MaxToolCalls:  10,
+		Effort:        "high",
+		Directive: `INTENT: talent_sourcing.
+You are helping an employer reach people who asked to be reachable.
+
+The pool is NOT a resume database. It holds only people who switched on
+"discoverable by employers", and it empties when they switch it off. Say its size
+plainly. If three people match, say three - do not dress it up, and do not imply
+the labour market is what this pool contains.
+
+- You may search on skills, city, sector and years. Nothing else exists as a
+  field. If you are asked to filter or sort by age, gender, 户籍, marital or
+  caregiving status, disability, or any group label, say once that this service
+  does not hold those and cannot screen on them, then continue with the real
+  requirement. Do not moralise and do not repeat it.
+- Report each person as: the skills they listed that you asked for, their city,
+  their experience. Never a score, never a ranking, never a "best" one. The
+  employer judges; you show them what they are judging on.
+- People appear as candidate_ref. You do not know their names. If you find
+  yourself writing one, you invented it.
+- To reach anybody: outreach_request, one person, one named job. A human approves
+  it, THEN the person decides. Until they accept you get nothing - and you must
+  say so, rather than implying contact has been arranged.
+- A decline is a complete answer. Do not ask why, do not propose asking again.`,
 	},
 }
 
