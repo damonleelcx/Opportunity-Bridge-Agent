@@ -674,6 +674,7 @@ const TERMS = {
     "scope.submit_on_behalf": "代你提交申请",
     "scope.aggregate_deidentified": "把你计入匿名统计",
     "scope.read_aloud_via_vendor": "把答案发给朗读服务",
+    "scope.discoverable_by_employers": "让招聘方在匿名池里找到我",
     "sev.advisory": "提示", "sev.repair": "已修正", "sev.block": "已拦下",
     "event.agent.run.started": "开始处理",
     "event.agent.run.finished": "处理完成",
@@ -779,6 +780,7 @@ const TERMS = {
     "scope.submit_on_behalf": "File on your behalf",
     "scope.aggregate_deidentified": "Count me in the statistics",
     "scope.read_aloud_via_vendor": "Send answers to the speech service",
+    "scope.discoverable_by_employers": "Let employers find me in the anonymous pool",
   },
 };
 
