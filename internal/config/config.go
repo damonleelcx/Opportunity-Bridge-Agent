@@ -73,6 +73,24 @@ type Config struct {
 	SearchAPIURL    string
 	SearchKeyHeader string
 
+	// External talent lookup, for the recruiter intent. Both OFF unless keyed,
+	// like every other vendor seam here.
+	//
+	// These answer "how many people of this shape exist outside our opt-in
+	// pool" - a market-size question. They never return a name, a contact or a
+	// profile URL, from either vendor, even where the vendor supplies one. See
+	// internal/talentsource for why that is the only coherent position.
+	//
+	// ‼️ PDLAPIURL exists mainly so it can be pointed at PDL's SANDBOX
+	// (https://sandbox.api.peopledatalabs.com/v5/person/search), which answers
+	// with SYNTHETIC records at zero credit cost. That is the right endpoint to
+	// develop and demo against: it exercises the whole adapter without a real
+	// person's data being read at all.
+	PDLAPIKey    string
+	PDLAPIURL    string
+	ApolloAPIKey string
+	ApolloAPIURL string
+
 	// Read-aloud through a speech vendor. Off unless keyed, for the same reason
 	// web search is: a feature that silently degrades is worse than one that
 	// says it is not switched on. With no key the browser reads answers with its
@@ -188,6 +206,10 @@ func Load() (Config, error) {
 		SMTPPassword:    env("OBA_SMTP_PASSWORD", ""),
 		SearchProvider:  SearchProvider(env("OBA_SEARCH_PROVIDER", string(SearchBocha))),
 		SearchAPIKey:    env("OBA_SEARCH_API_KEY", ""),
+		PDLAPIKey:       env("OBA_PDL_API_KEY", ""),
+		PDLAPIURL:       env("OBA_PDL_API_URL", ""),
+		ApolloAPIKey:    env("OBA_APOLLO_API_KEY", ""),
+		ApolloAPIURL:    env("OBA_APOLLO_API_URL", ""),
 		SearchAPIURL:    env("OBA_SEARCH_API_URL", ""),
 		SearchKeyHeader: env("OBA_SEARCH_KEY_HEADER", ""),
 		TTSAPIKey:       env("OBA_TTS_API_KEY", ""),

@@ -35,6 +35,7 @@ import (
 	"github.com/damonleelcx/Opportunity-Bridge-Agent/internal/llm"
 	"github.com/damonleelcx/Opportunity-Bridge-Agent/internal/retrieval"
 	"github.com/damonleelcx/Opportunity-Bridge-Agent/internal/store"
+	"github.com/damonleelcx/Opportunity-Bridge-Agent/internal/talentsource"
 	"github.com/damonleelcx/Opportunity-Bridge-Agent/internal/tools"
 )
 
@@ -80,6 +81,14 @@ type Setup struct {
 	// follow-up turn runs. false declines them, which is the other half of the
 	// gate and just as important to test.
 	ApproveRaised *bool `json:"approve_raised,omitempty"`
+	// Pool seeds OTHER people into the store as opted-in candidates, which is
+	// the only way a talent_sourcing case has anybody to find: Profile above
+	// seeds the session's own subject, and for a recruiter that is the recruiter.
+	//
+	// Each one is granted ConsentDiscoverable, because a pool member who has not
+	// opted in is invisible by design and would make every such case vacuous -
+	// passing because nothing was searched rather than because the rules held.
+	Pool []domain.Profile `json:"pool,omitempty"`
 }
 
 type Expectation struct {
@@ -172,6 +181,10 @@ type Runner struct {
 	// Live is the out-of-corpus lookup, so cases exercise the same path the
 	// deployment does.
 	Live livesource.Provider
+	// Talent is the external people-index lookup, so recruiter cases exercise the
+	// same path the product runs. Nil - the default - means external_talent_scan
+	// refuses, which is itself the behaviour most cases should see.
+	Talent talentsource.Provider
 }
 
 func (r *Runner) Run(ctx context.Context, cases []Case) Report {
@@ -260,6 +273,13 @@ func (r *Runner) runOne(ctx context.Context, c Case) CaseResult {
 		p.SubjectID = ses.SubjectID
 		st.SaveProfile(p)
 	}
+	for i, p := range c.Setup.Pool {
+		if p.SubjectID == "" {
+			p.SubjectID = fmt.Sprintf("pool_%02d", i+1)
+		}
+		st.SaveProfile(p)
+		st.SetConsent(p.SubjectID, domain.ConsentDiscoverable, true, "eval setup")
+	}
 
 	var client llm.Client
 	if c.Kind == "route" {
@@ -301,6 +321,7 @@ func (r *Runner) runOne(ctx context.Context, c Case) CaseResult {
 	ag := &agent.Agent{
 		Cfg: r.Cfg, LLM: client, Store: st, Corpus: r.Corpus,
 		Index: retrieval.NewIndex(r.Corpus), Tools: tools.Default(), Live: r.Live,
+		Talent: r.Talent,
 	}
 	out, err := ag.Run(ctx, agent.Input{SessionID: ses.ID, Message: c.Message, Intent: intent.ID(c.Pin)})
 	if err != nil {

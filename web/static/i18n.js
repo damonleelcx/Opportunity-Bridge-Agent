@@ -122,7 +122,7 @@ const STRINGS = {
     "ctl.new": "新对话",
     "banner.sampleTitle": "演示语料",
     "banner.sampleBody": "出厂语料只有全国性制度，条件对着官方原文核过，出处可点开。本地岗位和课程来自实时检索的公开网页，标着「未核实」。两者都不是我们替你核实过的结论。",
-    "panel.intents": "四类意图",
+    "panel.intents": "意图",
     "panel.intentsHint": "留空表示自动判定。点选后本轮固定走该意图。",
     "panel.sessions": "会话",
     "sessions.untitled": "未命名对话",
@@ -141,6 +141,7 @@ const STRINGS = {
     "role.resident": "居民本人",
     "role.caseworker": "窗口/社区工作人员",
     "role.analyst": "规划/政策分析",
+    "role.recruiter": "招聘方（用人单位/中介）",
     "status.thinking": "正在思考…",
     "status.working": "正在查询…",
     "status.done": "完成",
@@ -242,8 +243,8 @@ const STRINGS = {
     "home.how.s5t": "盯着办，或者转给人",
     "home.how.s5b": "后续每一步都有人负责、有渠道、有先后。走不下去，它把已经写好的情况一起转给真人，你不用从头再说一遍。",
     "home.who.label": "给谁用",
-    "home.who.title": "四类人，四条不同的路",
-    "home.who.sub": "不是四个话术模板。每一类都有自己的目标、边界、可用工具、必要信息和验收标准，写在同一份注册表里——路由、权限、提示词、界面和评测都读它。",
+    "home.who.title": "不同的人，不同的路",
+    "home.who.sub": "不是几个话术模板。每一类都有自己的目标、边界、可用工具、必要信息和验收标准，写在同一份注册表里——路由、权限、提示词、界面和评测都读它。",
     "home.who.a1t": "一个人 · 机会路径",
     "home.who.a1b": "你自己张罗工作、培训或补贴。记下你的技能、经历、城市和难处，匹配真实的岗位、培训、创业扶持和补贴，把公开条件念清楚，帮你起草材料，跟进后续，讲明白流程怎么走。",
     "home.who.a2t": "走常规路太贵的人 · 无障碍支持",
@@ -267,7 +268,7 @@ const STRINGS = {
     "home.bound.r4": "不可逆的事，人先点头",
     "home.bound.r4b": "同意绑在参数原文的哈希上——内容改了，之前的同意就不算数",
     "home.bound.r5": "关于你的事，先要你授权",
-    "home.bound.r5b": "四类授权，在任何工具正文运行之前检查",
+    "home.bound.r5b": "每一项授权，都在任何工具正文运行之前检查",
     "home.bound.r6": "汇总里不出现个人",
     "home.bound.r6b": "低于 k-匿名下限的格子直接不给，识别性字段拦下",
     "home.bound.r7": "回答用你读得懂的语言",
@@ -286,6 +287,12 @@ const STRINGS = {
     // 不写数量。原文是「四类授权」，加第五类（朗读）的那一刻就成了假话——
     // 和首页曾经写死「21 条岗位」是同一个病。见
     // docs/bugfix/2026-08-31-honest-limits-were-not-honest.md
+    //
+    // 同一个病后来又犯了两次：home.bound.r5b 也写着「四类授权」（当时其实
+    // 已经是五类），home.who.title / panel.intents 写着「四类人」「四类意图」，
+    // 加第五类受众（招聘方）时就成了假话。现在这些键一律不写数量，并且由
+    // TestCopyDoesNotCountWhatTheRegistryDefines 围住。
+    // 见 docs/18-recruiter-and-outreach.md
     "home.feat.f4b": "存什么、做什么用、存多久，用大白话写。每一项授权都能随时收回，设置里一项一个开关。",
     "home.feat.f5t": "系统运行详情",
     "home.feat.f5b": "每一次工具调用、每一条发现、整条轨迹，默认折叠，想看随时展开。",
@@ -445,7 +452,7 @@ const STRINGS = {
     "ctl.new": "New conversation",
     "banner.sampleTitle": "Sample corpus",
     "banner.sampleBody": "What ships is the nationwide schemes, checked against the official texts, each with a source you can open. Local listings and courses come from live search of public pages, labelled unverified. Neither is a conclusion we checked for you.",
-    "panel.intents": "Four intents",
+    "panel.intents": "Intents",
     "panel.intentsHint": "Leave unset to route automatically. Selecting one pins this turn to it.",
     "panel.sessions": "Conversations",
     "sessions.untitled": "Untitled conversation",
@@ -464,6 +471,7 @@ const STRINGS = {
     "role.resident": "Resident",
     "role.caseworker": "Frontline / community staff",
     "role.analyst": "Planning / policy analyst",
+    "role.recruiter": "Employer / recruiter",
     "status.thinking": "Thinking…",
     "status.working": "Looking things up…",
     "status.done": "Done",
@@ -565,8 +573,8 @@ const STRINGS = {
     "home.how.s5t": "Follow up — or hand you to a person",
     "home.how.s5b": "Each remaining step has an owner, a channel and an order. When it cannot go further, it hands the case to a human with your situation already written down, so you do not start again from the beginning.",
     "home.who.label": "Who it is for",
-    "home.who.title": "Four audiences, four different paths",
-    "home.who.sub": "Not four prompt templates. Each carries its own goal, boundaries, tool allowlist, required facts and success criteria in one registry — routing, permissions, prompt assembly, the interface and the evaluation suite all read that registry.",
+    "home.who.title": "Different audiences, different paths",
+    "home.who.sub": "Not a set of prompt templates. Each carries its own goal, boundaries, tool allowlist, required facts and success criteria in one registry — routing, permissions, prompt assembly, the interface and the evaluation suite all read that registry.",
     "home.who.a1t": "One person · opportunity pathway",
     "home.who.a1b": "You, sorting out work, training or a subsidy for yourself. It records your skills, experience, city and constraints, matches real openings, courses, start-up support and subsidies, reads out the criteria, drafts your material, tracks the follow-up and explains the procedure.",
     "home.who.a2t": "When the ordinary route costs too much · access support",
@@ -590,7 +598,7 @@ const STRINGS = {
     "home.bound.r4": "Nothing irreversible without a person",
     "home.bound.r4b": "Consent is bound to a hash of the exact arguments — change the text and the earlier approval no longer counts",
     "home.bound.r5": "Nothing about you without your permission",
-    "home.bound.r5b": "Four consent scopes, checked before any tool body runs",
+    "home.bound.r5b": "Every consent scope, checked before any tool body runs",
     "home.bound.r6": "No individual inside an aggregate",
     "home.bound.r6b": "Cells below the k-anonymity floor are withheld, and identifying fields are blocked",
     "home.bound.r7": "The answer is in a language you can read",
@@ -764,6 +772,10 @@ const TERMS = {
     "consentP.read_aloud_via_vendor.plain": "想用更好听的声音把答案念出来，就要把这条答案的文字发给外面的语音服务。可以吗？",
     "consentP.read_aloud_via_vendor.what": "为了让答案能听、不用看。只有你按下朗读才会发出去；你说不行，答案照样会念，用你自己设备上的声音。",
     "consentP.read_aloud_via_vendor.keep": "只发那一条答案的文字，只在你按下的那一刻。这边不保存。",
+    "consentP.discoverable_by_employers.title": "让招聘方找到你",
+    "consentP.discoverable_by_employers.plain": "可以让正在招人的用人单位看到你会做什么、在哪个城市、做过几年吗？不带名字，也没有任何联系你的方式。",
+    "consentP.discoverable_by_employers.what": "让活儿来找你，不用只靠你去找活儿。他们看到的是你会做什么，不是你是谁。有人想联系你，消息先到你这里，由你决定。你说不行，这边其他功能一样用。",
+    "consentP.discoverable_by_employers.keep": "你随时可以关掉，下一次搜索就没有你了。你的名字、电话、住址从来不在里面。除非你一个一个地同意，否则没人拿得到你的联系方式；同意了也还能收回。",
     "field.city": "所在城市", "field.hukou_city": "户口所在地", "field.education": "学历",
     "field.skills": "会做的事", "field.constraints": "硬性限制", "field.interests": "想做的",
     "field.cohorts": "自述情况", "field.access_needs": "阅读方式",

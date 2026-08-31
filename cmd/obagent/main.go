@@ -32,6 +32,7 @@ import (
 	"github.com/damonleelcx/Opportunity-Bridge-Agent/internal/mailer"
 	"github.com/damonleelcx/Opportunity-Bridge-Agent/internal/retrieval"
 	"github.com/damonleelcx/Opportunity-Bridge-Agent/internal/store"
+	"github.com/damonleelcx/Opportunity-Bridge-Agent/internal/talentsource"
 	"github.com/damonleelcx/Opportunity-Bridge-Agent/internal/tts"
 	"github.com/damonleelcx/Opportunity-Bridge-Agent/web"
 )
@@ -92,6 +93,7 @@ func run(addrOverride string, log *slog.Logger) error {
 	ag := &agent.Agent{
 		Cfg: cfg, LLM: client, Store: st, Corpus: c,
 		Index: retrieval.NewIndex(c), Tools: toolsRegistry(), Live: live,
+		Talent: buildTalentSource(cfg, log),
 	}
 	webFS, err := fs.Sub(web.Files, "static")
 	if err != nil {
@@ -180,6 +182,36 @@ func buildLiveSource(cfg config.Config, log *slog.Logger) (livesource.Chain, err
 	log.Info("live web search enabled",
 		"provider", string(cfg.SearchProvider), "regions_in_directory", dir.Regions())
 	return chain, nil
+}
+
+// buildTalentSource assembles the external people-index providers.
+//
+// Nil is returned when neither vendor is keyed, and that is the normal case. It
+// is nil rather than an empty chain on purpose: external_talent_scan refuses
+// outright when there is no provider, because an empty result would read as
+// "nobody like that exists anywhere", which is the most misleading thing this
+// feature could say. Nothing about the first-party pool depends on any of it.
+func buildTalentSource(cfg config.Config, log *slog.Logger) talentsource.Provider {
+	var chain talentsource.Chain
+	if cfg.PDLAPIKey != "" {
+		chain = append(chain, talentsource.NewPDL(cfg.PDLAPIURL, cfg.PDLAPIKey))
+	}
+	if cfg.ApolloAPIKey != "" {
+		chain = append(chain, talentsource.NewApollo(cfg.ApolloAPIURL, cfg.ApolloAPIKey))
+	}
+	if len(chain) == 0 {
+		log.Info("external talent scan is OFF: no OBA_PDL_API_KEY or OBA_APOLLO_API_KEY. "+
+			"Recruiters see the opt-in pool only, and the size of the market outside it is reported as unknown",
+			"code", "EXTERNAL_TALENT_DISABLED")
+		return nil
+	}
+	names := make([]string, 0, len(chain))
+	for _, p := range chain {
+		names = append(names, p.Name())
+	}
+	log.Info("external talent scan enabled", "code", "EXTERNAL_TALENT_ENABLED", "vendors", names,
+		"note", "market estimates only; no name, contact or profile link is returned by either vendor path")
+	return chain
 }
 
 // speechProvider builds the read-aloud vendor, or nil when it is not configured.

@@ -395,10 +395,11 @@ You report on populations, never on people.
 		},
 		AllowedTools: []string{
 			"candidate_search", "outreach_request", "outreach_list",
-			"knowledge_search", "handoff_to_human",
+			"external_talent_scan", "knowledge_search", "handoff_to_human",
 		},
 		Verifiers: []string{
 			"no_candidate_scoring", "candidate_anonymity", "outreach_is_an_ask",
+			"external_leads_not_candidates",
 			"no_cohort_downranking", "no_false_reassurance", "reply_language",
 		},
 		MaxIterations: 6,
@@ -425,7 +426,31 @@ the labour market is what this pool contains.
 - To reach anybody: outreach_request, one person, one named job. A human approves
   it, THEN the person decides. Until they accept you get nothing - and you must
   say so, rather than implying contact has been arranged.
-- A decline is a complete answer. Do not ask why, do not propose asking again.`,
+- A decline is a complete answer. Do not ask why, do not propose asking again.
+
+external_talent_scan answers a DIFFERENT question: how many people of this shape
+exist OUTSIDE the pool, per an external vendor index. Use it when the pool comes
+back small, because "three" means nothing until the employer knows whether three
+is the pool or the market.
+- Report the two numbers separately and say which is which. The pool figure is
+  people who can be approached here; the scan figure is an estimate of people who
+  CANNOT - they never opted in, and outreach_request refuses them.
+- The scan searches every configured vendor at once and returns a by_vendor
+  breakdown. SHOW IT: name each vendor and its own count, and if one was
+  unavailable say so and give its reason. A vendor the deployment is not entitled
+  to use contributes zero, and an unmentioned zero reads as "nobody like that
+  exists" - which is a claim about the world made from a billing problem.
+- The combined figure is a RANGE, because the indexes overlap by an unknown
+  amount. Say "between X and Y". Never quote the upper bound on its own; it is
+  only reached if the two vendors share nobody, which they certainly do not.
+- Never merge them into one count of "candidates". Never imply a route to the
+  second group exists here; there is none, and inventing one wastes the
+  employer's time and misdescribes strangers as having volunteered.
+- Always pass on the vendor's caveat verbatim in your own words. A low count from
+  these indexes usually says what that vendor covers, not how many such workers
+  exist - both of them are English-first and weighted to office work.
+- If no vendor is configured, the size of the outside market is UNKNOWN. Say
+  unknown. Do not say small.`,
 	},
 }
 

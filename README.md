@@ -57,7 +57,7 @@ That gap is made of **information asymmetry** and **transactional friction**.
 This agent attacks both. It cannot attack the shortage underneath, and it says
 so — see [what it must never do](#the-boundary-that-matters-most).
 
-## Four audiences, four intents
+## Five audiences, five intents
 
 Each bullet of the brief became a first-class **intent** in
 [`internal/intent/intent.go`](internal/intent/intent.go), carrying its own goal,
@@ -70,6 +70,7 @@ chips, the eval suite and the docs all read that one registry.
 | **`individual_pathway`** | one person | Records skills, experience, city and constraints; matches real jobs, training, entrepreneurship support and subsidies; reads out published criteria as met / unmet / unknown; drafts material; tracks the follow-up; explains the procedure |
 | **`low_access_support`** | graduates, workers changing trade, gig workers, migrant workers, caregiving families | Solves the friction before the topic — plain language, larger text, read aloud, an answer in the person's own variety of Chinese, assisted-at-a-window mode; always offers a phone number or an address with hours; hands off to a person early, with the context already written down |
 | **`service_orchestration`** | frontline staff | Stitches employment, training, social insurance, medical insurance, childcare, eldercare and housing procedures into one tracked list per person, with owners, channels and explicit dependencies — so the resident stops being the integration layer between counters |
+| **`talent_sourcing`** | employers and agencies | Searches an **opt-in** pool of people who switched on "discoverable by employers" — no names, no contact details, no protected attributes, no ranking. To reach anybody it sends one request about one named job, gated on a human approval, and that person decides. Withdrawing the permission empties the pool of them on the next search |
 | **`supply_demand_insight`** | planners | Over consented, de-identified aggregates only: finds where *the jobs are here but people cannot reach them* and *the support exists but nobody claims it*, with a k-anonymity floor, the consent coverage stated next to every figure, and association rather than cause |
 
 ## The boundary that matters most

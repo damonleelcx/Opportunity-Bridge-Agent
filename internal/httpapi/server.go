@@ -178,6 +178,10 @@ func (s *Server) deploymentFacts() map[string]any {
 		"corpus_opportunities":  len(s.Agent.Corpus.Opportunities),
 		"corpus_knowledge_docs": len(s.Agent.Corpus.Docs),
 		"live_search_enabled":   s.Cfg.SearchAPIKey != "",
+		// Named per vendor rather than as one boolean: they cover different
+		// people, so "which one is on" changes what an empty result means.
+		"external_talent_pdl":    s.Cfg.PDLAPIKey != "",
+		"external_talent_apollo": s.Cfg.ApolloAPIKey != "",
 		// Why the landing page needs this: its read-aloud card used to promise
 		// "no audio leaves your device". With a speech vendor configured, the
 		// ANSWER TEXT is sent to that vendor to be rendered - a person's city,

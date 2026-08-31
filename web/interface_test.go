@@ -1105,6 +1105,44 @@ func TestConsentCopyDoesNotCountThePermissions(t *testing.T) {
 	}
 }
 
+// The same failure, twice more, in the keys the fence above did not cover.
+//
+// home.bound.r5b said "四类授权" / "Four consent scopes" while there were already
+// five, so it shipped false and nothing noticed. home.who.title and
+// panel.intents said "四类人" / "Four intents", which stayed true right up until
+// a fifth audience (the recruiter) was added - at which point the landing page
+// was telling readers something the registry contradicted.
+//
+// The rule this encodes: copy does not count what a registry defines. The
+// registry grows; prose does not grow with it. Adding a sixth audience or a
+// seventh scope must not be able to make the interface lie.
+// See docs/18-recruiter-and-outreach.md
+func TestCopyDoesNotCountWhatTheRegistryDefines(t *testing.T) {
+	zh, en := localeBlocks(t, asset(t, "i18n.js"))
+	keys := []string{"home.who.title", "home.who.sub", "panel.intents", "home.bound.r5b"}
+	counted := []string{
+		"四类", "四项", "四个", "四条", "五类", "五项", "五个", "五条", "六类", "六项",
+		"four ", "Four ", "five ", "Five ", "six ", "Six ",
+	}
+	for _, lang := range []struct{ name, block string }{{"zh-CN", zh}, {"en", en}} {
+		for _, key := range keys {
+			claim := regexp.MustCompile(`"` + regexp.QuoteMeta(key) + `":\s*"((?:[^"\\]|\\.)*)"`)
+			m := claim.FindStringSubmatch(lang.block)
+			if m == nil {
+				t.Errorf("%s has no %s; this fence no longer guards it", lang.name, key)
+				continue
+			}
+			for _, c := range counted {
+				if strings.Contains(m[1], c) {
+					t.Errorf("%s %s counts what the registry defines (%q): %q\n"+
+						"  adding an audience or a consent scope makes this false without anybody touching it",
+						lang.name, key, c, m[1])
+				}
+			}
+		}
+	}
+}
+
 // The sample-data disclaimers must draw a line, not paint everything one colour.
 //
 // They said everything on screen was invented — 「全部是我们编的」, "Every job,

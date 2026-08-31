@@ -486,3 +486,185 @@ func containsString(xs []string, want string) bool {
 	}
 	return false
 }
+
+// ---- recruiter verifiers ----
+//
+// The recruiter surface is where "this service does not score people" is under
+// the most pressure, because ranking people is what a recruiter came for. These
+// fence the three ways the answer can break the promise the tools protect.
+
+func searchRan() []guardrail.ToolCallRecord {
+	return []guardrail.ToolCallRecord{{Name: "candidate_search", Meta: map[string]any{"matched": 3}}}
+}
+
+func TestCandidateScoringIsCaught(t *testing.T) {
+	bad := []string{
+		"cand_a1b2 is the best candidate for this role.",
+		"I would rank cand_a1b2 above cand_c3d4.",
+		"Match score: 87 for the first one.",
+		"cand_a1b2 的匹配度 92，是最佳人选。",
+		"这三个人里 cand_c3d4 最强，cand_a1b2 不如他。",
+	}
+	for _, answer := range bad {
+		got := codes(t, []string{"no_candidate_scoring"},
+			guardrail.VerifyInput{Answer: answer, ToolCalls: searchRan()})
+		if sev, ok := got["CANDIDATE_SCORING"]; !ok {
+			t.Errorf("scoring not caught in %q", answer)
+		} else if sev != guardrail.Block {
+			t.Errorf("scoring in %q was %s, expected a block", answer, sev)
+		}
+	}
+
+	// The allowed shape: say what matched and let the employer judge. This must
+	// not be flagged, or the verifier makes an honest answer impossible.
+	// The trailing words are deliberate: "frank" and "cranky" contain "rank", and
+	// a substring check would block this honest answer.
+	ok := "Three people listed 数控 among their skills. cand_a1b2 listed 数控 and 焊工 and has six years " +
+		"in manufacturing; cand_c3d4 listed 数控 with two years. You decide which is worth approaching. " +
+		"To be frank, the pool is small and the shift pattern makes people cranky."
+	if got := codes(t, []string{"no_candidate_scoring"},
+		guardrail.VerifyInput{Answer: ok, ToolCalls: searchRan()}); len(got) != 0 {
+		t.Errorf("an honest match readout was flagged: %v", got)
+	}
+}
+
+// The verifier's own remedy tells the model to say it does not rank people. If
+// the check then fires on that sentence, a correct redraft becomes a refusal and
+// the model has no way to state the boundary at all. Regression fence for the
+// defect turn-sourcing-ranking-blocked found.
+func TestDecliningToRankIsNotItselfRanking(t *testing.T) {
+	allowed := []string{
+		"I do not rank people, so I will show you what the ranking would have been made of instead.",
+		"I won't score anyone. Here is what each person listed.",
+		"I cannot rate candidates for you - that is your call.",
+		"我不对人排名，只把他们各自写了什么列给你。",
+		"There is no ranking here. cand_a1b2 listed 数控 and 焊工.",
+	}
+	for _, answer := range allowed {
+		if got := codes(t, []string{"no_candidate_scoring"},
+			guardrail.VerifyInput{Answer: answer, ToolCalls: searchRan()}); len(got) != 0 {
+			t.Errorf("the agent was blocked from stating its own boundary in %q: %v", answer, got)
+		}
+	}
+
+	// A negation is not a free pass: comparing two people is still a ranking,
+	// however it is phrased.
+	stillBad := []string{
+		"cand_c3d4 is not the best candidate; cand_a1b2 is.",
+		"cand_c3d4 is weaker than cand_a1b2.",
+	}
+	for _, answer := range stillBad {
+		if got := codes(t, []string{"no_candidate_scoring"},
+			guardrail.VerifyInput{Answer: answer, ToolCalls: searchRan()}); len(got) == 0 {
+			t.Errorf("a comparison phrased as a negation slipped through: %q", answer)
+		}
+	}
+}
+
+func TestCandidateIdentifiersAreBlockedBeforeAcceptance(t *testing.T) {
+	// A name or a number for somebody who has not accepted is either a leak or an
+	// invention. Both are wrong, and this cannot tell them apart - which is why
+	// it blocks rather than repairs.
+	got := codes(t, []string{"candidate_anonymity"}, guardrail.VerifyInput{
+		Answer:    "cand_a1b2 is 王建国, you can call him on 13800000000.",
+		ToolCalls: searchRan(),
+	})
+	if _, ok := got["CANDIDATE_IDENTIFIED"]; !ok {
+		t.Errorf("a contact detail reached a recruiter before acceptance: %v", got)
+	}
+
+	// After the person accepted, the same shape of answer is the whole point of
+	// the feature and must pass.
+	accepted := []guardrail.ToolCallRecord{
+		{Name: "outreach_list", Meta: map[string]any{"side": "recruiter", "outreach_count": 1}},
+	}
+	if got := codes(t, []string{"candidate_anonymity"}, guardrail.VerifyInput{
+		Answer:    "cand_a1b2 accepted. The number they gave is 13800000000.",
+		ToolCalls: accepted,
+	}); len(got) != 0 {
+		t.Errorf("an accepted contact was blocked: %v", got)
+	}
+}
+
+func TestOutreachMustBeReportedAsAnAsk(t *testing.T) {
+	sent := []guardrail.ToolCallRecord{
+		{Name: "outreach_request", Meta: map[string]any{"outreach_created": true, "status": "pending"}},
+	}
+	got := codes(t, []string{"outreach_is_an_ask"}, guardrail.VerifyInput{
+		Answer: "I have contacted cand_a1b2 about the 数控操作工 role. Expect a call shortly.", ToolCalls: sent,
+	})
+	if sev, ok := got["OUTREACH_STATED_AS_CONTACT"]; !ok {
+		t.Errorf("a pending request was reported as an arranged contact: %v", got)
+	} else if sev != guardrail.Repair {
+		t.Errorf("expected a repair, got %s", sev)
+	}
+
+	honest := "The request is with cand_a1b2 now. They decide whether to accept, and they may say no. " +
+		"No contact details have been shared with you."
+	if got := codes(t, []string{"outreach_is_an_ask"},
+		guardrail.VerifyInput{Answer: honest, ToolCalls: sent}); len(got) != 0 {
+		t.Errorf("an honest report of a pending request was flagged: %v", got)
+	}
+}
+
+// A headcount larger than the pool must come from external_talent_scan.
+//
+// The Chinese cases are not decoration: Go's \b is an ASCII word boundary, so
+// the first version of this check silently failed on "241 人" — the form this
+// deployment produces BY DEFAULT, since it answers in Chinese. A guard that only
+// works in the language the deployment does not use is not a guard.
+func TestMarketFiguresMustHaveASourceInBothLanguages(t *testing.T) {
+	poolOfTwo := []guardrail.ToolCallRecord{
+		{Name: "candidate_search", Meta: map[string]any{"matched": 2, "pool_size": 2}},
+	}
+	for _, answer := range []string{
+		"I found 241 candidates for CNC in Chengdu.",
+		"There are about 900 people with this skill in the city.",
+		"成都大概有 241 人做数控。",
+		"符合条件的有 300 位。",
+	} {
+		got := codes(t, []string{"external_leads_not_candidates"},
+			guardrail.VerifyInput{Answer: answer, ToolCalls: poolOfTwo})
+		if sev, ok := got["UNSOURCED_MARKET_FIGURE"]; !ok {
+			t.Errorf("an unsourced headcount passed: %q", answer)
+		} else if sev != guardrail.Block {
+			t.Errorf("%q was %s, expected a block", answer, sev)
+		}
+	}
+
+	// What must NOT fire: the pool's own count, and numbers that are not people.
+	for _, answer := range []string{
+		"Two people listed 数控. Both are in 成都.",
+		"月薪 7000，长白班，成都新都区。cand_a1b2 有 6 年经验。",
+		"The role pays 7000 a month and needs 3 years of experience.",
+		"池子里有 2 人。",
+	} {
+		if got := codes(t, []string{"external_leads_not_candidates"},
+			guardrail.VerifyInput{Answer: answer, ToolCalls: poolOfTwo}); len(got) != 0 {
+			t.Errorf("an honest answer was blocked: %q -> %v", answer, got)
+		}
+	}
+}
+
+// When the scan DID run, the answer must say those people are not reachable
+// here. Merging the two into one count of "candidates" claims reach that does
+// not exist and describes strangers as having volunteered.
+func TestExternalEstimateMustBeSeparatedFromThePool(t *testing.T) {
+	scanned := []guardrail.ToolCallRecord{
+		{Name: "candidate_search", Meta: map[string]any{"matched": 1}},
+		{Name: "external_talent_scan", Meta: map[string]any{"external_total": 240}},
+	}
+	got := codes(t, []string{"external_leads_not_candidates"}, guardrail.VerifyInput{
+		Answer: "There are 241 candidates in total. I can start reaching out.", ToolCalls: scanned,
+	})
+	if got["EXTERNAL_LEADS_AS_CANDIDATES"] != guardrail.Block {
+		t.Errorf("a merged count was allowed: %v", got)
+	}
+
+	honest := "One person opted in and can be approached here. The vendor index estimates roughly 240 more " +
+		"outside the pool — they did not opt in, and I cannot contact them for you."
+	if got := codes(t, []string{"external_leads_not_candidates"},
+		guardrail.VerifyInput{Answer: honest, ToolCalls: scanned}); len(got) != 0 {
+		t.Errorf("an honest two-number answer was flagged: %v", got)
+	}
+}

@@ -10,6 +10,7 @@ import (
 
 	"github.com/damonleelcx/Opportunity-Bridge-Agent/internal/domain"
 	"github.com/damonleelcx/Opportunity-Bridge-Agent/internal/obs"
+	"github.com/damonleelcx/Opportunity-Bridge-Agent/internal/talentsource"
 )
 
 // This file is the recruiter's entire action surface: search a pool of people
@@ -25,7 +26,7 @@ import (
 // Everything here is a consequence of that sentence. Search returns cards with
 // no name and no channel. Outreach is irreversible and therefore approval-gated.
 // Acceptance is what releases a channel, and the channel is the one the person
-// typed themselves. See docs/16-recruiter-and-outreach.md.
+// typed themselves. See docs/18-recruiter-and-outreach.md.
 
 // CandidateRef derives the handle a recruiter uses to refer to a person.
 //
@@ -462,4 +463,144 @@ func outcomeSentence(s domain.OutreachStatus) string {
 		return "The contact detail is removed. The employer keeps whatever they already wrote down, which is why withdrawing early matters."
 	}
 	return ""
+}
+
+// ---------------------------------------------------- external_talent_scan
+
+// externalTalentScan answers "how big is the market outside our pool".
+//
+// Why it is a separate tool rather than extra fields on candidate_search: the
+// two return things with different legal status, and merging them would put a
+// contactable person and an uncontactable stranger in one list for the model to
+// tell apart by reading a flag. It would also make candidateCard's projection
+// answer to two masters. gap_analysis is separate from opportunity_search for
+// the same reason - a different question, over a different population, under
+// different rules.
+//
+// What it exists FOR: a recruiter shown three people cannot tell whether three
+// is the market or just the pool, and that is the question that decides whether
+// they use this service at all. Answering it honestly is worth a tool. Answering
+// it by handing over strangers' contact details is not, which is why it cannot.
+func externalTalentScan() Tool {
+	return Tool{
+		Name:  "external_talent_scan",
+		Roles: []domain.Role{domain.RoleRecruiter},
+		Risk:  RiskRead,
+		Description: "Estimate how many people of a given shape exist OUTSIDE this service's opt-in pool, " +
+			"using external vendor indexes. This returns COUNTS and de-identified profile shapes - never a " +
+			"name, an email, a phone number or a profile link, because these people were never asked. " +
+			"You cannot contact anybody found here through this service and outreach_request will not accept " +
+			"them; say so plainly rather than implying a route exists. " +
+			"Every configured vendor is searched and the results come back COMBINED, with a by_vendor " +
+			"breakdown. Show that breakdown: name each vendor, its own count, and - if it was unavailable - " +
+			"say so and why, because a vendor you are not entitled to use contributes zero and an unmentioned " +
+			"zero reads as 'nobody like that exists'. " +
+			"The combined figure is a RANGE (estimated_total_at_least .. estimated_total_at_most), because the " +
+			"indexes overlap by an unknown amount; never quote the upper bound on its own. " +
+			"Use it for one purpose: telling an employer whether the pool being small means the MARKET is " +
+			"small. Always report the pool count from candidate_search alongside it, and always pass on each " +
+			"vendor's caveat, because a low count usually says more about what that vendor indexes than about " +
+			"how many such workers exist.",
+		Schema: Obj("The profile shape to size.", map[string]*Schema{
+			"skills": Arr("Skills, in the vendor's language. These indexes are English-first. "+
+				"‼️ Terms are combined with AND, so each one you add NARROWS the result. Pass ONE broad skill "+
+				"(\"cnc\"), not a list of near-synonyms - \"cnc\" AND \"cnc machining\" AND \"machining\" matches "+
+				"almost nobody and reads as an empty market.", Str("A skill"), 6),
+			"title": Str("A job title to match, in English. ANDed with skills, and these indexes carry " +
+				"office-work titles, so adding one usually collapses the count to zero. Prefer skills alone " +
+				"and omit this unless a skills-only scan already returned something."),
+			"country": Str("Country, e.g. china."),
+			"region":  Str("City or province."),
+			"limit":   Int("How many sample shapes to return.", 1, 25),
+		}),
+		Run: func(ctx context.Context, env Env, a map[string]any) (Result, error) {
+			if env.Talent == nil {
+				// A configured-off vendor must say so. Returning an empty result here
+				// would read as "nobody like that exists anywhere", which is the most
+				// misleading answer this tool could give.
+				return Result{}, fmt.Errorf("EXTERNAL_SCAN_NOT_CONFIGURED: no external talent vendor is switched on " +
+					"for this deployment, so the size of the market outside the pool is unknown. Say that it is " +
+					"unknown - do NOT say it is small, and do not guess a number")
+			}
+			q := talentsource.Query{
+				Skills:  argStrs(a, "skills"),
+				Title:   argStr(a, "title"),
+				Country: argStr(a, "country"),
+				Region:  argStr(a, "region"),
+				Limit:   argInt(a, "limit", 8),
+			}
+			found, err := env.Talent.Find(ctx, q)
+			// Fail ONLY when no vendor answered at all.
+			//
+			// The first version bailed whenever the combined total was zero, which
+			// collapsed two different facts: "every vendor was unreachable" and "a
+			// vendor answered, and the honest answer was none". A live run hit
+			// exactly that - PDL answered 0 for an over-narrow query while Apollo
+			// 403'd - and the tool returned only Apollo's error. The model then told
+			// the recruiter the scan "is configured to use Apollo.io", because PDL's
+			// participation had been thrown away. That is the same silent-zero
+			// failure this whole tool exists to prevent, committed by the tool.
+			//
+			// A vendor answering zero is a RESULT and must reach the reader with the
+			// breakdown attached, so they can see which index was searched.
+			var partial string
+			if err != nil {
+				answered := false
+				for _, v := range found.PerVendor {
+					if v.Error == "" {
+						answered = true
+						break
+					}
+				}
+				if !answered {
+					return Result{}, err
+				}
+				partial = err.Error()
+			}
+			vendors := make([]string, 0, len(found.PerVendor))
+			for _, v := range found.PerVendor {
+				vendors = append(vendors, fmt.Sprintf("%s=%d", v.Name, v.Total))
+			}
+			env.Rec.Info(obs.ExternalTalentScanned, "external talent indexes queried",
+				map[string]any{
+					"at_least": found.AtLeast, "at_most": found.Total,
+					"leads": len(found.Leads), "truncated": found.Truncated, "by_vendor": vendors,
+				})
+
+			content := map[string]any{
+				// Reported as a RANGE because the vendor indexes overlap by an
+				// unknown amount: adding their totals double-counts anybody in both.
+				// The lower bound is the largest single index, the upper is the sum.
+				"estimated_total_at_least": found.AtLeast,
+				"estimated_total_at_most":  found.Total,
+				"is_a_floor":               found.Truncated,
+				// The per-vendor rows are the point of a combined search. A vendor
+				// that returned nothing and a vendor that was REFUSED both contribute
+				// zero, and only this breakdown tells them apart.
+				"by_vendor": found.PerVendor,
+				"sample":    found.Leads,
+				"how_to_read": "The two indexes overlap, so the true figure is somewhere in the range - " +
+					"never quote the upper bound alone. Report each vendor separately as well, including any " +
+					"that was unavailable: a vendor you are not entitled to use contributes zero, and a zero " +
+					"that goes unmentioned reads as 'nobody like that exists'.",
+				"pool_note": "These people are NOT in this service's pool and did not opt in. " +
+					"No contact route exists for them here; outreach_request will refuse them.",
+			}
+			if partial != "" {
+				// Named separately from by_vendor so the model cannot miss it: the
+				// range below was computed WITHOUT whatever this vendor would have
+				// contributed, so it is a floor rather than an estimate.
+				content["incomplete"] = partial +
+					" — the range above was computed without that vendor, so treat it as a floor, not an estimate."
+			}
+			return Result{
+				Content: content,
+				Meta: map[string]any{
+					"external_total": found.Total, "external_at_least": found.AtLeast,
+					"external_leads": len(found.Leads), "external_vendors": len(found.PerVendor),
+					"external_truncated": found.Truncated, "external_partial": partial != "",
+				},
+			}, nil
+		},
+	}
 }

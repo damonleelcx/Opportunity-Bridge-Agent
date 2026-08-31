@@ -52,6 +52,10 @@ const (
 	CandidateSearched Name = "agent.candidate.searched"
 	OutreachRequested Name = "agent.outreach.requested"
 	OutreachDecided   Name = "agent.outreach.decided"
+	// ExternalTalentScanned records a query against a THIRD-PARTY people index.
+	// Separate from CandidateSearched because an operator auditing what left the
+	// building needs to see vendor lookups distinctly from first-party ones.
+	ExternalTalentScanned Name = "agent.talent.external_scanned"
 )
 
 // Level is coarse on purpose - the event name carries the detail.

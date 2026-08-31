@@ -23,6 +23,7 @@ func Default() *Registry {
 		applicationSubmit(), handoffToHuman(), accessibilitySet(),
 		consentRequest(), consentCheck(), gapAnalysis(),
 		candidateSearch(), outreachRequest(), outreachList(), outreachRespond(),
+		externalTalentScan(),
 	)
 }
 

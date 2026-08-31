@@ -16,6 +16,7 @@ import (
 	"github.com/damonleelcx/Opportunity-Bridge-Agent/internal/obs"
 	"github.com/damonleelcx/Opportunity-Bridge-Agent/internal/retrieval"
 	"github.com/damonleelcx/Opportunity-Bridge-Agent/internal/store"
+	"github.com/damonleelcx/Opportunity-Bridge-Agent/internal/talentsource"
 )
 
 // Risk classifies what a tool can do to the world, which is what decides
@@ -45,6 +46,10 @@ type Env struct {
 	// Live looks things up outside the corpus. Nil is legitimate and means the
 	// corpus is all there is.
 	Live livesource.Provider
+	// Talent looks for PEOPLE outside the first-party opt-in pool. Nil is
+	// legitimate and the common case: with no vendor key the pool is all there
+	// is, and external_talent_scan says so rather than returning nothing.
+	Talent talentsource.Provider
 	// LiveSeq numbers live results across the WHOLE turn, so two searches in one
 	// turn cannot both produce a live-003. It is a pointer because Env is copied
 	// into every tool call and the count has to survive that. Nil numbers each
@@ -320,6 +325,21 @@ func ConsentPromptFor(scope domain.ConsentScope) *ConsentPrompt {
 			// stale the moment a deployment switches.
 			// See docs/bugfix/2026-08-31-the-privacy-claim-was-false.md
 			Retention: "Only the text of that one answer, only at the moment you press it. It is not stored here.",
+		}
+	case domain.ConsentDiscoverable:
+		return &ConsentPrompt{
+			Scope: scope, Title: "Let employers find you",
+			Plain: "May employers looking to hire see your skills, your city and your experience - " +
+				"without your name and without any way to contact you?",
+			WhatFor: "So work can find you instead of only the other way round. They see what you can do, " +
+				"never who you are. If one wants to reach you, you get the message first and you decide. " +
+				"Saying no changes nothing else about this service.",
+			// Says what is NOT shared as well as what is, because the fear this
+			// question raises is being called by strangers, and answering the fear
+			// is the only honest way to ask.
+			Retention: "You can switch this off at any time and you disappear from the next search. " +
+				"Your name, your phone and your address are never in it. Nobody gets a way to contact you " +
+				"unless you accept them one by one, and you can take that back too.",
 		}
 	case domain.ConsentAggregate:
 		return &ConsentPrompt{
