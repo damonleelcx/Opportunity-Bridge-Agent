@@ -110,6 +110,11 @@ check: ## fmt check, vet, test - what CI runs
 	go vet ./...
 	go test ./...
 
+.PHONY: talent-smoke
+talent-smoke: ## Live smoke the external talent vendors (needs keys in .env)
+	@set -a; . ./.env; set +a; \
+	go test ./internal/talentsource/ -run 'TestLive' -count=1 -v
+
 .PHONY: fmt
 fmt: ## Format everything
 	gofmt -w .

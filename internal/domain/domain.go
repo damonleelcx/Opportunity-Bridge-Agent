@@ -29,7 +29,7 @@ const (
 	// why it carries the tightest limits in the product. A recruiter reaches
 	// exactly one intent, sees only people who asked to be seen
 	// (ConsentDiscoverable), sees them without names, and cannot reach anybody
-	// until that person accepts. See docs/16-recruiter-and-outreach.md.
+	// until that person accepts. See docs/18-recruiter-and-outreach.md.
 	RoleRecruiter Role = "recruiter"
 )
 
@@ -276,17 +276,12 @@ func ConsentScopes() []ConsentScope {
 		ConsentSubmitOnBehalf,
 		ConsentAggregate,
 		ConsentReadAloudVendor,
+		ConsentDiscoverable,
 	}
 }
 
 // notYetOfferedScopes exist in this file but are deliberately NOT offered to
 // anybody yet, because nothing reads them.
-//
-// ConsentDiscoverable is here because the outreach path is unfinished: the store
-// can filter on it (Store.DiscoverableProfiles) but no route or tool reaches
-// that, so granting it would put somebody into a pool nothing searches. A
-// permission that does nothing is worse than an absent one - it teaches people
-// that granting things here has no consequence.
 //
 // It is a LIST, not a deletion, so the omission is a written decision rather
 // than a line somebody forgot. TestEveryScopeIsOfferedOrExplained refuses to let
@@ -294,8 +289,18 @@ func ConsentScopes() []ConsentScope {
 // missing from ConsentScopes() is one the API rejects, the model cannot ask for,
 // and the interface renders no control to withdraw - all silently.
 // See docs/bugfix/2026-08-31-read-aloud-needs-consent.md
+//
+// It is EMPTY, and that is the correct state, not a sign the mechanism is unused.
+// ConsentDiscoverable sat here for the few minutes between the scope being
+// declared and the tools that read it landing: at that moment nothing reached
+// Store.DiscoverableProfiles, so offering the permission would have put somebody
+// into a pool nothing searched. candidate_search now reaches it and
+// talent_sourcing routes to it, so the premise for withholding it is gone and
+// the line moved back - which is exactly the move the withholding commit said
+// wiring the feature up would require.
+// See docs/18-recruiter-and-outreach.md
 func notYetOfferedScopes() []ConsentScope {
-	return []ConsentScope{ConsentDiscoverable}
+	return nil
 }
 
 // NotYetOffered reports whether a scope exists but is withheld. Exported so an

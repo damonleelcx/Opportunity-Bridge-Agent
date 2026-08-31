@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"regexp"
+	"strconv"
 	"strings"
 	"unicode"
 )
@@ -45,27 +46,28 @@ type VerifyInput struct {
 type Verifier func(VerifyInput) []Finding
 
 var verifiers = map[string]Verifier{
-	"citations_present":          verifyCitationsPresent,
-	"no_eligibility_verdict":     verifyNoEligibilityVerdict,
-	"actionable_next_step":       verifyActionableNextStep,
-	"next_step_is_tracked":       verifyNextStepIsTracked,
-	"no_invented_identifiers":    verifyNoInventedIdentifiers,
-	"plain_language":             verifyPlainLanguage,
-	"offline_route_present":      verifyOfflineRoute,
-	"no_cohort_downranking":      verifyNoCohortDownranking,
-	"consent_on_file":            verifyConsentOnFile,
-	"task_has_owner_and_channel": verifyTaskOwnerAndChannel,
-	"no_silent_closure":          verifyNoSilentClosure,
-	"k_anonymity":                verifyKAnonymity,
-	"no_identifiers":             verifyNoIdentifiers,
-	"coverage_stated":            verifyCoverageStated,
-	"no_causal_overreach":        verifyNoCausalOverreach,
-	"no_false_reassurance":       verifyNoFalseReassurance,
-	"reply_language":             verifyReplyLanguage,
-	"answers_the_city":           verifyAnswersTheCity,
-	"no_candidate_scoring":       verifyNoCandidateScoring,
-	"candidate_anonymity":        verifyCandidateAnonymity,
-	"outreach_is_an_ask":         verifyOutreachIsAsk,
+	"citations_present":             verifyCitationsPresent,
+	"no_eligibility_verdict":        verifyNoEligibilityVerdict,
+	"actionable_next_step":          verifyActionableNextStep,
+	"next_step_is_tracked":          verifyNextStepIsTracked,
+	"no_invented_identifiers":       verifyNoInventedIdentifiers,
+	"plain_language":                verifyPlainLanguage,
+	"offline_route_present":         verifyOfflineRoute,
+	"no_cohort_downranking":         verifyNoCohortDownranking,
+	"consent_on_file":               verifyConsentOnFile,
+	"task_has_owner_and_channel":    verifyTaskOwnerAndChannel,
+	"no_silent_closure":             verifyNoSilentClosure,
+	"k_anonymity":                   verifyKAnonymity,
+	"no_identifiers":                verifyNoIdentifiers,
+	"coverage_stated":               verifyCoverageStated,
+	"no_causal_overreach":           verifyNoCausalOverreach,
+	"no_false_reassurance":          verifyNoFalseReassurance,
+	"reply_language":                verifyReplyLanguage,
+	"answers_the_city":              verifyAnswersTheCity,
+	"no_candidate_scoring":          verifyNoCandidateScoring,
+	"candidate_anonymity":           verifyCandidateAnonymity,
+	"outreach_is_an_ask":            verifyOutreachIsAsk,
+	"external_leads_not_candidates": verifyExternalLeadsAreNotCandidates,
 }
 
 // universalVerifiers run on every turn, whatever intent is answering and
@@ -909,7 +911,7 @@ func clip(s string, n int) string {
 // Three checks, one per way the recruiter feature can hurt somebody. They are
 // written as separate verifiers rather than one because they fail for different
 // reasons and want different remedies, and a merged check would report the wrong
-// one. See docs/16-recruiter-and-outreach.md.
+// one. See docs/18-recruiter-and-outreach.md.
 
 // screeningWords are the ways an answer says "this person is worth less".
 //
@@ -918,8 +920,9 @@ func clip(s string, n int) string {
 // one catches telling an employer whom to prefer. Both are the same act seen
 // from the two ends of the bridge.
 var screeningWords = []string{
-	"best candidate", "top candidate", "strongest candidate", "weakest",
-	"better than", "worse than", "highest score", "ranked", "ranking",
+	"best candidate", "top candidate", "strongest candidate", "weakest", "weaker",
+	"stronger than", "more suitable than", "less suitable",
+	"better than", "worse than", "highest score",
 	"rating", "grade a", "tier 1", "a-list",
 	"最佳人选", "最优人选", "最强", "最差", "排名", "评分", "打分", "优于", "不如", "等级",
 }
@@ -928,6 +931,26 @@ var screeningWords = []string{
 // 87", "匹配度 92%". The pattern is deliberately narrow - a bare percentage is
 // not a score, and a salary is not a score - because a broad one would fire on
 // every honest answer that mentions years of experience.
+// rankVerb catches "rank", "ranks", "ranked", "ranking" on word boundaries.
+// A plain substring would fire on "frank" and "cranky", and a verifier that
+// blocks delivery on a false positive gets deleted rather than fixed.
+var rankVerb = regexp.MustCompile(`(?i)\brank(s|ed|ing)?\b`)
+
+// refusesToRank matches the agent declining to rank, in the first person.
+//
+// Without it this verifier blocks the very sentence the boundary requires. The
+// remedy it prints tells the model to say it does not rank people; the check
+// then fired on "I do not rank people" and blocked the redraft too, turning a
+// correct answer into a refusal. Found by turn-sourcing-ranking-blocked, which
+// is the regression fence for it.
+//
+// It is deliberately first-person and negated: "cand_two is not the best" is
+// still a ranking and must still fire.
+var refusesToRank = regexp.MustCompile(
+	`(?i)(\bi\s+(do not|don't|will not|won't|cannot|can't|am not)\s+(\w+\s+){0,3}?(rank|rate|score|grade)` +
+		`|\b(no|not a|never a)\s+(ranking|rating|score|grade)\b` +
+		`|我(不会|不能|无法|不)(对[^，。]{0,12})?(排名|排序|打分|评分))`)
+
 var scoreShaped = regexp.MustCompile(`(?i)(score|rating|match(?:ing)?\s*(?:score|rate)|评分|打分|匹配度)\s*[:：]?\s*\d+`)
 
 // verifyNoCandidateScoring: the product's founding promise is that it does not
@@ -944,7 +967,10 @@ func verifyNoCandidateScoring(in VerifyInput) []Finding {
 	var hits []string
 	for _, s := range splitSentences(in.Answer) {
 		low := strings.ToLower(s)
-		if containsAnyLower(low, screeningWords) || scoreShaped.MatchString(s) {
+		if refusesToRank.MatchString(s) {
+			continue
+		}
+		if containsAnyLower(low, screeningWords) || scoreShaped.MatchString(s) || rankVerb.MatchString(s) {
 			hits = append(hits, strings.TrimSpace(s))
 		}
 	}
@@ -968,7 +994,7 @@ func verifyNoCandidateScoring(in VerifyInput) []Finding {
 // asserted by outreach_respond when a person actually released a channel, so the
 // check cannot be talked around by phrasing.
 func verifyCandidateAnonymity(in VerifyInput) []Finding {
-	if !ranTool(in, "candidate_search", "outreach_request", "outreach_list") {
+	if !ranTool(in, "candidate_search", "outreach_request", "outreach_list", "external_talent_scan") {
 		return nil
 	}
 	released := false
@@ -998,6 +1024,93 @@ func verifyCandidateAnonymity(in VerifyInput) []Finding {
 		})
 	}
 	return out
+}
+
+// verifyExternalLeadsAreNotCandidates: a vendor index is a market estimate, not
+// a shortlist. The people in it were never asked, no contact route to them
+// exists here, and outreach_request refuses them.
+//
+// The failure this catches is the answer that quietly merges the two lists -
+// "I found 240 candidates" - which tells an employer they have reach they do not
+// have, and describes strangers as though they had opted in.
+func verifyExternalLeadsAreNotCandidates(in VerifyInput) []Finding {
+	// Case 1: a market figure with no lookup behind it.
+	//
+	// This is the same rule the analyst intent already enforces with
+	// UNSOURCED_AGGREGATE: a number about a population must come from the tool
+	// that produced it. Here the failure is worse than an unsourced statistic,
+	// because an inflated count of "candidates" is a claim about reach the
+	// employer will act on - and it was found by an eval where the model simply
+	// asserted 241 candidates without calling anything.
+	//
+	// The count is compared against what candidate_search actually matched, and
+	// only figures attached to a people-noun are considered, so a salary or a
+	// year cannot trip it.
+	if !ranTool(in, "external_talent_scan") {
+		matched := 0
+		for _, c := range in.ToolCalls {
+			if c.Name == "candidate_search" && c.Err == "" {
+				if n, ok := metaInt(c, "matched"); ok && n > matched {
+					matched = n
+				}
+			}
+		}
+		var overstated []string
+		for _, m := range peopleCounts(in.Answer) {
+			n, err := strconv.Atoi(m[1])
+			if err == nil && n > matched {
+				overstated = append(overstated, strings.TrimSpace(m[0]))
+			}
+		}
+		if len(overstated) > 0 {
+			return []Finding{{
+				Guard: "verify", Code: "UNSOURCED_MARKET_FIGURE", Severity: Block,
+				Message: fmt.Sprintf("The answer names a number of people larger than the %d that candidate_search "+
+					"returned, and external_talent_scan did not run. That figure has no source.", matched),
+				Evidence: overstated,
+				Remedy: "Report only what a tool returned. If the question is how big the market outside the pool " +
+					"is, call external_talent_scan; if no vendor is configured, say the outside market is unknown - " +
+					"not that it is small, and not a number you did not fetch.",
+			}}
+		}
+		return nil
+	}
+
+	// Case 2: the scan ran, and the answer merges its estimate with the pool.
+	if containsAny(in.Answer,
+		"not in", "did not opt", "have not opted", "cannot contact", "can't contact", "no way to contact",
+		"outside", "estimate", "not candidates", "unavailable through",
+		"不在", "没有加入", "未选择", "联系不到", "无法联系", "不能联系", "估算", "只是估计") {
+		return nil
+	}
+	return []Finding{{
+		Guard: "verify", Code: "EXTERNAL_LEADS_AS_CANDIDATES", Severity: Block,
+		Message: "The answer reports an external market estimate without saying those people are not in the pool " +
+			"and cannot be contacted through this service.",
+		Remedy: "Report the two numbers separately: how many people opted in and can be approached here, and " +
+			"how many the vendor index suggests exist. Say plainly that the second group did not opt in, that " +
+			"no contact route to them exists here, and pass on the vendor's caveat.",
+	}}
+}
+
+// peopleCount matches a number attached to a people-noun, so that a salary, a
+// year or a phone number cannot be read as a headcount.
+//
+// TWO patterns, and the split is not cosmetic. Go's \b is an ASCII word
+// boundary, so a single pattern ending in \b silently fails on "241 人" - the
+// form this deployment produces by DEFAULT, since it answers in Chinese. The
+// English half keeps \b (without it "3 personal items" matches "person"); the
+// Chinese half cannot have one and does not need one, because the nouns are
+// unambiguous on their own.
+var (
+	peopleCountEN = regexp.MustCompile(`(?i)\b(\d+)\s*(?:candidates?|people|persons?|profiles?|matches)\b`)
+	peopleCountZH = regexp.MustCompile(`(\d+)\s*(?:个人|人|位|名)`)
+)
+
+// peopleCounts returns every headcount claimed in the answer, in both languages.
+func peopleCounts(answer string) [][]string {
+	out := peopleCountEN.FindAllStringSubmatch(answer, -1)
+	return append(out, peopleCountZH.FindAllStringSubmatch(answer, -1)...)
 }
 
 // verifyOutreachIsAsk: an outreach request is a question, and an answer that
