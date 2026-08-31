@@ -544,6 +544,8 @@ function cardFor(tool, r) {
     case "opportunity_search": return opportunityList(r);
     case "criteria_explain": return criteriaCard(r);
     case "gap_analysis": return gapCard(r);
+    case "candidate_search": return candidateList(r);
+    case "external_talent_scan": return externalScanCard(r);
     case "handoff_to_human": return handoffCard(r);
     case "document_prepare": return draftCard(r);
     default: return null;
@@ -739,6 +741,150 @@ function gapCard(r) {
       </div>
     </article>`);
   return card;
+}
+
+// candidateList renders the OPT-IN pool: people who switched on being findable
+// and whom a recruiter may actually ask to contact.
+//
+// The pool size is shown even when it is zero, and especially then. An empty
+// results area reads as "the search broke"; "pool 0" is the honest reading, and
+// it is the number that tells an employer whether a small result is the market
+// or just the pool.
+function candidateList(r) {
+  const wrap = document.createElement("div");
+  const cards = r.candidates || [];
+  if (!cards.length) {
+    wrap.append(el(`<div class="notice notice-advisory" style="margin-left:0">
+      <span class="notice-title">${esc(t("cand.none"))}</span>
+      <span class="notice-msg">${esc(t("cand.poolIs"))} ${esc(String(r.pool_size ?? 0))}</span>
+      <div class="notice-detail">${esc(t("cand.noneDetail"))}</div></div>`));
+    return wrap;
+  }
+  for (const c of cards) wrap.append(candidateCard(c, r.pool_size ?? 0));
+  return wrap;
+}
+
+function candidateCard(c, poolSize) {
+  const matched = c.matched_skills || [];
+  const other = (c.skills || []).filter((sk) => !matched.includes(sk)).slice(0, 6);
+  const exp = (c.experience || [])
+    .map((e) => [e.title, e.years ? e.years + t("cand.years") : "", e.sector].filter(Boolean).join(" · "))
+    .filter(Boolean);
+  const status = c.contact_status || "not_requested";
+  const ch = c.channel || {};
+  const facts = [
+    c.city && ["pin", c.city],
+    exp.length && ["calendar", exp.join(" / ")],
+    c.education && ["user", c.education],
+    // A channel exists ONLY after this person accepted, and this is the one
+    // place it may be shown. See internal/tools/recruiter.go.
+    ch.phone && ["phone", ch.phone],
+  ].filter(Boolean);
+  return el(`
+    <article class="ocard">
+      <div class="ocard-body">
+        <div class="ocard-top">
+          <h3 class="ocard-title">${esc(c.candidate_ref || t("cand.person"))}<span class="ocard-id">${esc(t("cand.pool"))} ${esc(String(poolSize))}</span></h3>
+          <span class="pill ${status === "accepted" ? "pill-free" : "pill-pay"}">${esc(t("cand.status." + status))}</span>
+        </div>
+        ${matched.length || other.length ? `<p class="ocard-sum">${
+          matched.map((sk) => `<span class="pill pill-free">${esc(sk)}</span> `).join("")
+        }${other.map((sk) => `<span class="pill">${esc(sk)}</span> `).join("")}</p>` : ""}
+        <div class="ocard-facts">
+          ${facts.map(([i, v]) => `<div class="fact"><span class="ico">${icon(i)}</span><span>${esc(v)}</span></div>`).join("")}
+        </div>
+      </div>
+      <div class="ocard-foot">
+        <span class="ocard-need">${esc(t("cand.note"))}</span>
+      </div>
+    </article>`);
+}
+
+// externalScanCard renders the vendor estimate, and is deliberately built as a
+// SEPARATE card from the pool candidates rather than mixed in with them.
+//
+// Same reasoning liveCard already encodes against opportunityCard: dressing them
+// alike would say they carry the same standing. A pool candidate opted in and
+// can be asked; one of these was never asked, has no consent basis on file, and
+// cannot be reached through this service at all. That warning is part of the
+// card, not a footnote — and every vendor row is shown, including one that was
+// unavailable, because a vendor you are not entitled to use contributes zero and
+// an unmentioned zero reads as "nobody like that exists".
+const LEAD_PREVIEW = 6;
+
+function externalScanCard(r) {
+  const wrap = document.createElement("div");
+  const lo = r.estimated_total_at_least ?? 0;
+  const hi = r.estimated_total_at_most ?? lo;
+  const range = (lo === hi ? String(lo) : lo + " – " + hi) + (r.is_a_floor ? "+" : "");
+  const vendors = r.by_vendor || [];
+  const caveats = [...new Set(vendors.map((v) => v.caveat).filter(Boolean))];
+
+  wrap.append(el(`
+    <article class="ocard">
+      <div class="ocard-body">
+        <div class="ocard-top">
+          <h3 class="ocard-title">${esc(t("scan.title"))}<span class="ocard-id">${esc(t("scan.estimate"))} ${esc(range)}</span></h3>
+        </div>
+        <div class="notice notice-advisory" style="margin-left:0">
+          <span class="notice-title">${esc(t("scan.notPool"))}</span>
+          <div class="notice-detail">${esc(t("scan.notPoolDetail"))}</div>
+        </div>
+        <div style="overflow-x:auto">
+          <table class="gap-table">
+            <thead><tr><th>${esc(t("scan.vendor"))}</th><th>${esc(t("scan.count"))}</th></tr></thead>
+            <tbody>${vendors.map((v) => `<tr><td>${esc(v.vendor)}</td><td>${
+              v.unavailable
+                ? esc(t("scan.unavailable") + " — " + clip(v.unavailable, 160))
+                : esc(String(v.total ?? 0))
+            }</td></tr>`).join("")}</tbody>
+          </table>
+        </div>
+        ${caveats.map((c) => `<div class="decision-note">${esc(c)}</div>`).join("")}
+      </div>
+    </article>`));
+
+  // Only the first few shapes are drawn, and the rest are COUNTED OUT LOUD.
+  //
+  // The scan can return 25, and 25 near-identical cards for people nobody can
+  // contact drowns the pool candidates — the only ones an employer can act on —
+  // in a wall of ones they cannot. gapCard slices its rows for the same reason.
+  // The remainder is stated rather than dropped quietly: a silent cap reads as
+  // "that was all of it".
+  const sample = r.sample || [];
+  for (const l of sample.slice(0, LEAD_PREVIEW)) wrap.append(leadCard(l));
+  if (sample.length > LEAD_PREVIEW) {
+    wrap.append(el(`<div class="decision-note">${
+      esc(t("scan.more").replace("{shown}", String(LEAD_PREVIEW)).replace("{total}", String(sample.length)))
+    }</div>`));
+  }
+  return wrap;
+}
+
+// leadCard is one de-identified shape. There is no name and no link to show,
+// because the adapter never carries one — see internal/talentsource.
+function leadCard(l) {
+  const skills = (l.skills || []).slice(0, 8);
+  const facts = [
+    l.region && ["pin", l.region],
+    l.years && ["calendar", String(l.years) + t("cand.years")],
+  ].filter(Boolean);
+  return el(`
+    <article class="ocard">
+      <div class="ocard-body">
+        <div class="ocard-top">
+          <h3 class="ocard-title">${esc(l.title || "—")}<span class="ocard-id">${esc(l.id || "")}</span></h3>
+          <span class="pill">${esc(l.source || "")}</span>
+        </div>
+        ${skills.length ? `<p class="ocard-sum">${skills.map((sk) => `<span class="pill">${esc(sk)}</span> `).join("")}</p>` : ""}
+        <div class="ocard-facts">
+          ${facts.map(([i, v]) => `<div class="fact"><span class="ico">${icon(i)}</span><span>${esc(v)}</span></div>`).join("")}
+        </div>
+      </div>
+      <div class="ocard-foot">
+        <span class="ocard-need">${esc(t("scan.leadNote"))}</span>
+      </div>
+    </article>`);
 }
 
 function handoffCard(r) {

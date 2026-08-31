@@ -1143,6 +1143,43 @@ func TestCopyDoesNotCountWhatTheRegistryDefines(t *testing.T) {
 	}
 }
 
+// A capped list must say what it capped.
+//
+// externalScanCard draws only the first few vendor shapes, because a scan can
+// return 25 and 25 cards for people nobody can contact drown the pool candidates
+// — the only ones an employer can act on. The cap is fine. Dropping the
+// remainder SILENTLY is not: a truncated list with no note reads as "that was
+// all of it", which is a false statement about the size of a market.
+//
+// So the slice and the note are fenced together. Removing the note while keeping
+// the slice is the regression this exists to catch.
+func TestCappedLeadListSaysWhatItCapped(t *testing.T) {
+	app := stripJSComments(asset(t, "app.js"))
+	if !strings.Contains(app, "LEAD_PREVIEW") {
+		t.Fatal("app.js no longer caps the lead sample; this fence no longer guards anything")
+	}
+	if !strings.Contains(app, "scan.more") {
+		t.Error("the lead sample is capped but nothing renders scan.more: the remainder is dropped silently, " +
+			"and a truncated list with no note reads as the whole market")
+	}
+	// And the string itself has to name both numbers, in both languages, or the
+	// note is present without being informative.
+	zh, en := localeBlocks(t, asset(t, "i18n.js"))
+	for _, lang := range []struct{ name, block string }{{"zh-CN", zh}, {"en", en}} {
+		m := regexp.MustCompile(`"scan\.more":\s*"((?:[^"\\]|\\.)*)"`).FindStringSubmatch(lang.block)
+		if m == nil {
+			t.Errorf("%s has no scan.more", lang.name)
+			continue
+		}
+		for _, token := range []string{"{shown}", "{total}"} {
+			if !strings.Contains(m[1], token) {
+				t.Errorf("%s scan.more is missing %s, so it cannot say how much was withheld: %q",
+					lang.name, token, m[1])
+			}
+		}
+	}
+}
+
 // A solid button must keep its fill while the pointer is on it.
 //
 // .btn:hover sets `background: var(--surface-2)`, and its specificity (0,2,0)
