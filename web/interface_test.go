@@ -962,3 +962,90 @@ func TestSampleClaimDescribesTheSourceRefNotTheVisibleID(t *testing.T) {
 		}
 	}
 }
+
+// A delivery toggle must be able to turn its setting OFF, and must show what is
+// actually in force.
+//
+// Both halves failed, and together they made a trap: the change handler sent a
+// message only when the box was ticked, so the control that switched plain
+// language on could not switch it off; and `.checked` was read but never
+// written, so after a reload the box sat empty while the mode was still on. The
+// person was left with a setting they could not clear and a control that denied
+// it was set — on the one feature built for people who cannot easily read the
+// screen in the first place.
+//
+// The only escape was to say so in words, or to lose the whole profile to
+// 清空记录. Neither is signposted anywhere.
+// See docs/bugfix/2026-08-28-plain-language-could-not-be-turned-off.md
+func TestPlainLanguageCanBeTurnedOffAndShowsWhatIsInForce(t *testing.T) {
+	src := asset(t, "app.js")
+
+	start := strings.Index(src, `$("#a11yPlain").addEventListener`)
+	if start < 0 {
+		t.Fatal("the plain-language handler is gone; this fence no longer guards anything")
+	}
+	end := strings.Index(src[start:], `$("#theme")`)
+	if end < 0 {
+		t.Fatal("could not find the end of the handler")
+	}
+	handler := src[start : start+end]
+
+	// An else branch is the whole point: ticking sends one message, unticking
+	// must send the opposite one.
+	if !strings.Contains(handler, "} else {") {
+		t.Error("the plain-language handler has no off branch: unticking the box does nothing, " +
+			"so the setting cannot be switched off from the interface")
+	}
+	if strings.Count(handler, "send(") < 2 {
+		t.Errorf("the handler sends %d message(s); it needs one for on and one for off",
+			strings.Count(handler, "send("))
+	}
+	// Reflecting the state must not itself look like the person asking for it.
+	if !strings.Contains(handler, "if (state.syncingA11y) return;") {
+		t.Error("the handler does not ignore changes it made itself: reflecting the server's state " +
+			"would send a message on every refresh")
+	}
+
+	if !strings.Contains(src, "function reflectDeliverySettings(") {
+		t.Fatal("reflectDeliverySettings is gone; the checkbox no longer shows what is in force")
+	}
+	reflect := section(t, src, "function reflectDeliverySettings(")
+	if !strings.Contains(reflect, "access_needs") || !strings.Contains(reflect, "plain_language") {
+		t.Error("reflectDeliverySettings does not read the session's access_needs")
+	}
+	if !strings.Contains(reflect, "box.checked = on") {
+		t.Error("reflectDeliverySettings never writes .checked, so the box still cannot show the truth")
+	}
+	// It has to actually run after a refresh, or it guards nothing.
+	if !strings.Contains(src, "reflectDeliverySettings(d.session)") {
+		t.Error("reflectDeliverySettings is never called from the overview refresh")
+	}
+}
+
+// Stored delivery settings must reach the reader as words, not as enum values.
+//
+// The records panel printed "plain_language" at somebody whose stated need is
+// to not be shown vocabulary like that. Every value in the enum needs a label in
+// both languages; a missing one falls back to the raw id, so this checks the
+// table rather than the fallback.
+func TestEveryDeliverySettingHasAReaderFacingLabel(t *testing.T) {
+	app := asset(t, "app.js")
+	if !strings.Contains(app, `term("need", n, n)`) {
+		t.Error("the records panel does not render access needs through term(): " +
+			"it prints the raw enum value at the reader")
+	}
+
+	i18n := asset(t, "i18n.js")
+	// The six values in domain.AccessNeed. Listed here rather than derived,
+	// because a value added to the Go enum with no label is exactly the silent
+	// gap this test exists to catch.
+	for _, need := range []string{
+		"plain_language", "large_text", "voice", "dialect", "assisted", "low_bandwidth",
+	} {
+		key := `"need.` + need + `"`
+		if n := strings.Count(i18n, key); n < 2 {
+			t.Errorf("%s appears %d time(s) in the TERMS table; it needs one per language, "+
+				"or that reader sees the raw id", key, n)
+		}
+	}
+}
