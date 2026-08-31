@@ -1,120 +1,232 @@
-/* 阿桥 — the design tokens, and only the tokens.
- *
- * Split out of styles.css when the landing page arrived. Two documents now paint
- * this product — the landing page at `/` and the app at `/app` — and a colour
- * defined twice is a colour that drifts. Whichever document is being read, the
- * brand blue, the ink ramp, the radii and all three themes come from here.
+/* 阿桥 — the design system. Colour, type scale, radii, elevation, all themes.
  *
  * Nothing in this file selects an element. Layout for the app is styles.css;
- * layout for the landing page is home.css; both link this one first.
+ * layout for the landing page is home.css; the mark's ink is avatar.css. Every
+ * one of them links this first, so a colour has exactly one definition.
+ *
+ * ── Where the palette comes from ─────────────────────────────────────────
+ *
+ * Sampled, not invented. The reference is an iridescent soap bubble rendered on
+ * near-black; these hues were pulled out of its frames by grid-sampling the
+ * bubble and sorting the cells by saturation x lightness. What came back:
+ *
+ *   hue 34-42 deg    champagne -> amber -> bronze    #f0ede9 #e1cfa4 #a98e5c
+ *   hue 213-220 deg  a deep blue refraction          #17284b #132d4d
+ *   the canvas       near-black, very slightly warm  #0f0f0f
+ *
+ * So the accent is WARM, and there is no violet in the system. An earlier pass
+ * used one and it fought the warmth of everything around it.
+ *
+ * ── The three jobs a colour can have ─────────────────────────────────────
+ *
+ * Keeping these apart IS the system; collapsing them is how a palette ends up
+ * with unreadable buttons.
+ *
+ *   --brand        the ACCENT. Text, icons, hairlines. It has to read against
+ *                  the canvas, so it is light on dark and dark on light.
+ *   --brand-fill   the PRIMARY ACTION, and it inverts with the theme exactly as
+ *                  the reference does: a white pill on the dark page, a
+ *                  near-black pill on the light one. Maximum contrast, no hue.
+ * There is no third "filled colour" token. There was one -- a gold on the dark
+ * theme, a violet on the light one -- and it was wrong twice over: as a gradient
+ * it banded across a chat bubble, and flattened it was a muddy tan that fought
+ * the page. The person's own message and the send button now use --brand-fill,
+ * the same pair as the primary button, so there is exactly ONE filled treatment
+ * in the product and it is the highest-contrast thing on either page.
+ *
+ * ── What did not change, and why ─────────────────────────────────────────
+ *
+ * Light stays the default. That is a decision with a bugfix behind it: this is
+ * opened on borrowed and public machines whose OS setting is not the reader\'s,
+ * and painting dark first and correcting is worse than being plain. Dark is one
+ * click away and is where this system looks like its reference.
+ *
+ * Every ink tier and every semantic colour is measured against the surface it
+ * actually sits on, at 4.5:1 or better -- including --ink-400, the faint tier,
+ * which is small metadata and the one most often left failing. It came in at
+ * 4.24:1 on the first pass here and was lifted. Colour also never carries
+ * meaning alone anywhere in the product; the semantic tokens tint a state that
+ * is already spelled out in words.
  */
 
-/* Light is the default, and it is the default HERE rather than only in app.js.
-   A theme decided by a script paints the other one first on every load, and the
-   people this is for open it on borrowed and public machines whose OS setting is
-   not theirs. So bare :root — what the document has before any script runs, and
-   what it keeps unless somebody chooses otherwise — is light. Following the OS
-   is now an explicit opt-in and carries data-theme="system".
-   Why, and the encoding change it forced: docs/14-interface.md, "Theme". */
 :root, :root[data-theme="light"] { color-scheme: light; }
 :root[data-theme="dark"] { color-scheme: dark; }
 :root[data-theme="system"] { color-scheme: light dark; }
 
+/* ── shared across every theme ─────────────────────────────────────────── */
 :root {
-
-  --bg: #f4f6fa;
-  --surface: #ffffff;
-  --surface-2: #f8fafc;
-  --line: #e2e8f0;
-  --line-soft: #f1f5f9;
-
-  --brand: #0284c7;
-  --brand-hover: #0369a1;
-  --brand-soft: #f0f9ff;
-  --brand-border: #e0f2fe;
-  --brand-ink: #ffffff;
-
-  --ink-900: #0f172a;
-  --ink-700: #1e293b;
-  --ink-500: #64748b;
-  --ink-400: #94a3b8;
-
-  --ok: #059669; --ok-soft: #ecfdf5; --ok-border: #d1fae5;
-  --warn: #b45309; --warn-soft: #fffbeb; --warn-border: #fde68a;
-  --stop: #dc2626; --stop-soft: #fef2f2; --stop-border: #fecaca;
-
-  --av-bg: #e0f2fe; --av-glow: #ffffff; --av-ink: #0284c7; --av-water: #7dd3fc;
-
-  --r-xs: 8px; --r-sm: 12px; --r: 16px; --r-lg: 22px;
+  --r-xs: 8px; --r-sm: 12px; --r: 18px; --r-lg: 26px; --r-xl: 34px; --r-pill: 999px;
   --fs: 15px;
+
+  --font: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC",
+          "Hiragino Sans GB", "Noto Sans SC", "Microsoft YaHei", Roboto, sans-serif;
   --mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
-  --shadow-sm: 0 1px 2px rgba(15, 23, 42, .05);
-  --shadow: 0 4px 14px rgba(15, 23, 42, .07);
+
+  /* --fill and --on-fill are per-theme: the two themes take their filled
+     surface from two different references — gold on the dark page, violet on
+     the light one — so the ink on top flips with it. Nothing shared to declare
+     here beyond that, which is why this block no longer holds them. */
 }
 
-/* Dark tokens live in one block, applied twice: once for the OS preference — and
-   only for readers who asked to follow it — and once for an explicit dark choice.
-   Defining a colour ONLY inside a media query is how a theme toggle ends up
-   half-working. */
+/* ── light ─────────────────────────────────────────────────────────────── */
+:root, :root[data-theme="light"] {
+  /* The violet reference. Sampled the same way as the gold: grid the blob and
+     sort by saturation x lightness. It came back as a DESATURATED indigo —
+     hue 244-249 deg, 25-30% saturation — with one brighter lavender (#9c81da)
+     on its call-to-action. Not a vivid purple; the restraint is the character. */
+  --bg: #f8f7fc;
+  --surface: #ffffff;
+  --surface-2: #f2f1f8;
+  --line: #e5e3f0;
+  --line-soft: #efedf7;
+
+  /* Deepened until they carry text on the canvas (#f8f7fc), which is what they
+     are measured against — not #ffffff. Checking a light palette against pure
+     white is how a value lands at 4.4:1: close enough to look fine, just under
+     the line. */
+  --aur-1: #5b4bb0;
+  --aur-2: #7a6ac8;
+  --aur-3: #4a447b;
+
+  --brand: #5b4bb0;
+  --brand-hover: #4a3c96;
+  --brand-soft: #f2effc;
+  --brand-border: #ddd6f5;
+  --brand-fill: #14131c;
+  --brand-ink: #ffffff;
+
+
+  --ink-900: #14131c;
+  --ink-700: #383646;
+  --ink-500: #615e73;
+  --ink-400: #6a6779;
+
+  --ok: #0b7a54;   --ok-soft: #eefaf4;   --ok-border: #c9e9db;
+  --warn: #9a5400; --warn-soft: #fdf5e8; --warn-border: #f0dcba;
+  --stop: #c62240; --stop-soft: #fdeef0; --stop-border: #f5cbd2;
+
+  --av-bg: #efecfb; --av-water: #bfb5e6;
+
+  --star-a: 0; --scrim: 0;
+  /* The stage is dark in both themes, so the footage plays at full strength
+     in both. The token stays per-theme so it can be tuned independently. */
+  /* The bubble, per theme — violet on the light page, gold on the dark one,
+     both sampled from their own reference. These are RGB triplets because the
+     gradient stops need them at several alphas each.
+     NOT overridden by the .hero dark stage, deliberately: the stage is dark in
+     both themes, but the bubble is the one thing on it that still follows the
+     PAGE theme, which is the whole point of having two of them. */
+  /* The bubble, per theme — violet on the light page, gold on the dark one,
+     both sampled from their own reference. These are RGB triplets because the
+     gradient stops need them at several alphas each.
+     NOT overridden by the .hero dark stage, deliberately: the stage is dark in
+     both themes, but the bubble is the one thing on it that still follows the
+     PAGE theme, which is the whole point of having two of them. */
+  /* On a light page the logic inverts: the accent is the most SATURATED
+     violet rather than the brightest one, and the interior is a pale wash
+     rather than a dark one. Same three parts, lit from the other side. */
+  --bub-lit: 214, 203, 248; --bub-mid: 139, 116, 216; --bub-deep: 59, 50, 104;
+  --bub-dark: 22, 20, 42; --bub-cold: 42, 63, 138; --bub-hot: 236, 228, 255;
+
+  --glass: rgba(255, 255, 255, .74);
+  --glass-line: rgba(20, 19, 28, .09);
+  --shadow-sm: 0 1px 2px rgba(20, 19, 28, .06);
+  --shadow: 0 14px 44px rgba(20, 19, 28, .10);
+  --glow: 0 18px 60px rgba(91, 75, 176, .24);
+}
+
+
+/* ── dark ──────────────────────────────────────────────────────────────── */
+/* One block, applied twice: once for readers who opted into following the OS,
+   once for an explicit choice. Defining a colour ONLY inside a media query is
+   how a theme toggle ends up half-working. */
 @media (prefers-color-scheme: dark) {
   :root[data-theme="system"] {
-    --bg: #0b1017;
-    --surface: #111823;
-    --surface-2: #161f2c;
-    --line: #24303f;
-    --line-soft: #1b2532;
+    --bg: #08080a;
+    --surface: #101013;
+    --surface-2: #17171b;
+    --line: #23232a;
+    --line-soft: #1a1a1f;
 
-    --brand: #38bdf8;
-    --brand-hover: #7dd3fc;
-    --brand-soft: #10202e;
-    --brand-border: #1c3a4f;
-    --brand-ink: #06131d;
+    --star-a: .5; --scrim: .60;
+    /* The bubble, per theme — violet on the light page, gold on the dark one,
+       both sampled from their own reference. These are RGB triplets because the
+       gradient stops need them at several alphas each.
+       NOT overridden by the .hero dark stage, deliberately: the stage is dark in
+       both themes, but the bubble is the one thing on it that still follows the
+       PAGE theme, which is the whole point of having two of them. */
+    --bub-lit: 244, 239, 228; --bub-mid: 201, 162, 92;  --bub-deep: 74, 52, 24;
+    --bub-dark: 20, 16, 10; --bub-cold: 31, 61, 120; --bub-hot: 255, 248, 232;
 
-    --ink-900: #e8eef6;
-    --ink-700: #cdd7e3;
-    --ink-500: #93a1b3;
-    --ink-400: #6c7c90;
+    --aur-1: #f0ede9;
+    --aur-2: #e1cfa4;
+    --aur-3: #8fb6e6;
 
-    --ok: #34d399; --ok-soft: #0e2a20; --ok-border: #1c4636;
-    --warn: #fbbf24; --warn-soft: #2a2110; --warn-border: #4a3a12;
-    --stop: #f87171; --stop-soft: #2b1414; --stop-border: #4d2020;
+    --brand: #e1cfa4;
+    --brand-hover: #f0ede9;
+    --brand-soft: rgba(225, 207, 164, .12);
+    --brand-border: rgba(225, 207, 164, .28);
+    --brand-fill: #f2efe9;
+    --brand-ink: #0b0b0d;
 
-    --av-bg: #14293b; --av-glow: #1b3448; --av-ink: #7dd3fc; --av-water: #3c5f7d;
-    --shadow-sm: 0 1px 2px rgba(0, 0, 0, .4);
-    --shadow: 0 6px 18px rgba(0, 0, 0, .45);
+
+    --ink-900: #ffffff;
+    --ink-700: #c8c6c2;
+    --ink-500: #8e8b86;
+    --ink-400: #85817b;
+
+    --ok: #5fce9b;   --ok-soft: rgba(95, 206, 155, .11);   --ok-border: rgba(95, 206, 155, .28);
+    --warn: #e6b667; --warn-soft: rgba(230, 182, 103, .11); --warn-border: rgba(230, 182, 103, .28);
+    --stop: #f08a8a; --stop-soft: rgba(240, 138, 138, .11); --stop-border: rgba(240, 138, 138, .28);
+
+    --av-bg: #1d1a13; --av-water: #6e6450;
+
+    --glass: rgba(24, 24, 28, .62);
+    --glass-line: rgba(255, 255, 255, .10);
+    --shadow-sm: 0 1px 2px rgba(0, 0, 0, .6);
+    --shadow: 0 18px 60px rgba(0, 0, 0, .72);
+    --glow: 0 0 70px rgba(225, 207, 164, .20);
   }
 }
 
 :root[data-theme="dark"] {
-  --bg: #0b1017;
-  --surface: #111823;
-  --surface-2: #161f2c;
-  --line: #24303f;
-  --line-soft: #1b2532;
+  --bg: #08080a;
+  --surface: #101013;
+  --surface-2: #17171b;
+  --line: #23232a;
+  --line-soft: #1a1a1f;
 
-  --brand: #38bdf8;
-  --brand-hover: #7dd3fc;
-  --brand-soft: #10202e;
-  --brand-border: #1c3a4f;
-  --brand-ink: #06131d;
+  --star-a: .5; --scrim: .60;
+  --bub-lit: 244, 239, 228; --bub-mid: 201, 162, 92;  --bub-deep: 74, 52, 24;
+  --bub-dark: 20, 16, 10; --bub-cold: 31, 61, 120; --bub-hot: 255, 248, 232;
 
-  --ink-900: #e8eef6;
-  --ink-700: #cdd7e3;
-  --ink-500: #93a1b3;
-  --ink-400: #6c7c90;
+  --aur-1: #f0ede9;
+  --aur-2: #e1cfa4;
+  --aur-3: #8fb6e6;
 
-  --ok: #34d399; --ok-soft: #0e2a20; --ok-border: #1c4636;
-  --warn: #fbbf24; --warn-soft: #2a2110; --warn-border: #4a3a12;
-  --stop: #f87171; --stop-soft: #2b1414; --stop-border: #4d2020;
+  --brand: #e1cfa4;
+  --brand-hover: #f0ede9;
+  --brand-soft: rgba(225, 207, 164, .12);
+  --brand-border: rgba(225, 207, 164, .28);
+  --brand-fill: #f2efe9;
+  --brand-ink: #0b0b0d;
 
-  --av-bg: #14293b; --av-glow: #1b3448; --av-ink: #7dd3fc; --av-water: #3c5f7d;
-  --shadow-sm: 0 1px 2px rgba(0, 0, 0, .4);
-  --shadow: 0 6px 18px rgba(0, 0, 0, .45);
+
+  --ink-900: #ffffff;
+  --ink-700: #c8c6c2;
+  --ink-500: #8e8b86;
+  --ink-400: #85817b;
+
+  --ok: #5fce9b;   --ok-soft: rgba(95, 206, 155, .11);   --ok-border: rgba(95, 206, 155, .28);
+  --warn: #e6b667; --warn-soft: rgba(230, 182, 103, .11); --warn-border: rgba(230, 182, 103, .28);
+  --stop: #f08a8a; --stop-soft: rgba(240, 138, 138, .11); --stop-border: rgba(240, 138, 138, .28);
+
+  --av-bg: #1d1a13; --av-water: #6e6450;
+
+  --glass: rgba(24, 24, 28, .62);
+  --glass-line: rgba(255, 255, 255, .10);
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, .6);
+  --shadow: 0 18px 60px rgba(0, 0, 0, .72);
+  --glow: 0 0 70px rgba(225, 207, 164, .20);
 }
 
-/* The type stack was inline in the app's `body` rule until the landing page
-   needed the same one. It is a token now for the same reason the colours are. */
-:root {
-  --font: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC",
-          "Hiragino Sans GB", "Noto Sans SC", "Microsoft YaHei", Roboto, sans-serif;
-}

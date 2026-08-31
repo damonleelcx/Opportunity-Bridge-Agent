@@ -10,6 +10,8 @@ package web_test
 // silent and the cost is somebody's wasted journey.
 
 import (
+	"fmt"
+	"math"
 	"regexp"
 	"strings"
 	"testing"
@@ -485,6 +487,480 @@ func localeBlocks(t *testing.T, i18n string) (zh, en string) {
 		t.Fatal("could not find the end of the STRINGS table")
 	}
 	return i18n[zhStart:enStart], i18n[enStart : enStart+enEnd]
+}
+
+// A gradient headline stays readable where the gradient does not work.
+//
+// The standard recipe for gradient text is `background-clip: text` plus
+// `color: transparent`, and it has one catastrophic failure mode: where the clip
+// is unsupported the colour still applies, so the headline is not un-gradiented
+// — it is INVISIBLE. The page's largest words disappear and nothing errors.
+//
+// So the solid colour has to be the rule's real value and the clip may only
+// replace it inside @supports. This checks the ordering rather than the styling:
+// every `color: transparent` in the landing page's stylesheet must sit after the
+// @supports guard that earns it.
+func TestLandingPageGradientTextHasASolidFallback(t *testing.T) {
+	// Comments stripped first. These fences read source text, and this file's
+	// own commentary explains the very patterns being searched for — the first
+	// version reported a defect that was a sentence in a comment about it.
+	css := stripCSSComments(asset(t, "home.css"))
+
+	guard := strings.Index(css, "@supports ((background-clip: text)")
+	// Not strings.Index("color: transparent"): `border-color: transparent` is a
+	// perfectly ordinary declaration and contains that substring. The first
+	// version of this fence matched one and reported a defect that was not there.
+	transparent := -1
+	if loc := regexp.MustCompile(`(^|[^-\w])color:\s*transparent`).FindStringIndex(css); loc != nil {
+		transparent = loc[0]
+	}
+
+	if transparent < 0 {
+		t.Skip("nothing on the landing page uses transparent text; this fence has nothing to guard")
+	}
+	if guard < 0 {
+		t.Fatal("home.css sets `color: transparent` with no @supports guard for background-clip: " +
+			"where the clip is unsupported the headline is invisible, not merely un-gradiented")
+	}
+	if transparent < guard {
+		t.Error("`color: transparent` appears before the @supports guard, so it applies " +
+			"unconditionally: the headline disappears wherever background-clip: text is missing")
+	}
+	// ...and the guarded rule must have had a real colour to fall back to.
+	rule := css[strings.Index(css, ".grad {"):]
+	rule = rule[:strings.Index(rule, "}")]
+	if !strings.Contains(rule, "color:") || strings.Contains(rule, "transparent") {
+		t.Error(".grad states no solid colour outside the @supports block; there is nothing " +
+			"for the headline to fall back to")
+	}
+}
+
+// --brand is the accent. --brand-fill is what goes behind --brand-ink.
+//
+// This is the system's one load-bearing invariant and it is worth a fence
+// because the wrong token has the more obvious name. --brand has to be LIGHT on
+// a near-black canvas so it reads as text and as icons; putting white on it
+// gives 2.6:1, which is unreadable and looks merely "soft" to anyone with good
+// eyes and a good screen. --brand-fill is deep enough to carry white, measured.
+//
+// The failure is silent in the worst way: nothing throws, the button renders,
+// and it is the people reading in daylight on a cheap panel who cannot use it.
+func TestFilledSurfacesUseTheFillTokenNotTheAccent(t *testing.T) {
+	filled := regexp.MustCompile(`background(?:-color)?:\s*var\(--brand\)`)
+
+	for _, name := range []string{"styles.css", "home.css", "avatar.css"} {
+		css := stripCSSComments(asset(t, name))
+		for _, m := range filled.FindAllString(css, -1) {
+			t.Errorf("%s: %q — a filled surface must use var(--brand-fill) or var(--aurora-fill). "+
+				"--brand is the accent colour and is light on dark; white on it is 2.6:1", name, m)
+		}
+	}
+}
+
+// stripCSSComments removes /* … */ so a fence reads declarations rather than the
+// prose explaining them.
+func stripCSSComments(css string) string {
+	var b strings.Builder
+	for {
+		i := strings.Index(css, "/*")
+		if i < 0 {
+			b.WriteString(css)
+			return b.String()
+		}
+		b.WriteString(css[:i])
+		j := strings.Index(css[i:], "*/")
+		if j < 0 {
+			return b.String()
+		}
+		css = css[i+j+2:]
+	}
+}
+
+// Every token the stylesheets reach for is defined, in every theme.
+//
+// The failure this guards is what a palette rewrite does: a token gets renamed
+// or dropped, one stylesheet still references it, and `var(--gone)` resolves to
+// nothing. No error, no warning — a border vanishes, or a colour falls back to
+// inherited black on black. Measured live after the redesign: 48 distinct tokens
+// referenced across the four stylesheets.
+//
+// The second half is the one that actually bites: a token defined for dark and
+// forgotten for light. tokens.css says in its own header that defining a colour
+// in only one theme is how a toggle ends up half-working; this is that comment
+// with teeth.
+func TestEveryTokenIsDefinedInEveryTheme(t *testing.T) {
+	ref := regexp.MustCompile(`var\(\s*(--[\w-]+)`)
+	// Not line-anchored: tokens.css groups related tokens on one line
+	// (`--ok: …; --ok-soft: …; --ok-border: …;`), and anchoring found only the
+	// first of each group — this fence's first run reported 14 tokens as
+	// undefined that were defined three characters later on the same line.
+	def := regexp.MustCompile(`(--[\w-]+)\s*:`)
+
+	referenced := map[string]bool{}
+	for _, name := range []string{"styles.css", "home.css", "avatar.css", "tokens.css"} {
+		for _, m := range ref.FindAllStringSubmatch(stripCSSComments(asset(t, name)), -1) {
+			referenced[m[1]] = true
+		}
+	}
+	if len(referenced) < 20 {
+		t.Fatalf("only %d tokens referenced; this fence is not reading the stylesheets", len(referenced))
+	}
+
+	tokens := stripCSSComments(asset(t, "tokens.css"))
+	defined := map[string]bool{}
+	for _, m := range def.FindAllStringSubmatch(tokens, -1) {
+		defined[m[1]] = true
+	}
+	for name := range referenced {
+		if !defined[name] {
+			t.Errorf("%s is used by a stylesheet but defined nowhere in tokens.css: "+
+				"it resolves to nothing, silently", name)
+		}
+	}
+
+	// Light lives in the bare `:root` block; dark in `:root[data-theme="dark"]`.
+	// Whatever one of them defines, the other has to define too.
+	light := blockAfter(t, tokens, ":root, :root[data-theme=\"light\"] {", "--bg:")
+	dark := blockAfter(t, tokens, ":root[data-theme=\"dark\"] {", "--bg:")
+	if n := len(def.FindAllString(light, -1)); n < 15 {
+		t.Fatalf("the light palette block has only %d tokens in it; blockAfter has "+
+			"latched onto the wrong rule and the symmetry check below is vacuous", n)
+	}
+	for _, pair := range []struct{ a, b, an, bn string }{
+		{light, dark, "light", "dark"},
+		{dark, light, "dark", "light"},
+	} {
+		for _, m := range def.FindAllStringSubmatch(pair.a, -1) {
+			if !strings.Contains(pair.b, m[1]+":") {
+				t.Errorf("%s is defined for %s but not for %s: the theme toggle half-works, "+
+					"and the half that breaks is whichever one nobody develops in", m[1], pair.an, pair.bn)
+			}
+		}
+	}
+}
+
+// blockAfter returns the body of the rule matching `sel` that contains `marker`.
+//
+// The marker is not optional politeness. tokens.css opens with one-line
+// `color-scheme` rules using the SAME selectors as the palette blocks, so a
+// plain first-match returns `color-scheme: light;` — and the theme-symmetry
+// comparison above then runs over a block with one declaration in it and passes
+// no matter what. It did exactly that until a mutation drill found it: removing
+// a token from the light palette did not turn this red, because the fence was
+// never looking at the light palette.
+func blockAfter(t *testing.T, css, sel, marker string) string {
+	t.Helper()
+	for from := 0; ; {
+		i := strings.Index(css[from:], sel)
+		if i < 0 {
+			t.Fatalf("tokens.css has no %q block containing %q; this fence cannot compare themes",
+				sel, marker)
+		}
+		i += from
+		rest := css[i+len(sel):]
+		j := strings.Index(rest, "}")
+		if j < 0 {
+			t.Fatalf("could not find the end of %q", sel)
+		}
+		if body := rest[:j]; strings.Contains(body, marker) {
+			return body
+		}
+		from = i + len(sel)
+	}
+}
+
+// The palette stays readable, not just documented.
+//
+// tokens.css carries measured contrast ratios in its comments. Comments do not
+// re-measure themselves when somebody nudges a hex value two shades brighter to
+// make a mockup look better, and the result — small grey metadata at 3.8:1 — is
+// invisible to whoever made the change on a good screen in a dark room, and
+// unusable at a service window in daylight. These are the pairs that carry text.
+func TestPaletteMeetsContrast(t *testing.T) {
+	tokens := stripCSSComments(asset(t, "tokens.css"))
+	light := blockAfter(t, tokens, ":root, :root[data-theme=\"light\"] {", "--bg:")
+	dark := blockAfter(t, tokens, ":root[data-theme=\"dark\"] {", "--bg:")
+
+	// text token, background token, what it is
+	pairs := []struct{ fg, bg, what string }{
+		{"--ink-900", "--bg", "headline on the canvas"},
+		{"--ink-700", "--bg", "body on the canvas"},
+		{"--ink-500", "--bg", "muted on the canvas"},
+		{"--ink-400", "--bg", "faint metadata on the canvas"},
+		{"--ink-400", "--surface", "faint metadata on a card"},
+		{"--ink-500", "--surface-2", "muted on the inset surface"},
+		{"--brand", "--surface", "accent on a card"},
+		{"--ok", "--bg", "the met state"},
+		{"--warn", "--bg", "the unsure state"},
+		{"--stop", "--bg", "the blocked state"},
+	}
+	for _, theme := range []struct {
+		name, block string
+	}{{"light", light}, {"dark", dark}} {
+		for _, p := range pairs {
+			fg, okf := hexToken(theme.block, p.fg)
+			bg, okb := hexToken(theme.block, p.bg)
+			if !okf || !okb {
+				continue // not a plain hex (rgba tints); nothing to compute
+			}
+			if r := contrast(fg, bg); r < 4.5 {
+				t.Errorf("%s: %s on %s is %.2f:1, below 4.5 — %s",
+					theme.name, p.fg, p.bg, r, p.what)
+			}
+		}
+	}
+	// --aur-* are decorative: the bubble's rim, hairlines, the wash behind the
+	// hero. They are NOT checked as text above, and that exemption is only
+	// honest while nothing renders text in them — one of them is champagne, and
+	// champagne on a warm white page is 2.95:1. So the exemption is enforced
+	// rather than assumed.
+	for _, name := range []string{"styles.css", "home.css", "avatar.css"} {
+		css := stripCSSComments(asset(t, name))
+		if m := regexp.MustCompile(`(^|[^-\w])color:\s*var\(--aur-\d`).FindString(css); m != "" {
+			t.Errorf("%s uses an --aur-* stop as a text colour. Those are decorative and are "+
+				"exempt from the contrast pairs above; if one is to carry text, add it to "+
+				"that list and pick a value that clears 4.5:1", name)
+		}
+	}
+
+	// The one filled treatment, per theme. --brand-fill carries --brand-ink and
+	// nothing else does: it is the primary button, the person's own message and
+	// the send button. It inverts with the theme, so checking one would prove
+	// nothing about the other — which is where it would actually break.
+	for _, theme := range []struct{ name, block string }{{"light", light}, {"dark", dark}} {
+		ink, oki := hexToken(theme.block, "--brand-ink")
+		fill, okf := hexToken(theme.block, "--brand-fill")
+		if !oki || !okf {
+			t.Errorf("%s does not define --brand-fill and --brand-ink as plain hex; the one "+
+				"filled treatment in the product is unchecked in this theme", theme.name)
+			continue
+		}
+		if r := contrast(ink, fill); r < 4.5 {
+			t.Errorf("%s: --brand-ink on --brand-fill is %.2f:1, below 4.5 — the primary "+
+				"button and the person's own message become unreadable", theme.name, r)
+		}
+	}
+}
+
+var hexRe = regexp.MustCompile(`^#([0-9a-fA-F]{6})$`)
+
+// hexToken reads a token out of one theme block, reporting whether it is a plain
+// six-digit hex. rgba() tints are used for soft fills that never carry text.
+func hexToken(block, name string) (string, bool) {
+	re := regexp.MustCompile(name + `\s*:\s*([^;]+);`)
+	m := re.FindStringSubmatch(block)
+	if m == nil {
+		return "", false
+	}
+	v := strings.TrimSpace(m[1])
+	if !hexRe.MatchString(v) {
+		return "", false
+	}
+	return v, true
+}
+
+func contrast(a, b string) float64 {
+	la, lb := relLum(a), relLum(b)
+	if la < lb {
+		la, lb = lb, la
+	}
+	return (la + 0.05) / (lb + 0.05)
+}
+
+func relLum(hex string) float64 {
+	var c [3]float64
+	for i := 0; i < 3; i++ {
+		var n int
+		fmt.Sscanf(hex[1+i*2:3+i*2], "%02x", &n)
+		v := float64(n) / 255
+		if v <= 0.03928 {
+			c[i] = v / 12.92
+		} else {
+			c[i] = math.Pow((v+0.055)/1.055, 2.4)
+		}
+	}
+	return 0.2126*c[0] + 0.7152*c[1] + 0.0722*c[2]
+}
+
+// Every function the landing page calls actually exists.
+//
+// This is the second boot-time ReferenceError in home.js in one sitting. Both
+// killed the whole module: the first was a `const` read from above its own
+// declaration, this one was a helper deleted along with the block above it,
+// because the deletion was anchored on two comments and the helper sat between
+// them. Both times the page rendered and then simply did nothing — no theme
+// button, no language switch — and both times `node --check` passed, because a
+// syntax check does not resolve names.
+//
+// It is a heuristic, deliberately a narrow one: it looks at calls to bare
+// lowercase identifiers, skips anything reached through a dot, and carries an
+// explicit list of the globals this file legitimately uses. That is enough to
+// catch a helper that no longer exists, which is the failure that keeps
+// happening, without pretending to be a JavaScript engine.
+func TestLandingScriptCallsNothingItDoesNotHave(t *testing.T) {
+	src := stripJSComments(asset(t, "home.js"))
+
+	have := map[string]bool{}
+	for _, m := range regexp.MustCompile(`function\s+([A-Za-z_$][\w$]*)\s*\(`).FindAllStringSubmatch(src, -1) {
+		have[m[1]] = true
+	}
+	for _, m := range regexp.MustCompile(`(?:const|let|var)\s+([A-Za-z_$][\w$]*)\s*=`).FindAllStringSubmatch(src, -1) {
+		have[m[1]] = true
+	}
+	// import { a, b as c } from "…"
+	for _, m := range regexp.MustCompile(`import\s*\{([^}]*)\}`).FindAllStringSubmatch(src, -1) {
+		for _, part := range strings.Split(m[1], ",") {
+			part = strings.TrimSpace(part)
+			if i := strings.LastIndex(part, " "); i >= 0 {
+				part = part[i+1:]
+			}
+			if part != "" {
+				have[part] = true
+			}
+		}
+	}
+	for _, g := range []string{
+		"fetch", "setTimeout", "clearTimeout", "setInterval", "matchMedia",
+		"requestAnimationFrame", "parseInt", "parseFloat", "isNaN",
+		"encodeURIComponent", "decodeURIComponent", "alert", "confirm",
+		"if", "for", "while", "switch", "catch", "return", "typeof", "function",
+		"new", "await", "else", "do", "in", "of", "delete", "void", "yield",
+	} {
+		have[g] = true
+	}
+
+	// A bare call: an identifier followed by "(", not preceded by "." or a word
+	// character (so `x.foo(` and `notfoo(` are both skipped).
+	call := regexp.MustCompile(`(^|[^\w$.])([a-z_$][\w$]*)\s*\(`)
+	missing := map[string]bool{}
+	for _, m := range call.FindAllStringSubmatch(src, -1) {
+		if !have[m[2]] {
+			missing[m[2]] = true
+		}
+	}
+	for name := range missing {
+		t.Errorf("home.js calls %s() but neither defines nor imports it: the module throws "+
+			"on load and every control on the landing page stops working", name)
+	}
+}
+
+// stripJSComments removes // and /* */ so a fence reads code rather than prose.
+// String literals are left alone; nothing here needs to tell them apart, and a
+// pretend tokeniser would be more wrong than this is.
+func stripJSComments(src string) string {
+	src = regexp.MustCompile(`(?s)/\*.*?\*/`).ReplaceAllString(src, "")
+	return regexp.MustCompile(`(?m)^\s*//.*$`).ReplaceAllString(src, "")
+}
+
+// The corpus tally has one producer, and it is not the copy.
+//
+// The "honest limits" section said "21 条岗位、12 份办事指南" while the corpus
+// held 26 records — the national layer added five and the sentence did not
+// move. A number typed into prose has no way to know that. It now comes from
+// /api/meta, and this holds the arrangement in place: the claim carries no
+// number at all, the tally is a separate string with both placeholders in both
+// languages, and the script actually substitutes them.
+// See docs/bugfix/2026-08-31-honest-limits-were-not-honest.md
+func TestCorpusTallyIsNotWrittenIntoTheCopy(t *testing.T) {
+	zh, en := localeBlocks(t, asset(t, "i18n.js"))
+
+	// The claim itself must be number-free: any digit in it is a fact about the
+	// corpus that nothing will ever update.
+	claim := regexp.MustCompile(`"home\.limits\.l1b":\s*"((?:[^"\\]|\\.)*)"`)
+	for _, lang := range []struct {
+		name, block string
+	}{{"zh-CN", zh}, {"en", en}} {
+		m := claim.FindStringSubmatch(lang.block)
+		if m == nil {
+			t.Fatalf("%s has no home.limits.l1b; this fence no longer guards anything", lang.name)
+		}
+		if regexp.MustCompile(`\d`).MatchString(m[1]) {
+			t.Errorf("%s home.limits.l1b contains a digit: %q\n"+
+				"a count written into the claim goes stale the next time a record is added; "+
+				"put it in home.limits.l1count, which /api/meta fills", lang.name, m[1])
+		}
+	}
+
+	// The tally string exists in both languages and names both values.
+	for _, lang := range []struct {
+		name, block string
+	}{{"zh-CN", zh}, {"en", en}} {
+		for _, ph := range []string{`"home.limits.l1count":`, "{records}", "{guides}"} {
+			if !strings.Contains(lang.block, ph) {
+				t.Errorf("%s is missing %s in the corpus tally string", lang.name, ph)
+			}
+		}
+	}
+
+	// And the script reads the count from the server and substitutes both, so
+	// the placeholders cannot reach a reader as literal braces.
+	home := stripJSComments(asset(t, "home.js"))
+	// /api/health, not /api/meta: the landing page's readers are not signed in,
+	// and only health is outside the gate. Reading a gated endpoint here would
+	// leave both sentences permanently hidden with a 401 in the console.
+	for _, want := range []string{"/api/health", "corpus_opportunities", "corpus_knowledge_docs",
+		`"{records}"`, `"{guides}"`} {
+		if !strings.Contains(home, want) {
+			t.Errorf("home.js never mentions %s; the tally would render its own placeholders", want)
+		}
+	}
+	// The elements are hidden by default, so a deployment whose /api/meta is
+	// unreachable shows the limitations without a half-written sentence.
+	html := asset(t, "index.html")
+	for _, id := range []string{`id="corpusTally" hidden`, `id="liveStatus" hidden`} {
+		if !strings.Contains(html, id) {
+			t.Errorf("%s is missing from the markup; an unanswered /api/meta would leave an empty line", id)
+		}
+	}
+}
+
+// Whether the nationwide lookup is connected is a fact about a deployment.
+//
+// The section described it only as "configured separately", which stops being
+// true the moment somebody configures it — and then the one part of the page
+// whose whole job is honesty is the part that is out of date. The page reads
+// live_search_enabled from the same /api/meta the app already reads for its own
+// flag, so the front page and the conversation cannot disagree about it.
+// See docs/bugfix/2026-08-31-honest-limits-were-not-honest.md
+func TestLiveLookupStatusComesFromTheDeployment(t *testing.T) {
+	zh, en := localeBlocks(t, asset(t, "i18n.js"))
+	for _, lang := range []struct{ name, block string }{{"zh-CN", zh}, {"en", en}} {
+		for _, key := range []string{`"home.limits.l4on":`, `"home.limits.l4off":`} {
+			if !strings.Contains(lang.block, key) {
+				t.Errorf("%s is missing %s; the page could only state one of the two states", lang.name, key)
+			}
+		}
+	}
+	home := stripJSComments(asset(t, "home.js"))
+	for _, want := range []string{"live_search_enabled", "home.limits.l4on", "home.limits.l4off"} {
+		if !strings.Contains(home, want) {
+			t.Errorf("home.js never mentions %s; the live-lookup line could not follow the deployment", want)
+		}
+	}
+}
+
+// SAMPLE/ is a source_ref prefix, not the identifier a reader sees.
+//
+// The page claimed "编号以 SAMPLE/ 开头，这个前缀会一直显示到屏幕上". Half of that
+// is true — every record's source_ref does begin with SAMPLE/ — but the id the
+// answer quotes is `job-001` / `trn-002`, with no prefix, so the sentence
+// described something the reader never sees. On the section headed 真话, a
+// half-true sentence is the whole problem.
+func TestSampleClaimDescribesTheSourceRefNotTheVisibleID(t *testing.T) {
+	i18n := asset(t, "i18n.js")
+	if strings.Contains(i18n, "这个前缀会一直显示到屏幕上") ||
+		strings.Contains(i18n, "that prefix reaches the screen") {
+		t.Error("the copy still claims the SAMPLE/ prefix reaches the screen; " +
+			"answers quote the bare id (job-001), so it does not")
+	}
+	// Wherever SAMPLE/ is claimed, it is claimed of the source reference.
+	for _, m := range regexp.MustCompile(`"([^"]+)":\s*"((?:[^"\\]|\\.)*SAMPLE/(?:[^"\\]|\\.)*)"`).
+		FindAllStringSubmatch(i18n, -1) {
+		key, val := m[1], m[2]
+		if !strings.Contains(val, "依据编号") && !strings.Contains(val, "source reference") {
+			t.Errorf("%s says SAMPLE/ without saying it is the source reference: %q", key, val)
+		}
+	}
 }
 
 // A delivery toggle must be able to turn its setting OFF, and must show what is

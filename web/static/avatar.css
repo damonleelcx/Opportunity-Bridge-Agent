@@ -1,40 +1,32 @@
 /* 阿桥's face.
  *
- * Split out of styles.css alongside tokens.css, for the same reason: two
- * documents draw this mark now. avatar.js is the geometry, this is the ink, and
- * both the app and the landing page link them together — the alternative is a
- * second copy of these colours and a face that themes differently depending on
- * which page you are on.
+ * Shared by both documents, like tokens.css: the app draws it in the sidebar,
+ * the sign-in card and beside every message; the landing page draws it in the
+ * header, the sample conversation and the voice section. One file so the face
+ * cannot theme differently depending on which page you are on.
  *
- * The colours come from the --av-* tokens in tokens.css.
+ * It is an image now (see avatar.js). What is left here is the frame around it —
+ * the tinted, rounded plate that lets a 357px illustration sit convincingly in a
+ * 32px slot. The --av-* tokens in tokens.css are what makes that plate warm on
+ * the gold theme and violet on the light one.
  */
 
-.oba-avatar { width: 100%; height: 100%; display: block; }
-.av-bg { fill: var(--av-bg); }
-.av-glow { fill: var(--av-glow); opacity: .55; }
-.av-ink { fill: var(--av-ink); }
-.av-line { fill: none; stroke: var(--av-ink); stroke-width: 2.6; stroke-linecap: round; stroke-linejoin: round; }
-.av-thin { stroke: var(--av-water); stroke-width: 1.8; }
-.av-water { opacity: .8; }
-.av-mouth { transition: d .18s ease; }
-.av-walker { fill: var(--av-ink); opacity: 0; }
-.av-ears { opacity: 0; stroke: var(--av-ink); }
-
-.mood-thinking .av-walker { opacity: 1; animation: av-walk 1.9s ease-in-out infinite; }
-@keyframes av-walk {
-  0% { transform: translateX(0); opacity: 0 }
-  12% { opacity: 1 } 88% { opacity: 1 }
-  100% { transform: translateX(22px); opacity: 0 }
+.oba-avatar {
+  width: 100%; height: 100%; display: block;
+  object-fit: cover;
+  border-radius: 30%;
+  background: var(--av-bg);
+  /* The illustration is drawn on white. On a near-black page an untreated PNG
+     is a bright rectangle with a face in it, so the plate is tinted and the
+     image is inset slightly to leave a rim of that tint showing. */
+  padding: 4%;
+  box-shadow: inset 0 0 0 1px var(--av-water);
 }
-.mood-listening .av-ears { opacity: 1; animation: av-listen 1.4s ease-in-out infinite; }
-@keyframes av-listen { 0%,100% { opacity: .35 } 50% { opacity: 1 } }
 
-/* It does not smile while refusing; the arch flattens instead. The ink stays its
-   normal colour — greying the mark reads as "broken", and it is not broken. */
-.mood-serious .av-bg { fill: var(--surface-2); }
-.mood-serious .av-glow { opacity: .3; }
+/* Larger slots get a squarer plate: the 30% radius reads as a circle at 32px
+   and as a lozenge at 260px, which is not the same shape. */
+.voice-art .oba-avatar, .mascot .oba-avatar { border-radius: 8%; padding: 0; }
 
 @media (prefers-reduced-motion: reduce) {
-  .mood-thinking .av-walker { opacity: 1; animation: none; transform: translateX(12px); }
-  .mood-listening .av-ears { opacity: 1; animation: none; }
+  .ocard, .btn, .icon-btn { transition: none; }
 }
