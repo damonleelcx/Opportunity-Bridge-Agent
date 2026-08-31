@@ -35,6 +35,9 @@ const state = {
   busy: false,
   abort: null, // AbortController for the turn in flight, so switching conversation can end it
   speak: false,
+  // Set while a control is being moved to match the server, so its change
+  // handler can tell "the person did this" from "the server said so".
+  syncingA11y: false,
   showTech: false,
   account: null, // who is signed in; null until /api/auth/me answers
   gateMode: "signin",
@@ -155,10 +158,26 @@ function wire() {
   });
   // Plain language is not a client-side rewrite: it goes through the same
   // accessibility_set path the agent itself uses, so the answer actually changes.
+  //
+  // BOTH directions. This used to send only when the box was ticked, so the
+  // control that switched plain language on could not switch it off — and the
+  // one escape route, saying so in words, was never signposted. A toggle with no
+  // off is not a toggle.
+  // See docs/bugfix/2026-08-28-plain-language-could-not-be-turned-off.md
   $("#a11yPlain").addEventListener("change", (e) => {
-    if (e.target.checked) send(locale() === "en"
-      ? "Please answer in plain words from now on: short sentences, no jargon."
-      : "以后请用大白话回答我：句子短一点，不要术语。");
+    // syncing is set while the box is being moved to match the server. Without
+    // this guard, reflecting the state would fire change and send a message
+    // saying the person asked for what they already have — every turn, forever.
+    if (state.syncingA11y) return;
+    if (e.target.checked) {
+      send(locale() === "en"
+        ? "Please answer in plain words from now on: short sentences, no jargon."
+        : "以后请用大白话回答我：句子短一点，不要术语。");
+    } else {
+      send(locale() === "en"
+        ? "Stop using plain-language mode from now on; write normally again."
+        : "以后不用大白话了，正常说就行。");
+    }
   });
 
   $("#theme").addEventListener("change", (e) => applyTheme(e.target.value));
@@ -935,6 +954,32 @@ function crumb(intentID) {
 
 // ── overview panel ─────────────────────────────────────────────────────────
 
+// reflectDeliverySettings makes the checkbox show what is actually in force.
+//
+// It used to show nothing of the kind: `.checked` was read on change and never
+// written, so after a reload the box sat empty while plain language was still
+// on. A control that cannot be trusted to show the current state is worse than
+// no control, because the person stops believing the ones that do work.
+//
+// Only plain language is bound here. Large text and read-aloud are client-side
+// only today — nothing sends them to the server — so binding them to the
+// session would clear them on every refresh. That gap is real and is written up
+// in the bugfix note; it is not this fix.
+// See docs/bugfix/2026-08-28-plain-language-could-not-be-turned-off.md
+function reflectDeliverySettings(session) {
+  const box = $("#a11yPlain");
+  if (!box) return;
+  const on = (session?.access_needs || []).includes("plain_language");
+  if (box.checked === on) return;
+  // The guard, not removeEventListener: assigning .checked does not fire change
+  // in any current browser, but that is a promise about the DOM rather than
+  // about this code, and the cost of being wrong is a message sent to the model
+  // on every single refresh.
+  state.syncingA11y = true;
+  box.checked = on;
+  state.syncingA11y = false;
+}
+
 async function renderOverview() {
   if (!state.session) return;
   const d = await api("GET", `/api/sessions/${state.session.id}`);
@@ -962,12 +1007,16 @@ async function renderOverview() {
     }
   }
 
+  reflectDeliverySettings(d.session);
+
   const p = d.profile || {};
   const rows = [
     ["city", p.city], ["hukou_city", p.hukou_city], ["education", p.education],
     ["skills", (p.skills || []).join("、")], ["constraints", (p.constraints || []).join("；")],
     ["interests", (p.interests || []).join("、")], ["cohorts", (p.cohorts || []).join("、")],
-    ["access_needs", (p.access_needs || []).join("、")],
+    // Through term(), not raw: the panel used to print "plain_language" at
+    // somebody whose stated need is to not be shown words like that.
+    ["access_needs", (p.access_needs || []).map((n) => term("need", n, n)).join("、")],
   ].filter(([, v]) => v);
   const rec = $("#records");
   rec.innerHTML = "";

@@ -321,6 +321,21 @@ func (s *Store) CreateSession(role domain.Role, subjectID, locale string) *Sessi
 		Task:      TaskState{Slots: map[string]string{}},
 		CreatedAt: now, UpdatedAt: now,
 	}
+	// Delivery settings belong to the PERSON, not to one conversation.
+	//
+	// They used to be written to both the profile and the session, and read only
+	// from the session — so the record said "this is how you want answers" while
+	// every new conversation quietly ignored it. Two truths, and the panel showed
+	// the one that was not in force.
+	//
+	// Somebody who needs short sentences needs them in the next conversation too;
+	// having to ask again each time is the friction this product exists to
+	// remove. Read here, under the lock already held: Profile() takes RLock and
+	// would deadlock.
+	// See docs/bugfix/2026-08-28-plain-language-could-not-be-turned-off.md
+	if pr, ok := s.s.Profiles[subjectID]; ok && len(pr.AccessNeeds) > 0 {
+		ses.AccessNeeds = append([]domain.AccessNeed(nil), pr.AccessNeeds...)
+	}
 	s.s.Sessions[id] = ses
 	s.persist()
 	return cloneSession(ses)

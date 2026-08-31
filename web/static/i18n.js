@@ -767,6 +767,13 @@ const TERMS = {
     "field.city": "所在城市", "field.hukou_city": "户口所在地", "field.education": "学历",
     "field.skills": "会做的事", "field.constraints": "硬性限制", "field.interests": "想做的",
     "field.cohorts": "自述情况", "field.access_needs": "阅读方式",
+    // Delivery settings, as the reader sees them. Without these the panel showed
+    // the raw enum — a person was told their reading preference was
+    // "plain_language", which is exactly the administrative vocabulary the
+    // setting exists to remove.
+    "need.plain_language": "大白话", "need.large_text": "大字号",
+    "need.voice": "读给我听", "need.dialect": "口语/方言",
+    "need.assisted": "有人在旁边帮忙", "need.low_bandwidth": "网络慢，答案要短",
   },
   en: {
     "status.open": "open", "status.waiting": "waiting", "status.blocked": "blocked",
@@ -775,6 +782,9 @@ const TERMS = {
     "field.city": "City", "field.hukou_city": "Household registration", "field.education": "Education",
     "field.skills": "Skills", "field.constraints": "Hard constraints", "field.interests": "Wants",
     "field.cohorts": "Self-declared", "field.access_needs": "Delivery",
+    "need.plain_language": "Plain language", "need.large_text": "Large text",
+    "need.voice": "Read aloud", "need.dialect": "Spoken/dialect wording",
+    "need.assisted": "Someone helping in person", "need.low_bandwidth": "Slow connection, keep it short",
     "scope.store_profile": "Keep what you tell me",
     "scope.share_with_caseworker": "Let a caseworker see this",
     "scope.submit_on_behalf": "File on your behalf",
