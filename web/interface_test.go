@@ -1152,3 +1152,22 @@ func TestSampleDisclaimersDistinguishLiveResults(t *testing.T) {
 		}
 	}
 }
+
+// Zero is a fact, not a broken payload.
+//
+// The deployment-facts guard refused a zero count as a shape mismatch. When the
+// invented procedure guides left the product, zero became the true answer — and
+// the guard silently dropped all three facts, including the live-lookup line, so
+// the section rendered with blank slots on a page whose subject is accuracy.
+// See docs/bugfix/2026-08-31-the-invented-corpus-left-the-product.md
+func TestZeroCountsDoNotSuppressTheDeploymentFacts(t *testing.T) {
+	home := stripJSComments(asset(t, "home.js"))
+	if regexp.MustCompile(`guides\s*<=\s*0`).MatchString(home) {
+		t.Error("a guide count of zero is treated as unusable; a deployment that ships no guides " +
+			"loses the corpus tally, the live-lookup line and the speech-vendor line together")
+	}
+	if !regexp.MustCompile(`records\s*<\s*1`).MatchString(home) {
+		t.Error("the record count is no longer required to be at least one; an empty corpus cannot " +
+			"start, so zero there really is a broken payload and must still be refused")
+	}
+}
