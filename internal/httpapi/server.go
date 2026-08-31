@@ -19,6 +19,7 @@ import (
 	"github.com/damonleelcx/Opportunity-Bridge-Agent/internal/config"
 	"github.com/damonleelcx/Opportunity-Bridge-Agent/internal/domain"
 	"github.com/damonleelcx/Opportunity-Bridge-Agent/internal/intent"
+	"github.com/damonleelcx/Opportunity-Bridge-Agent/internal/mailer"
 	"github.com/damonleelcx/Opportunity-Bridge-Agent/internal/store"
 	"github.com/damonleelcx/Opportunity-Bridge-Agent/internal/tts"
 )
@@ -29,6 +30,13 @@ type Server struct {
 	Cfg   config.Config
 	Web   fs.FS
 	Log   *slog.Logger
+	// Mail sends the confirm-your-address and set-a-new-password messages. NIL
+	// MEANS OFF, like TTS below: a deployment with no relay still signs people
+	// up and in, it just cannot offer a password reset, and it says so rather
+	// than showing a form that quietly does nothing.
+	// See docs/bugfix/2026-08-31-email-verification-and-reset.md
+	Mail mailer.Sender
+
 	// TTS renders answers as speech. NIL MEANS OFF, and off is the default:
 	// with no provider the browser reads answers in its own built-in voice,
 	// which is what it did before this existed. See tts.go.
@@ -57,6 +65,14 @@ func (s *Server) Routes() http.Handler {
 	mux.HandleFunc("POST /api/auth/signin", s.signIn)
 	mux.HandleFunc("POST /api/auth/signout", s.signOut)
 	mux.HandleFunc("GET /api/auth/me", s.me)
+	// Confirming an address and getting back in after forgetting a password.
+	// `verify` and the two reset routes are OPEN (see isOpenPath): somebody who
+	// cannot sign in is exactly who needs them.
+	mux.HandleFunc("GET /api/auth/verify", s.verifyEmail)
+	mux.HandleFunc("POST /api/auth/verify", s.requestVerification)
+	mux.HandleFunc("POST /api/auth/email", s.setEmail)
+	mux.HandleFunc("POST /api/auth/reset", s.requestReset)
+	mux.HandleFunc("POST /api/auth/reset/confirm", s.confirmReset)
 	// `/` is the landing page (web/static/index.html); the conversational shell is
 	// at `/app`. Both are served by the file server, but `/app` has no extension
 	// and therefore no file of its own name, so it is named here. Bound twice
@@ -172,6 +188,12 @@ func (s *Server) deploymentFacts() map[string]any {
 		// true on the machine of whoever wrote it and false in production.
 		// See docs/bugfix/2026-08-31-the-privacy-claim-was-false.md
 		"speech_vendor_enabled": s.TTS != nil,
+		// Whether this deployment can put a message in somebody's inbox. The
+		// sign-in page offers "forgot your password" only when it can actually
+		// work — a form that silently does nothing is worse than an absent one,
+		// because the person waits for a mail that was never sent.
+		// See docs/bugfix/2026-08-31-email-verification-and-reset.md
+		"mail_enabled": s.Mail != nil,
 		// Whether that vendor's terms let it train on what is sent. Derived, not
 		// written down: the copy on the landing page says one thing on the free
 		// backbone and another on a paid one, and a deployment that switches

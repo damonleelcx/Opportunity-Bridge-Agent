@@ -29,6 +29,20 @@ type Account struct {
 	CreatedAt    time.Time `json:"created_at"`
 	LastSeenAt   time.Time `json:"last_seen_at,omitempty"`
 
+	// Email is how somebody gets back in after forgetting a password, and it is
+	// the ONLY route back: this service holds no phone number and has no support
+	// desk that can identify a person. EmailVerified is what separates an address
+	// somebody typed from one they have proved they can read — see
+	// internal/store/emailtokens.go.
+	//
+	// Both are optional on purpose. Accounts created before this existed have
+	// neither, and they keep working: an address is required of NEW sign-ups, not
+	// retrospectively of people already using the service.
+	// See docs/bugfix/2026-08-31-email-verification-and-reset.md
+	Email         string    `json:"email,omitempty"`
+	EmailVerified bool      `json:"email_verified,omitempty"`
+	EmailSetAt    time.Time `json:"email_set_at,omitempty"`
+
 	// AlsoOwns exists for one reason: the data that predates accounts. Twelve
 	// visitors left twelve subjects behind, and re-keying them onto one subject
 	// would mean merging twelve conflicting profiles into one and losing most of

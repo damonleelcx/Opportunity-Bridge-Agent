@@ -49,3 +49,35 @@ data:
   # claiming. Switching to s2.1-pro costs about $0.018 an answer and is the lever
   # if that trade stops being acceptable. See docs/17-read-aloud.md.
   OBA_TTS_MODEL: "s2.1-pro-free"
+
+  # ── Outgoing mail ──────────────────────────────────────────────────────────
+  #
+  # Address confirmation and password reset. Without them, somebody who forgets
+  # their password loses the account and everything hanging off its subject —
+  # the profile, the tracked tasks, the consents — and there is no support desk
+  # here that could identify them.
+  #
+  # 🔴 THE HOST IS THE NAME ON THE RELAY'S CERTIFICATE, NOT A SERVICE NAME.
+  # STARTTLS verifies it, and Let's Encrypt will not sign a `.svc.cluster.local`
+  # name. The right pod is reached by the `hostAliases` entry in
+  # 30-deployment.yaml — NOT by a CoreDNS rewrite, which would also answer
+  # cert-manager's own challenge self-check for this name and break the relay's
+  # certificate renewal sixty days later with nothing pointing at the cause.
+  # That happened once already; see heros-agent's mail.yaml.
+  #
+  # ⚠️ FROM IS `jobs@`, NOT `support@`, AND THAT IS FORCED. The relay runs with
+  # SPOOF_PROTECTION=1, which permits a login to send only as its own address or
+  # an alias pointing at it. Sending as `support@` would need an alias
+  # `support@ -> oba@`, and that alias also changes where inbound support@ mail
+  # is DELIVERED. Reply-To carries the intent instead: a person who replies
+  # reaches the support mailbox, and no inbound routing changes.
+  # See docs/bugfix/2026-08-31-email-verification-and-reset.md
+  OBA_SMTP_HOST: "mail.heros-agent.space"
+  OBA_SMTP_PORT: "587"
+  OBA_SMTP_FROM: "jobs@heros-agent.space"
+  OBA_SMTP_REPLY_TO: "support@heros-agent.space"
+  # Every link in an outgoing message is absolute against this. There is NO
+  # default: a guessed origin sends mail that is either useless (localhost) or
+  # dangerous (whatever Host header a request carried). Mail stays OFF without
+  # it, and startup logs MAIL_DISABLED naming the missing piece.
+  OBA_PUBLIC_ORIGIN: "https://jobs.heros-agent.space"

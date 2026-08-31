@@ -103,6 +103,9 @@ type snapshot struct {
 	// See docs/bugfix/2026-08-28-data-exposure-no-ownership-checks.md
 	Accounts map[string]*Account `json:"accounts,omitempty"`
 	SignIns  map[string]*SignIn  `json:"sign_ins,omitempty"`
+	// EmailTokens are the outstanding verify/reset links, keyed by the token's
+	// hash for the same reason sign-ins are. See internal/store/emailtokens.go.
+	EmailTokens map[string]*EmailToken `json:"email_tokens,omitempty"`
 	// LegacyAdopted records that the one-off adoption of pre-account data has
 	// run. It is a marker, not a feature: without it the adoption would keep
 	// sweeping up subjects on every restart.
@@ -170,6 +173,9 @@ func newSnapshot() snapshot {
 		Approvals: map[string]*PendingApproval{},
 		Accounts:  map[string]*Account{},
 		SignIns:   map[string]*SignIn{},
+		// Not optional: a nil map here panics on the first verification link a
+		// fresh deployment ever issues, which is the first sign-up.
+		EmailTokens: map[string]*EmailToken{},
 	}
 }
 
@@ -247,6 +253,9 @@ func (s *Store) load() {
 	}
 	if snap.Accounts == nil {
 		snap.Accounts = map[string]*Account{}
+	}
+	if snap.EmailTokens == nil {
+		snap.EmailTokens = map[string]*EmailToken{}
 	}
 	if snap.SignIns == nil {
 		snap.SignIns = map[string]*SignIn{}

@@ -25,6 +25,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/damonleelcx/Opportunity-Bridge-Agent/internal/mailer"
 	"github.com/damonleelcx/Opportunity-Bridge-Agent/internal/store"
 )
 
@@ -56,8 +57,10 @@ func withAccount(ctx context.Context, a *store.Account) context.Context {
 //
 //   - /api/health carries the Kubernetes probes. A gated health check means a
 //     pod that can never become ready.
-//   - the four /api/auth endpoints, because a sign-in page that requires you to
-//     be signed in is a locked room with the key inside.
+//   - the sign-in /api/auth endpoints, because a sign-in page that requires you
+//     to be signed in is a locked room with the key inside. The password-reset
+//     pair and the GET that a confirmation link points at are open for the same
+//     reason, and are safe for reasons of their own — see the cases below.
 //
 // Everything else — every byte of data, every call that spends model tokens —
 // is behind the gate.
@@ -67,6 +70,18 @@ func isOpenPath(method, path string) bool {
 		return method == http.MethodGet
 	case "/api/auth/signup", "/api/auth/signin", "/api/auth/signout", "/api/auth/me":
 		return true
+	case "/api/auth/verify":
+		// GET only. The link in a confirmation mail is clicked by somebody who
+		// may not be signed in on that device — a phone mail app opens its own
+		// browser. POST /api/auth/verify is the RESEND, which needs an account
+		// and is therefore NOT listed here.
+		return method == http.MethodGet
+	case "/api/auth/reset", "/api/auth/reset/confirm":
+		// Open by necessity: somebody who cannot sign in is precisely who needs
+		// these. What protects them is not the gate — it is that the request
+		// endpoint answers identically whether or not the address exists, and
+		// that the confirm endpoint needs a single-use token nobody can guess.
+		return method == http.MethodPost
 	}
 	// The static shell is public. It has to be, to render the sign-in form at
 	// all, and it is already published in an open-source repository — there is
@@ -105,6 +120,7 @@ func (s *Server) signUp(w http.ResponseWriter, r *http.Request) {
 		Username   string `json:"username"`
 		Password   string `json:"password"`
 		InviteCode string `json:"invite_code"`
+		Email      string `json:"email"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
 		writeErr(w, http.StatusBadRequest, "BODY_INVALID",
@@ -136,6 +152,22 @@ func (s *Server) signUp(w http.ResponseWriter, r *http.Request) {
 			"Length beats punctuation. A short sentence you will remember works well.")
 		return
 	}
+	// An address is required of NEW accounts and is not asked of existing ones.
+	//
+	// Why required at all: it is the ONLY route back into an account whose
+	// password is forgotten. There is no support desk here that could identify
+	// somebody, and losing the account loses the profile, the tracked tasks and
+	// the consents hanging off its subject. Why not retrospective: people
+	// already using the service must not be stopped mid-errand to supply one —
+	// they get an "add an address" control instead, and are told plainly what
+	// they cannot do until they use it.
+	// See docs/bugfix/2026-08-31-email-verification-and-reset.md
+	if !mailer.Valid(body.Email) {
+		writeErr(w, http.StatusBadRequest, "EMAIL_INVALID",
+			"An email address is required, and that one does not look like one.",
+			"It is the only way back in if you forget your password. Check for a missing @ or a typo in the domain.")
+		return
+	}
 	hash, err := store.HashPassword(body.Password)
 	if err != nil {
 		writeErr(w, http.StatusInternalServerError, "PASSWORD_HASH_FAILED",
@@ -152,9 +184,31 @@ func (s *Server) signUp(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, http.StatusBadRequest, "ACCOUNT_NOT_CREATED", err.Error(), "Check the username and try again.")
 		return
 	}
+	// The address is attached AFTER the account exists, so a clash on it cannot
+	// leave a half-made account behind. A clash here is not fatal to the sign-up:
+	// they have an account and are signed in, and the settings panel is where
+	// they sort the address out.
+	emailErr := s.Store.SetEmail(acct.Username, body.Email)
+	if emailErr != nil {
+		s.Log.Warn("account created without its address",
+			"code", "SIGNUP_EMAIL_NOT_SET", "username", acct.Username, "error", emailErr.Error())
+	}
 	s.Log.Info("account created", "code", "ACCOUNT_CREATED", "username", acct.Username)
 	s.issueSignIn(w, acct)
-	writeJSON(w, meFor(acct))
+	acct, _ = s.Store.Account(acct.Username)
+	out := meFor(acct)
+	if emailErr != nil {
+		out["email_error"] = emailErr.Error()
+	} else if sent, err := s.sendVerification(r, acct.Username, body.Email); err != nil {
+		// Never fatal. A relay outage must not stop somebody signing up; the
+		// resend control is in the settings panel.
+		s.Log.Warn("confirmation mail failed at sign-up",
+			"code", "VERIFY_MAIL_FAILED", "error", err.Error())
+		out["verification_sent"] = false
+	} else {
+		out["verification_sent"] = sent
+	}
+	writeJSON(w, out)
 }
 
 func (s *Server) signIn(w http.ResponseWriter, r *http.Request) {
@@ -221,7 +275,14 @@ func (s *Server) me(w http.ResponseWriter, r *http.Request) {
 }
 
 func meFor(a *store.Account) map[string]any {
-	return map[string]any{"username": a.Username, "subject_id": a.SubjectID}
+	return map[string]any{
+		"username": a.Username, "subject_id": a.SubjectID,
+		// The interface needs all three states, not two: no address at all (an
+		// account from before this existed), an address awaiting confirmation,
+		// and a confirmed one. Collapsing the first two would tell somebody with
+		// no address to "check their inbox".
+		"email": a.Email, "email_verified": a.EmailVerified,
+	}
 }
 
 func (s *Server) issueSignIn(w http.ResponseWriter, a *store.Account) {
