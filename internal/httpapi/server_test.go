@@ -45,7 +45,7 @@ func newServerWith(t *testing.T, script llm.Script, tweak func(*config.Config)) 
 func newServerTweaking(t *testing.T, script llm.Script, tweak func(*config.Config),
 	tweakSrv func(*httpapi.Server)) *httptest.Server {
 	t.Helper()
-	c, err := corpus.Load("../../data")
+	c, err := corpus.Load("../../testdata/corpus")
 	if err != nil {
 		t.Fatalf("corpus: %v", err)
 	}
@@ -300,15 +300,20 @@ func TestMetaDeclaresTheLimitsUpFront(t *testing.T) {
 			t.Errorf("meta does not declare %q, so a person discovers the limit by hitting it", k)
 		}
 	}
+	// The harness loads the FIXTURE corpus, which is still the invented one, so
+	// true is the right answer here — and it is derived from that data rather
+	// than declared. A literal kept the 「演示语料」 badge over the five real
+	// national schemes once the invented records left the product.
+	// See docs/bugfix/2026-08-31-the-invented-corpus-left-the-product.md
 	if m["corpus_is_sample"] != true {
-		t.Error("the interface must be told the corpus is sample data")
+		t.Error("the interface is not told the fixture corpus contains invented records")
 	}
 
 	// The landing page states how large the corpus is, and it used to state it
 	// as a number typed into the copy: it said 21 while the answer was 26. The
 	// count now has one producer, and this is the join between the producer and
 	// the page. See docs/bugfix/2026-08-31-honest-limits-were-not-honest.md
-	c, err := corpus.Load("../../data")
+	c, err := corpus.Load("../../testdata/corpus")
 	if err != nil {
 		t.Fatalf("corpus: %v", err)
 	}
@@ -355,7 +360,7 @@ func TestDeploymentFactsAreReadableWithoutSigningIn(t *testing.T) {
 	var m map[string]any
 	_ = json.NewDecoder(res.Body).Decode(&m)
 
-	c, err := corpus.Load("../../data")
+	c, err := corpus.Load("../../testdata/corpus")
 	if err != nil {
 		t.Fatalf("corpus: %v", err)
 	}

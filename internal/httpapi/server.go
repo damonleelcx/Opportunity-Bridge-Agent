@@ -256,8 +256,11 @@ func (s *Server) meta(w http.ResponseWriter, r *http.Request) {
 		"cities_covered":    s.Agent.Corpus.Cities(),
 		"reply_language":    s.defaultLocale(),
 		"reply_languages":   config.ReplyLanguages,
-		"corpus_is_sample":  true,
-		"disabled_intents":  disabled,
+		// Derived from the corpus, not declared here. See corpus.IsSample: a
+		// literal true kept the 「演示语料」 badge over real national schemes once
+		// the invented records left.
+		"corpus_is_sample": s.Agent.Corpus.IsSample(),
+		"disabled_intents": disabled,
 		// The interface renders one revoke control per scope from this list. It
 		// used to keep its own copy, so a scope added on the server was one a
 		// person could be asked for and then could not withdraw.

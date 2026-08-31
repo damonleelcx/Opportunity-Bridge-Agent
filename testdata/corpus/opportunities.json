@@ -1,0 +1,1375 @@
+[
+  {
+    "title": "数控机床操作工（接受零基础）",
+    "org": "锦禾精密部件",
+    "city": "成都",
+    "district": "龙泉驿区",
+    "summary": "操作三轴数控车床，两班倒。有机加工或流水线经验即可，入职后有六周带薪在岗培训。",
+    "skills": [
+      "机加工",
+      "数控",
+      "质检",
+      "流水线"
+    ],
+    "sectors": [
+      "制造业"
+    ],
+    "cohorts": [
+      "transitioning",
+      "migrant_worker",
+      "older_worker"
+    ],
+    "salary_min": 5600,
+    "salary_max": 8200,
+    "schedule": "两班倒，做六休一",
+    "remote": false,
+    "openings": 12,
+    "demand": 41,
+    "criteria": [
+      {
+        "code": "age",
+        "text": "年龄 18 至 55 周岁。",
+        "evidence": "身份证",
+        "source_ref": "SAMPLE/criteria/age"
+      },
+      {
+        "code": "cert-none",
+        "text": "不要求先有证书，入职后提供六周培训。",
+        "evidence": "",
+        "source_ref": "SAMPLE/criteria/cert-none"
+      },
+      {
+        "code": "health",
+        "text": "通过一般职业健康检查。",
+        "evidence": "任一区级医院出具的体检报告",
+        "source_ref": "SAMPLE/criteria/health"
+      }
+    ],
+    "channel": {
+      "online": "https://sample.example/jobs/job-001",
+      "phone": "028-5550-1122",
+      "window": "龙泉驿区就业服务大厅（成洛大道 88 号）",
+      "hours": "周一至周五 09:00-17:00，周六 09:00-12:00",
+      "language": "普通话、四川话"
+    },
+    "id": "job-001",
+    "kind": "job",
+    "source_ref": "SAMPLE/job/job-001",
+    "deadline": ""
+  },
+  {
+    "title": "养老护理员（只上白班）",
+    "org": "安宁社区日间照料中心",
+    "city": "成都",
+    "district": "青羊区",
+    "summary": "社区日间照料中心的白班护理员。16:30 下班，方便接送上学的孩子。",
+    "skills": [
+      "护理",
+      "养老照护",
+      "急救",
+      "备餐"
+    ],
+    "sectors": [
+      "医疗健康",
+      "养老"
+    ],
+    "cohorts": [
+      "caregiver",
+      "transitioning",
+      "older_worker"
+    ],
+    "salary_min": 4800,
+    "salary_max": 6200,
+    "schedule": "周一至周五 08:00-16:30，不上夜班",
+    "remote": false,
+    "openings": 6,
+    "demand": 58,
+    "criteria": [
+      {
+        "code": "cert-care",
+        "text": "持养老护理员证，或入职三个月内报名并参加培训。",
+        "evidence": "证书编号或培训报名回执",
+        "source_ref": "SAMPLE/criteria/cert-care"
+      },
+      {
+        "code": "health",
+        "text": "涉及餐饮环节需健康证。",
+        "evidence": "健康证",
+        "source_ref": "SAMPLE/criteria/health"
+      }
+    ],
+    "channel": {
+      "online": "https://sample.example/jobs/job-002",
+      "phone": "028-5550-2244",
+      "window": "青羊区政务服务窗口 B2（蜀都大道 12 号）",
+      "hours": "周一至周五 09:00-17:00",
+      "language": "普通话、四川话"
+    },
+    "id": "job-002",
+    "kind": "job",
+    "source_ref": "SAMPLE/job/job-002",
+    "deadline": ""
+  },
+  {
+    "title": "仓库拣货员（晚班）",
+    "org": "合兴物流",
+    "city": "成都",
+    "district": "新都区",
+    "summary": "晚班拣货，17:00 至次日 01:00。三个集合点有班车接送。可申请周结工资。",
+    "skills": [
+      "仓储",
+      "物流",
+      "叉车"
+    ],
+    "sectors": [
+      "物流"
+    ],
+    "cohorts": [
+      "migrant_worker",
+      "gig_worker"
+    ],
+    "salary_min": 5200,
+    "salary_max": 6800,
+    "schedule": "晚班 17:00-01:00",
+    "remote": false,
+    "openings": 30,
+    "demand": 22,
+    "criteria": [
+      {
+        "code": "age",
+        "text": "年龄 18 至 50 周岁。",
+        "evidence": "身份证",
+        "source_ref": "SAMPLE/criteria/age"
+      },
+      {
+        "code": "physical",
+        "text": "能反复搬运 20 公斤以内货物。",
+        "evidence": "",
+        "source_ref": "SAMPLE/criteria/physical"
+      }
+    ],
+    "channel": {
+      "online": "https://sample.example/jobs/job-003",
+      "phone": "028-5550-3366",
+      "window": "新都工业园 3 号门招工点",
+      "hours": "每天 08:30-18:00",
+      "language": "普通话"
+    },
+    "id": "job-003",
+    "kind": "job",
+    "source_ref": "SAMPLE/job/job-003",
+    "deadline": ""
+  },
+  {
+    "title": "数据标注专员（初级）",
+    "org": "澜禾数据服务",
+    "city": "成都",
+    "district": "高新区",
+    "summary": "给机器学习数据集做图像和文本标注。有完整的新人带教，明确欢迎没有坐办公室经验的应届生。",
+    "skills": [
+      "细心",
+      "电脑操作",
+      "英语阅读",
+      "数据录入"
+    ],
+    "sectors": [
+      "信息技术",
+      "服务业"
+    ],
+    "cohorts": [
+      "graduate",
+      "disability"
+    ],
+    "salary_min": 4500,
+    "salary_max": 6500,
+    "schedule": "周一至周五 09:00-18:00，满三个月可混合办公",
+    "remote": true,
+    "openings": 15,
+    "demand": 96,
+    "criteria": [
+      {
+        "code": "edu",
+        "text": "大专及以上学历，专业不限。",
+        "evidence": "毕业证",
+        "source_ref": "SAMPLE/criteria/edu"
+      },
+      {
+        "code": "typing",
+        "text": "通过 30 分钟的准确率测试。",
+        "evidence": "",
+        "source_ref": "SAMPLE/criteria/typing"
+      }
+    ],
+    "channel": {
+      "online": "https://sample.example/jobs/job-004",
+      "phone": "028-5550-4488",
+      "window": "高新区高校毕业生就业服务站（天府大道 5 号）",
+      "hours": "周一至周五 09:30-17:30",
+      "language": "普通话、英语"
+    },
+    "id": "job-004",
+    "kind": "job",
+    "source_ref": "SAMPLE/job/job-004",
+    "deadline": ""
+  },
+  {
+    "title": "社区网格员",
+    "org": "武侯区某街道办事处",
+    "city": "成都",
+    "district": "武侯区",
+    "summary": "社区联络工作：入户走访、教居民使用政务 App、上报维修隐患。",
+    "skills": [
+      "沟通",
+      "社区工作",
+      "台账记录",
+      "方言"
+    ],
+    "sectors": [
+      "公共服务"
+    ],
+    "cohorts": [
+      "transitioning",
+      "older_worker",
+      "caregiver"
+    ],
+    "salary_min": 4600,
+    "salary_max": 5800,
+    "schedule": "周一至周五 09:00-17:00",
+    "remote": false,
+    "openings": 8,
+    "demand": 63,
+    "criteria": [
+      {
+        "code": "residence",
+        "text": "成都户籍，或持成都居住证。",
+        "evidence": "户口簿或居住证",
+        "source_ref": "SAMPLE/criteria/residence"
+      },
+      {
+        "code": "dialect",
+        "text": "能用本地话与居民交流。",
+        "evidence": "",
+        "source_ref": "SAMPLE/criteria/dialect"
+      }
+    ],
+    "channel": {
+      "online": "https://sample.example/jobs/job-005",
+      "phone": "028-5550-5500",
+      "window": "武侯区街道办事处（武侯祠大街 3 号）",
+      "hours": "周一至周五 09:00-17:00",
+      "language": "普通话、四川话"
+    },
+    "id": "job-005",
+    "kind": "job",
+    "source_ref": "SAMPLE/job/job-005",
+    "deadline": ""
+  },
+  {
+    "title": "配送骑手（公司缴社保）",
+    "org": "速递成都",
+    "city": "成都",
+    "district": "锦江区",
+    "summary": "是签劳动合同的骑手岗，不是平台接单：公司承担社保单位部分，并配电动车。",
+    "skills": [
+      "骑行",
+      "路线熟悉",
+      "客户服务"
+    ],
+    "sectors": [
+      "物流",
+      "服务业"
+    ],
+    "cohorts": [
+      "gig_worker",
+      "migrant_worker"
+    ],
+    "salary_min": 5500,
+    "salary_max": 9000,
+    "schedule": "09:00-21:00 之间自排，每天 8 小时",
+    "remote": false,
+    "openings": 25,
+    "demand": 74,
+    "criteria": [
+      {
+        "code": "licence",
+        "text": "持有效电动自行车驾驶资格。",
+        "evidence": "驾驶资格证明",
+        "source_ref": "SAMPLE/criteria/licence"
+      },
+      {
+        "code": "age",
+        "text": "年龄 18 至 55 周岁。",
+        "evidence": "身份证",
+        "source_ref": "SAMPLE/criteria/age"
+      },
+      {
+        "code": "record",
+        "text": "近 12 个月无重大交通违法记录。",
+        "evidence": "交通违法记录打印件",
+        "source_ref": "SAMPLE/criteria/record"
+      }
+    ],
+    "channel": {
+      "online": "https://sample.example/jobs/job-006",
+      "phone": "028-5550-6611",
+      "window": "锦江区骑手服务点（红星路 21 号）",
+      "hours": "每天 09:00-19:00",
+      "language": "普通话"
+    },
+    "id": "job-006",
+    "kind": "job",
+    "source_ref": "SAMPLE/job/job-006",
+    "deadline": ""
+  },
+  {
+    "title": "幼儿园保育员",
+    "org": "玉林公办幼儿园",
+    "city": "成都",
+    "district": "武侯区",
+    "summary": "配合主班老师带 25 名 3-4 岁幼儿。按学期上班，寒暑假休息。",
+    "skills": [
+      "育儿",
+      "有耐心",
+      "活动组织"
+    ],
+    "sectors": [
+      "教育",
+      "托育"
+    ],
+    "cohorts": [
+      "graduate",
+      "caregiver"
+    ],
+    "salary_min": 4200,
+    "salary_max": 5400,
+    "schedule": "学期内 周一至周五 07:50-17:00",
+    "remote": false,
+    "openings": 4,
+    "demand": 37,
+    "criteria": [
+      {
+        "code": "cert-teach",
+        "text": "持幼儿教师资格证或保育员证。",
+        "evidence": "证书",
+        "source_ref": "SAMPLE/criteria/cert-teach"
+      },
+      {
+        "code": "health",
+        "text": "每年健康证。",
+        "evidence": "健康证",
+        "source_ref": "SAMPLE/criteria/health"
+      },
+      {
+        "code": "record",
+        "text": "涉未成年人岗位背景核查通过。",
+        "evidence": "背景核查回执",
+        "source_ref": "SAMPLE/criteria/record"
+      }
+    ],
+    "channel": {
+      "online": "https://sample.example/jobs/job-007",
+      "phone": "028-5550-7722",
+      "window": "武侯区教育局 4 号窗口",
+      "hours": "每周二、周四 09:00-16:00",
+      "language": "普通话"
+    },
+    "id": "job-007",
+    "kind": "job",
+    "source_ref": "SAMPLE/job/job-007",
+    "deadline": ""
+  },
+  {
+    "title": "光伏安装技工",
+    "org": "川光新能源",
+    "city": "成都",
+    "district": "郫都区",
+    "summary": "屋顶和地面光伏安装。有电工或建筑经验即可，公司出钱办高处作业证。",
+    "skills": [
+      "电工",
+      "建筑",
+      "高处作业",
+      "手工工具"
+    ],
+    "sectors": [
+      "能源",
+      "建筑"
+    ],
+    "cohorts": [
+      "transitioning",
+      "migrant_worker"
+    ],
+    "salary_min": 6500,
+    "salary_max": 9500,
+    "schedule": "周一至周六，按工地作息",
+    "remote": false,
+    "openings": 18,
+    "demand": 29,
+    "criteria": [
+      {
+        "code": "cert-height",
+        "text": "持高处作业证；没有的由公司出资代办。",
+        "evidence": "证书或公司代办函",
+        "source_ref": "SAMPLE/criteria/cert-height"
+      },
+      {
+        "code": "health",
+        "text": "职业健康检查（含视力）。",
+        "evidence": "体检报告",
+        "source_ref": "SAMPLE/criteria/health"
+      }
+    ],
+    "channel": {
+      "online": "https://sample.example/jobs/job-008",
+      "phone": "028-5550-8833",
+      "window": "郫都区人才市场（红光大道 60 号）",
+      "hours": "周一至周五 09:00-17:00",
+      "language": "普通话"
+    },
+    "id": "job-008",
+    "kind": "job",
+    "source_ref": "SAMPLE/job/job-008",
+    "deadline": ""
+  },
+  {
+    "title": "养老护理员证（晚班）",
+    "org": "成都市职业技能培训中心",
+    "city": "成都",
+    "district": "青羊区",
+    "summary": "六周晚班课，考取养老护理员证。每周二、四 19:00-21:00 上课，白天上班或照顾家里都不耽误。",
+    "skills": [
+      "养老照护",
+      "急救",
+      "护理"
+    ],
+    "sectors": [
+      "医疗健康",
+      "养老"
+    ],
+    "cohorts": [
+      "caregiver",
+      "transitioning",
+      "older_worker"
+    ],
+    "schedule": "六周，每周二、四 19:00-21:00",
+    "openings": 40,
+    "demand": 112,
+    "amount": "学费 1200 元；按 sub-001 考过证可全额报销。",
+    "criteria": [
+      {
+        "code": "residence",
+        "text": "成都户籍或持有效居住证。",
+        "evidence": "户口簿或居住证",
+        "source_ref": "SAMPLE/criteria/residence"
+      },
+      {
+        "code": "age",
+        "text": "年龄 18 至 60 周岁。",
+        "evidence": "身份证",
+        "source_ref": "SAMPLE/criteria/age"
+      }
+    ],
+    "channel": {
+      "online": "https://sample.example/training/trn-001",
+      "phone": "028-5551-0011",
+      "window": "市职业技能培训中心（青华路 9 号）",
+      "hours": "周一至周五 09:00-17:00",
+      "language": "普通话、四川话"
+    },
+    "id": "trn-001",
+    "kind": "training",
+    "source_ref": "SAMPLE/training/trn-001",
+    "deadline": ""
+  },
+  {
+    "title": "数控操作六周强化班",
+    "org": "龙泉驿区技工学校",
+    "city": "成都",
+    "district": "龙泉驿区",
+    "summary": "六周全日制，讲车床装夹、刀具和质检。第六周合作企业进校面试。",
+    "skills": [
+      "数控",
+      "机加工",
+      "质检"
+    ],
+    "sectors": [
+      "制造业"
+    ],
+    "cohorts": [
+      "transitioning",
+      "migrant_worker"
+    ],
+    "schedule": "六周全日制，周一至周五 08:30-16:30",
+    "openings": 60,
+    "demand": 88,
+    "amount": "已做求职登记的免费；否则 2400 元。",
+    "criteria": [
+      {
+        "code": "age",
+        "text": "年龄 18 至 50 周岁。",
+        "evidence": "身份证",
+        "source_ref": "SAMPLE/criteria/age"
+      },
+      {
+        "code": "unemployed",
+        "text": "已做求职登记，或持近 12 个月内的解除劳动合同证明。",
+        "evidence": "求职登记回执或解除劳动合同证明",
+        "source_ref": "SAMPLE/criteria/unemployed"
+      }
+    ],
+    "channel": {
+      "online": "https://sample.example/training/trn-002",
+      "phone": "028-5551-0022",
+      "window": "龙泉驿区技工学校（成洛大道 200 号）",
+      "hours": "周一至周五 08:30-17:00",
+      "language": "普通话"
+    },
+    "id": "trn-002",
+    "kind": "training",
+    "source_ref": "SAMPLE/training/trn-002",
+    "deadline": ""
+  },
+  {
+    "title": "第一次坐办公室：电脑基础",
+    "org": "成都社区学院",
+    "city": "成都",
+    "district": "成华区",
+    "summary": "十二次课，讲表格、邮件、文档，以及常用政务 App。给一直不是坐办公室的人准备的。",
+    "skills": [
+      "电脑操作",
+      "表格",
+      "数据录入"
+    ],
+    "sectors": [
+      "服务业",
+      "信息技术"
+    ],
+    "cohorts": [
+      "migrant_worker",
+      "older_worker",
+      "transitioning"
+    ],
+    "schedule": "十二次课，每周六 09:00-11:30",
+    "openings": 80,
+    "demand": 134,
+    "amount": "免费。",
+    "criteria": [
+      {
+        "code": "open",
+        "text": "16 周岁以上均可报名，不要求学历。",
+        "evidence": "",
+        "source_ref": "SAMPLE/criteria/open"
+      }
+    ],
+    "channel": {
+      "online": "https://sample.example/training/trn-003",
+      "phone": "028-5551-0033",
+      "window": "社区学院分校（建设路 44 号）",
+      "hours": "每周六 08:30-12:00",
+      "language": "普通话、四川话"
+    },
+    "id": "trn-003",
+    "kind": "training",
+    "source_ref": "SAMPLE/training/trn-003",
+    "deadline": ""
+  },
+  {
+    "title": "育婴员证培训",
+    "org": "天府托育培训学院",
+    "city": "成都",
+    "district": "高新区",
+    "summary": "八周课程考育婴员证，含两周带教实习。",
+    "skills": [
+      "育儿",
+      "活动组织",
+      "急救"
+    ],
+    "sectors": [
+      "教育",
+      "托育"
+    ],
+    "cohorts": [
+      "graduate",
+      "caregiver"
+    ],
+    "schedule": "八周，每周一、三、五 14:00-17:00",
+    "openings": 35,
+    "demand": 47,
+    "amount": "学费 1800 元。",
+    "criteria": [
+      {
+        "code": "edu",
+        "text": "高中及以上学历。",
+        "evidence": "毕业证或结业证",
+        "source_ref": "SAMPLE/criteria/edu"
+      },
+      {
+        "code": "health",
+        "text": "健康证。",
+        "evidence": "健康证",
+        "source_ref": "SAMPLE/criteria/health"
+      }
+    ],
+    "channel": {
+      "online": "https://sample.example/training/trn-004",
+      "phone": "028-5551-0044",
+      "window": "天府托育培训学院（交子大道 18 号）",
+      "hours": "周一至周五 09:00-18:00",
+      "language": "普通话"
+    },
+    "id": "trn-004",
+    "kind": "training",
+    "source_ref": "SAMPLE/training/trn-004",
+    "deadline": ""
+  },
+  {
+    "title": "新能源汽车维修转岗班",
+    "org": "川汽汽车培训",
+    "city": "成都",
+    "district": "龙泉驿区",
+    "summary": "十周转岗课，给从燃油车转到电动车的修理工。含高压电安全模块。",
+    "skills": [
+      "汽修",
+      "电工",
+      "故障诊断"
+    ],
+    "sectors": [
+      "制造业",
+      "能源"
+    ],
+    "cohorts": [
+      "transitioning"
+    ],
+    "schedule": "十周，周一至周五 09:00-16:00",
+    "openings": 25,
+    "demand": 19,
+    "amount": "学费 3600 元；按 sub-004 可报销一半。",
+    "criteria": [
+      {
+        "code": "exp",
+        "text": "两年汽修经验，或汽修类中专及以上学历。",
+        "evidence": "用工记录或毕业证",
+        "source_ref": "SAMPLE/criteria/exp"
+      },
+      {
+        "code": "cert-hv",
+        "text": "进车间实操前须通过高压电安全模块考核。",
+        "evidence": "",
+        "source_ref": "SAMPLE/criteria/cert-hv"
+      }
+    ],
+    "channel": {
+      "online": "https://sample.example/training/trn-005",
+      "phone": "028-5551-0055",
+      "window": "川汽培训中心（汽车城大道 77 号）",
+      "hours": "周一至周五 09:00-17:00",
+      "language": "普通话"
+    },
+    "id": "trn-005",
+    "kind": "training",
+    "source_ref": "SAMPLE/training/trn-005",
+    "deadline": ""
+  },
+  {
+    "title": "创业担保贷款（贴息）",
+    "org": "成都市就业服务管理局",
+    "city": "成都",
+    "district": "",
+    "summary": "给新办个体户或小微企业的贴息担保贷款，分三年还。",
+    "skills": [
+      "经营管理",
+      "记账"
+    ],
+    "sectors": [
+      "服务业",
+      "零售"
+    ],
+    "cohorts": [
+      "transitioning",
+      "graduate",
+      "migrant_worker"
+    ],
+    "openings": 200,
+    "demand": 61,
+    "amount": "最高 30 万元，三年贴息",
+    "criteria": [
+      {
+        "code": "registration",
+        "text": "营业执照核发不超过 24 个月。",
+        "evidence": "营业执照",
+        "source_ref": "SAMPLE/criteria/registration"
+      },
+      {
+        "code": "residence",
+        "text": "成都户籍，或持成都居住证满 6 个月。",
+        "evidence": "户口簿或居住证",
+        "source_ref": "SAMPLE/criteria/residence"
+      },
+      {
+        "code": "credit",
+        "text": "当前无逾期欠款记录。",
+        "evidence": "人民银行分支机构出具的征信报告",
+        "source_ref": "SAMPLE/criteria/credit"
+      },
+      {
+        "code": "no-overlap",
+        "text": "同一项目未同时领取 sub-002 失业人员创业补贴。",
+        "evidence": "",
+        "source_ref": "SAMPLE/criteria/no-overlap"
+      }
+    ],
+    "channel": {
+      "online": "https://sample.example/ent/ent-001",
+      "phone": "028-5552-0011",
+      "window": "市就业服务管理局 7 号窗口（人民南路 66 号）",
+      "hours": "周一至周五 09:00-16:30",
+      "language": "普通话"
+    },
+    "id": "ent-001",
+    "kind": "entrepreneurship",
+    "source_ref": "SAMPLE/entrepreneurship/ent-001",
+    "deadline": ""
+  },
+  {
+    "title": "夜市摊位孵化名额",
+    "org": "成华区夜市管理办公室",
+    "city": "成都",
+    "district": "成华区",
+    "summary": "有管理的夜市摊位，免租六个月，配记账辅导和食品安全培训。",
+    "skills": [
+      "烹饪",
+      "零售",
+      "客户服务"
+    ],
+    "sectors": [
+      "零售",
+      "餐饮"
+    ],
+    "cohorts": [
+      "migrant_worker",
+      "gig_worker",
+      "caregiver"
+    ],
+    "openings": 30,
+    "demand": 87,
+    "amount": "摊位免租 6 个月",
+    "criteria": [
+      {
+        "code": "food-safety",
+        "text": "开摊前完成食品安全培训。",
+        "evidence": "培训合格证明",
+        "source_ref": "SAMPLE/criteria/food-safety"
+      },
+      {
+        "code": "residence",
+        "text": "成都户籍或持居住证。",
+        "evidence": "居住证",
+        "source_ref": "SAMPLE/criteria/residence"
+      }
+    ],
+    "channel": {
+      "online": "https://sample.example/ent/ent-002",
+      "phone": "028-5552-0022",
+      "window": "成华区市场办公室（二仙桥路 15 号）",
+      "hours": "周二至周日 14:00-20:00",
+      "language": "普通话、四川话"
+    },
+    "id": "ent-002",
+    "kind": "entrepreneurship",
+    "source_ref": "SAMPLE/entrepreneurship/ent-002",
+    "deadline": ""
+  },
+  {
+    "title": "职业培训费用报销",
+    "org": "成都市人力资源和社会保障局",
+    "city": "成都",
+    "district": "",
+    "summary": "拿到证书后，报销纳入目录的职业培训课程学费，受理后 30 个工作日内打到本人银行卡。",
+    "cohorts": [
+      "transitioning",
+      "migrant_worker",
+      "graduate",
+      "caregiver",
+      "older_worker"
+    ],
+    "demand": 156,
+    "amount": "最高 2000 元，且不超过实际缴纳的学费",
+    "deadline": "常年受理；证书核发之日起 12 个月内申报。",
+    "criteria": [
+      {
+        "code": "course-approved",
+        "text": "课程须列入当年度公布的培训目录。",
+        "evidence": "证书上的课程编号",
+        "source_ref": "SAMPLE/criteria/course-approved"
+      },
+      {
+        "code": "certificate",
+        "text": "证书核发时间在 12 个月以内。",
+        "evidence": "证书",
+        "source_ref": "SAMPLE/criteria/certificate"
+      },
+      {
+        "code": "insurance",
+        "text": "失业保险缴费满 12 个月，或已做求职登记，或非本市户籍持有效居住证——三者具一即可。",
+        "evidence": "参保记录、求职登记回执或居住证",
+        "source_ref": "SAMPLE/criteria/insurance"
+      },
+      {
+        "code": "once",
+        "text": "每人每自然年限报一次。",
+        "evidence": "",
+        "source_ref": "SAMPLE/criteria/once"
+      }
+    ],
+    "channel": {
+      "online": "https://sample.example/subsidy/sub-001",
+      "phone": "028-5553-0011",
+      "window": "市人社局政务大厅 12 号窗口（人民南路 66 号）",
+      "hours": "周一至周五 09:00-16:30",
+      "language": "普通话、四川话"
+    },
+    "id": "sub-001",
+    "kind": "subsidy",
+    "source_ref": "SAMPLE/subsidy/sub-001",
+    "sectors": [],
+    "skills": [],
+    "openings": 0
+  },
+  {
+    "title": "失业人员创业补贴",
+    "org": "成都市就业服务管理局",
+    "city": "成都",
+    "district": "",
+    "summary": "领取失业保险金期间办了营业执照的，可申领一次性创业补贴。",
+    "cohorts": [
+      "transitioning",
+      "gig_worker"
+    ],
+    "demand": 44,
+    "amount": "一次性 8000 元",
+    "criteria": [
+      {
+        "code": "prior-ui",
+        "text": "营业执照核发时正在领取失业保险金。",
+        "evidence": "失业保险领取记录",
+        "source_ref": "SAMPLE/criteria/prior-ui"
+      },
+      {
+        "code": "registration",
+        "text": "营业执照核发不超过 12 个月且仍在存续。",
+        "evidence": "营业执照",
+        "source_ref": "SAMPLE/criteria/registration"
+      },
+      {
+        "code": "operating",
+        "text": "申报时已实际经营满 6 个月。",
+        "evidence": "纳税申报或银行流水",
+        "source_ref": "SAMPLE/criteria/operating"
+      },
+      {
+        "code": "no-overlap",
+        "text": "同一项目未领取 ent-001 贴息。",
+        "evidence": "",
+        "source_ref": "SAMPLE/criteria/no-overlap"
+      }
+    ],
+    "channel": {
+      "online": "https://sample.example/subsidy/sub-002",
+      "phone": "028-5553-0022",
+      "window": "市就业服务管理局 7 号窗口",
+      "hours": "周一至周五 09:00-16:30",
+      "language": "普通话"
+    },
+    "id": "sub-002",
+    "kind": "subsidy",
+    "source_ref": "SAMPLE/subsidy/sub-002",
+    "sectors": [],
+    "skills": [],
+    "openings": 0,
+    "deadline": ""
+  },
+  {
+    "title": "在职父母托育费补助",
+    "org": "成都市民政局",
+    "city": "成都",
+    "district": "",
+    "summary": "家庭内成年人均在就业或全日制培训的，按月补助已备案托育机构的托育费。",
+    "cohorts": [
+      "caregiver",
+      "graduate",
+      "migrant_worker"
+    ],
+    "demand": 203,
+    "amount": "每孩每月最高 800 元",
+    "criteria": [
+      {
+        "code": "child-age",
+        "text": "孩子年龄在 6 个月至 3 周岁之间。",
+        "evidence": "孩子户口簿或出生医学证明",
+        "source_ref": "SAMPLE/criteria/child-age"
+      },
+      {
+        "code": "employment",
+        "text": "家庭内每位成年人均在就业、自主经营或全日制培训。",
+        "evidence": "劳动合同、营业执照或培训报名回执",
+        "source_ref": "SAMPLE/criteria/employment"
+      },
+      {
+        "code": "registered-provider",
+        "text": "托育机构在备案名录内。",
+        "evidence": "机构备案编号",
+        "source_ref": "SAMPLE/criteria/registered-provider"
+      },
+      {
+        "code": "income",
+        "text": "家庭收入低于所在区公布的标准。",
+        "evidence": "收入申报表",
+        "source_ref": "SAMPLE/criteria/income"
+      }
+    ],
+    "channel": {
+      "online": "https://sample.example/subsidy/sub-003",
+      "phone": "028-5553-0033",
+      "window": "各区民政窗口（地址按区不同）",
+      "hours": "周一至周五 09:00-17:00",
+      "language": "普通话、四川话"
+    },
+    "id": "sub-003",
+    "kind": "subsidy",
+    "source_ref": "SAMPLE/subsidy/sub-003",
+    "sectors": [],
+    "skills": [],
+    "openings": 0,
+    "deadline": ""
+  },
+  {
+    "title": "转岗职工技能提升补贴",
+    "org": "成都市人力资源和社会保障局",
+    "city": "成都",
+    "district": "",
+    "summary": "原行业列入当年转岗名单的职工，报转岗培训课程学费的一半。",
+    "cohorts": [
+      "transitioning",
+      "older_worker"
+    ],
+    "demand": 52,
+    "amount": "学费的 50%，最高 3000 元",
+    "deadline": "须在开课前申报，开课后不再受理。",
+    "criteria": [
+      {
+        "code": "sector",
+        "text": "原单位所属行业列入当年度公布的转岗名单。",
+        "evidence": "用工记录",
+        "source_ref": "SAMPLE/criteria/sector"
+      },
+      {
+        "code": "course-approved",
+        "text": "所报转岗课程列入培训目录。",
+        "evidence": "课程编号",
+        "source_ref": "SAMPLE/criteria/course-approved"
+      },
+      {
+        "code": "timing",
+        "text": "开课之前申报，不能事后补。",
+        "evidence": "",
+        "source_ref": "SAMPLE/criteria/timing"
+      }
+    ],
+    "channel": {
+      "online": "https://sample.example/subsidy/sub-004",
+      "phone": "028-5553-0044",
+      "window": "市人社局政务大厅 14 号窗口",
+      "hours": "周一至周五 09:00-16:30",
+      "language": "普通话"
+    },
+    "id": "sub-004",
+    "kind": "subsidy",
+    "source_ref": "SAMPLE/subsidy/sub-004",
+    "sectors": [],
+    "skills": [],
+    "openings": 0
+  },
+  {
+    "title": "灵活就业人员社保补贴",
+    "org": "成都市社会保险事业管理局",
+    "city": "成都",
+    "district": "",
+    "summary": "以个人身份缴纳养老和医疗保险的自雇或平台从业人员，补贴部分缴费。",
+    "cohorts": [
+      "gig_worker",
+      "older_worker",
+      "migrant_worker"
+    ],
+    "demand": 118,
+    "amount": "个人缴费部分最高补 60%",
+    "criteria": [
+      {
+        "code": "status",
+        "text": "已办理灵活就业人员登记并以个人身份缴费。",
+        "evidence": "灵活就业登记回执",
+        "source_ref": "SAMPLE/criteria/status"
+      },
+      {
+        "code": "paying",
+        "text": "申报所属月份须实际缴费，仅登记不算。",
+        "evidence": "缴费记录",
+        "source_ref": "SAMPLE/criteria/paying"
+      },
+      {
+        "code": "age",
+        "text": "女性年满 40 周岁，男性年满 50 周岁。",
+        "evidence": "身份证",
+        "source_ref": "SAMPLE/criteria/age"
+      },
+      {
+        "code": "duration",
+        "text": "累计补贴不超过 3 年，且不超过法定退休年龄。",
+        "evidence": "",
+        "source_ref": "SAMPLE/criteria/duration"
+      }
+    ],
+    "channel": {
+      "online": "https://sample.example/subsidy/sub-005",
+      "phone": "028-5553-0055",
+      "window": "市社保局 3 号窗口（新南路 8 号）",
+      "hours": "周一至周五 09:00-16:30",
+      "language": "普通话、四川话"
+    },
+    "id": "sub-005",
+    "kind": "subsidy",
+    "source_ref": "SAMPLE/subsidy/sub-005",
+    "sectors": [],
+    "skills": [],
+    "openings": 0,
+    "deadline": ""
+  },
+  {
+    "title": "毕业生首次就业安家补贴",
+    "org": "成都市人才发展办公室",
+    "city": "成都",
+    "district": "",
+    "summary": "毕业两年内、在成都签第一份劳动合同的毕业生，可申领一次性安家补贴。",
+    "cohorts": [
+      "graduate"
+    ],
+    "demand": 171,
+    "amount": "一次性 10000 元",
+    "criteria": [
+      {
+        "code": "graduation",
+        "text": "毕业时间在 24 个月以内。",
+        "evidence": "毕业证",
+        "source_ref": "SAMPLE/criteria/graduation"
+      },
+      {
+        "code": "contract",
+        "text": "与成都注册单位签订 12 个月及以上劳动合同。",
+        "evidence": "劳动合同",
+        "source_ref": "SAMPLE/criteria/contract"
+      },
+      {
+        "code": "insurance",
+        "text": "在成都连续缴纳社保满 3 个月。",
+        "evidence": "参保记录",
+        "source_ref": "SAMPLE/criteria/insurance"
+      },
+      {
+        "code": "first",
+        "text": "首次申领，每人限一次。",
+        "evidence": "",
+        "source_ref": "SAMPLE/criteria/first"
+      }
+    ],
+    "channel": {
+      "online": "https://sample.example/subsidy/sub-006",
+      "phone": "028-5553-0066",
+      "window": "市人才发展办公室（天府大道 2 号）",
+      "hours": "周一至周五 09:00-17:00",
+      "language": "普通话、英语"
+    },
+    "id": "sub-006",
+    "kind": "subsidy",
+    "source_ref": "SAMPLE/subsidy/sub-006",
+    "sectors": [],
+    "skills": [],
+    "openings": 0,
+    "deadline": ""
+  },
+  {
+    "id": "nat-001",
+    "kind": "subsidy",
+    "title": "失业保险金",
+    "org": "全国统一制度（各地执行标准不同）",
+    "city": "",
+    "district": "",
+    "summary": "参加失业保险并缴费满一年、非本人意愿中断就业、已办理失业登记的，可按月领取失业保险金。全国都有，标准按参保地定。",
+    "skills": [],
+    "sectors": [],
+    "cohorts": [
+      "transitioning",
+      "migrant_worker",
+      "gig_worker",
+      "older_worker"
+    ],
+    "criteria": [
+      {
+        "code": "insured",
+        "text": "失业前用人单位和本人已缴纳失业保险费满 1 年。",
+        "evidence": "参保缴费记录",
+        "source_ref": "SAMPLE/criteria/insured"
+      },
+      {
+        "code": "involuntary",
+        "text": "非因本人意愿中断就业（含合同到期、单位裁员、单位解除）。",
+        "evidence": "解除或终止劳动关系证明",
+        "source_ref": "SAMPLE/criteria/involuntary"
+      },
+      {
+        "code": "registered",
+        "text": "已在常住地或参保地办理失业登记，并有求职要求。",
+        "evidence": "失业登记回执",
+        "source_ref": "SAMPLE/criteria/registered"
+      },
+      {
+        "code": "local",
+        "text": "领取标准、期限按参保地规定执行，各地不同。",
+        "evidence": "",
+        "source_ref": "SAMPLE/criteria/local"
+      }
+    ],
+    "channel": {
+      "online": "https://sample.example/national",
+      "phone": "12333",
+      "window": "参保地或常住地的人社政务大厅",
+      "hours": "周一至周五 09:00-17:00（各地略有差异）",
+      "language": "普通话"
+    },
+    "source_ref": "SAMPLE/national/nat-001",
+    "amount": "按参保地标准，通常为当地最低工资的一定比例，最长 24 个月",
+    "openings": 0,
+    "demand": 0,
+    "deadline": "",
+    "scope": "national"
+  },
+  {
+    "id": "nat-002",
+    "kind": "subsidy",
+    "title": "职业技能培训补贴（国家框架）",
+    "org": "全国统一制度（各地执行标准不同）",
+    "city": "",
+    "district": "",
+    "summary": "参加纳入当地目录的职业技能培训并取得证书的，可申领培训补贴。这是全国性的制度，目录、金额、受理窗口由各地人社部门定。",
+    "skills": [],
+    "sectors": [],
+    "cohorts": [
+      "transitioning",
+      "migrant_worker",
+      "graduate",
+      "caregiver",
+      "older_worker"
+    ],
+    "criteria": [
+      {
+        "code": "catalogue",
+        "text": "所参加的课程须列入培训当年、当地公布的补贴目录。",
+        "evidence": "证书上的课程编号",
+        "source_ref": "SAMPLE/criteria/catalogue"
+      },
+      {
+        "code": "certificate",
+        "text": "取得职业资格证书、职业技能等级证书或专项能力证书。",
+        "evidence": "证书",
+        "source_ref": "SAMPLE/criteria/certificate"
+      },
+      {
+        "code": "eligible",
+        "text": "属于当地规定的补贴对象（一般含失业人员、农民工、毕业生、转岗职工等）。",
+        "evidence": "身份或参保证明",
+        "source_ref": "SAMPLE/criteria/eligible"
+      },
+      {
+        "code": "local",
+        "text": "金额和申报期限按当地规定，先查目录再报课，顺序反了会白花钱。",
+        "evidence": "",
+        "source_ref": "SAMPLE/criteria/local"
+      }
+    ],
+    "channel": {
+      "online": "https://sample.example/national",
+      "phone": "12333",
+      "window": "参保地或常住地的人社政务大厅",
+      "hours": "周一至周五 09:00-17:00（各地略有差异）",
+      "language": "普通话"
+    },
+    "source_ref": "SAMPLE/national/nat-002",
+    "amount": "按当地目录定，多数地区数百至数千元",
+    "openings": 0,
+    "demand": 0,
+    "deadline": "",
+    "scope": "national"
+  },
+  {
+    "id": "nat-003",
+    "kind": "subsidy",
+    "title": "灵活就业人员社保补贴（国家框架）",
+    "org": "全国统一制度（各地执行标准不同）",
+    "city": "",
+    "district": "",
+    "summary": "以个人身份参加职工养老、医疗保险的就业困难人员和离校未就业毕业生，可申领社保缴费补贴。全国普遍有，年龄条件和比例按各地定。",
+    "skills": [],
+    "sectors": [],
+    "cohorts": [
+      "gig_worker",
+      "older_worker",
+      "migrant_worker",
+      "graduate"
+    ],
+    "criteria": [
+      {
+        "code": "flexible",
+        "text": "已办理灵活就业登记并以个人身份实际缴费。",
+        "evidence": "灵活就业登记与缴费记录",
+        "source_ref": "SAMPLE/criteria/flexible"
+      },
+      {
+        "code": "target",
+        "text": "属于当地认定的就业困难人员，或离校两年内未就业的毕业生。",
+        "evidence": "认定回执",
+        "source_ref": "SAMPLE/criteria/target"
+      },
+      {
+        "code": "paying",
+        "text": "申报所属月份必须实际缴了钱，只登记不算。",
+        "evidence": "缴费记录",
+        "source_ref": "SAMPLE/criteria/paying"
+      },
+      {
+        "code": "local",
+        "text": "补贴比例、年限按当地规定，多数地区不超过 3 年。",
+        "evidence": "",
+        "source_ref": "SAMPLE/criteria/local"
+      }
+    ],
+    "channel": {
+      "online": "https://sample.example/national",
+      "phone": "12333",
+      "window": "参保地或常住地的人社政务大厅",
+      "hours": "周一至周五 09:00-17:00（各地略有差异）",
+      "language": "普通话"
+    },
+    "source_ref": "SAMPLE/national/nat-003",
+    "amount": "个人缴费部分的一定比例，各地不同",
+    "openings": 0,
+    "demand": 0,
+    "deadline": "",
+    "scope": "national"
+  },
+  {
+    "id": "nat-004",
+    "kind": "entrepreneurship",
+    "title": "创业担保贷款（国家框架）",
+    "org": "全国统一制度（各地执行标准不同）",
+    "city": "",
+    "district": "",
+    "summary": "符合条件的个人创业可申请创业担保贷款并享受财政贴息，全国通行。额度和贴息比例按各地执行。",
+    "skills": [],
+    "sectors": [],
+    "cohorts": [
+      "transitioning",
+      "graduate",
+      "migrant_worker",
+      "gig_worker"
+    ],
+    "criteria": [
+      {
+        "code": "target",
+        "text": "属于当地规定的扶持对象（一般含失业人员、毕业生、返乡创业人员、脱贫人口等）。",
+        "evidence": "身份证明",
+        "source_ref": "SAMPLE/criteria/target"
+      },
+      {
+        "code": "business",
+        "text": "已办理营业执照并实际经营。",
+        "evidence": "营业执照",
+        "source_ref": "SAMPLE/criteria/business"
+      },
+      {
+        "code": "credit",
+        "text": "无不良信用记录，无其他违规贷款。",
+        "evidence": "征信报告",
+        "source_ref": "SAMPLE/criteria/credit"
+      },
+      {
+        "code": "local",
+        "text": "额度、期限、贴息按当地规定，需到当地人社或经办银行申报。",
+        "evidence": "",
+        "source_ref": "SAMPLE/criteria/local"
+      }
+    ],
+    "channel": {
+      "online": "https://sample.example/national",
+      "phone": "12333",
+      "window": "参保地或常住地的人社政务大厅",
+      "hours": "周一至周五 09:00-17:00（各地略有差异）",
+      "language": "普通话"
+    },
+    "source_ref": "SAMPLE/national/nat-004",
+    "amount": "个人一般最高 20-30 万元，按各地规定贴息",
+    "openings": 0,
+    "demand": 0,
+    "deadline": "",
+    "scope": "national"
+  },
+  {
+    "id": "nat-005",
+    "kind": "job",
+    "title": "公共就业服务（全国免费）",
+    "org": "全国统一制度（各地执行标准不同）",
+    "city": "",
+    "district": "",
+    "summary": "各地人社部门的公共就业服务机构提供免费的岗位信息、职业指导、职业介绍和失业登记。任何城市都有，不收费。",
+    "skills": [],
+    "sectors": [],
+    "cohorts": [
+      "transitioning",
+      "migrant_worker",
+      "gig_worker",
+      "graduate",
+      "caregiver",
+      "older_worker",
+      "disability"
+    ],
+    "criteria": [
+      {
+        "code": "free",
+        "text": "公共就业服务一律免费，收费的不是这条渠道。",
+        "evidence": "",
+        "source_ref": "SAMPLE/criteria/free"
+      },
+      {
+        "code": "id",
+        "text": "带身份证即可，没有户籍限制。",
+        "evidence": "身份证",
+        "source_ref": "SAMPLE/criteria/id"
+      },
+      {
+        "code": "where",
+        "text": "到常住地的公共就业服务机构，或打 12333 问就近网点。",
+        "evidence": "",
+        "source_ref": "SAMPLE/criteria/where"
+      }
+    ],
+    "channel": {
+      "online": "https://sample.example/national",
+      "phone": "12333",
+      "window": "参保地或常住地的人社政务大厅",
+      "hours": "周一至周五 09:00-17:00（各地略有差异）",
+      "language": "普通话"
+    },
+    "source_ref": "SAMPLE/national/nat-005",
+    "amount": "免费",
+    "openings": 0,
+    "demand": 0,
+    "deadline": "",
+    "scope": "national"
+  }
+]

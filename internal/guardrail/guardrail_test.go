@@ -301,7 +301,7 @@ func TestPlainLanguageThresholdsFollowTheScript(t *testing.T) {
 // The fence for the bug above: whatever the corpus contains, the citation regex
 // has to recognise it. A new record family must not be able to slip in silently.
 func TestCitationRegexCoversEveryCorpusPrefix(t *testing.T) {
-	c, err := corpus.Load("../../data")
+	c, err := corpus.Load("../../testdata/corpus")
 	if err != nil {
 		t.Fatalf("corpus: %v", err)
 	}

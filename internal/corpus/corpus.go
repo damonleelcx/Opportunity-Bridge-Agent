@@ -173,3 +173,36 @@ func (c *Corpus) IDPrefixes() []string {
 	sort.Strings(out)
 	return out
 }
+
+// IsSample reports whether anything in this corpus is invented.
+//
+// Derived, never declared. The interface used to be told `corpus_is_sample:
+// true` by a literal in the HTTP layer, which was correct while every record was
+// ours and became a lie the moment the invented ones left — a permanent
+// 「演示语料」 badge over five real national schemes reads as "do not act on this"
+// about the only things here somebody CAN act on.
+//
+// The signal is the source_ref prefix, because that is the property the invented
+// records actually have: a fabricated record cites SAMPLE/…, a real one cites
+// the official page it was checked against. One invented record is enough to
+// flag the whole corpus; the badge means "some of what you see is invented", and
+// the reader has no way to tell which without it.
+// See docs/bugfix/2026-08-31-the-invented-corpus-left-the-product.md
+func (c *Corpus) IsSample() bool {
+	for _, o := range c.Opportunities {
+		if strings.HasPrefix(o.SourceRef, "SAMPLE/") {
+			return true
+		}
+		for _, cr := range o.Criteria {
+			if strings.HasPrefix(cr.SourceRef, "SAMPLE/") {
+				return true
+			}
+		}
+	}
+	for _, d := range c.Docs {
+		if strings.HasPrefix(d.SourceRef, "SAMPLE/") {
+			return true
+		}
+	}
+	return false
+}

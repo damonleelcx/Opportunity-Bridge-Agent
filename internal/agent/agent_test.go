@@ -28,7 +28,7 @@ type harness struct {
 
 func newHarness(t *testing.T, role domain.Role, script llm.Script, consent ...domain.ConsentScope) *harness {
 	t.Helper()
-	c, err := corpus.Load("../../data")
+	c, err := corpus.Load("../../testdata/corpus")
 	if err != nil {
 		t.Fatalf("corpus: %v", err)
 	}

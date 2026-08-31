@@ -19,6 +19,9 @@ import (
 // test that fails when the documents and the data disagree.
 // See docs/bugfix/2026-08-31-the-privacy-claim-was-false.md
 func TestDocsAgreeWithTheLanguageOfTheCorpus(t *testing.T) {
+	// ../../data on purpose, not the fixture: this fence is about what SHIPS.
+	// The invented records moved to testdata/corpus when they left the product;
+	// see docs/bugfix/2026-08-31-the-invented-corpus-left-the-product.md
 	c, err := corpus.Load("../../data")
 	if err != nil {
 		t.Fatalf("corpus: %v", err)
@@ -52,5 +55,41 @@ func TestDocsAgreeWithTheLanguageOfTheCorpus(t *testing.T) {
 					path, claim, cjk*100/total)
 			}
 		}
+	}
+}
+
+// The badge follows the data, and the shipped corpus must not carry it.
+//
+// `corpus_is_sample` was a literal `true` in the HTTP layer. Correct while every
+// record was invented; a lie the moment they left, because a permanent
+// 「演示语料」 badge over five real national schemes tells somebody not to act on
+// the only things here they CAN act on.
+// See docs/bugfix/2026-08-31-the-invented-corpus-left-the-product.md
+func TestShippedCorpusCarriesNoInventedRecords(t *testing.T) {
+	shipped, err := corpus.Load("../../data")
+	if err != nil {
+		t.Fatalf("shipped corpus: %v", err)
+	}
+	for _, o := range shipped.Opportunities {
+		if strings.HasPrefix(o.SourceRef, "SAMPLE/") {
+			t.Errorf("%s (%s) still cites %s: an invented record is being shipped",
+				o.ID, o.Title, o.SourceRef)
+		}
+		if !strings.HasPrefix(o.SourceRef, "http") {
+			t.Errorf("%s cites %q, which nobody can open and check", o.ID, o.SourceRef)
+		}
+	}
+	if shipped.IsSample() {
+		t.Error("the shipped corpus reports itself as sample data, so every reader gets the 演示语料 badge")
+	}
+
+	// And the fixture, which the tests and the demo run against, must still be
+	// the invented one — otherwise this fence is comparing nothing.
+	fixture, err := corpus.Load("../../testdata/corpus")
+	if err != nil {
+		t.Fatalf("fixture corpus: %v", err)
+	}
+	if !fixture.IsSample() {
+		t.Error("the fixture corpus no longer contains invented records; either it moved or this fence is vacuous")
 	}
 }
