@@ -16,6 +16,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/damonleelcx/Opportunity-Bridge-Agent/internal/domain"
 	"github.com/damonleelcx/Opportunity-Bridge-Agent/web"
 )
 
@@ -264,7 +265,11 @@ func TestVendorSpeechAlwaysFallsBackToTheBrowsersOwnVoice(t *testing.T) {
 	}
 	// The fallback must be unconditional-on-failure: `await speakWithVendor(...)`
 	// returning false has to fall through to the local voice on the same path.
-	if !regexp.MustCompile(`if \(vendorVoice !== false && await speakWithVendor\(body\)\) return;\s*\n\s*speakLocally\(body\);`).MatchString(speak) {
+	// The argument list is deliberately not pinned: this fence guards the SHAPE
+	// (vendor attempt inside the guard, local voice as the immediate next
+	// statement), and pinning `(body)` made it fire when read-aloud gained a
+	// second argument without the fallback changing at all.
+	if !regexp.MustCompile(`if \(vendorVoice !== false && await speakWithVendor\([^)]*\)\) return;\s*\n\s*speakLocally\(body\);`).MatchString(speak) {
 		t.Error("the local voice is not the unconditional next step after a failed vendor render")
 	}
 
@@ -959,6 +964,143 @@ func TestSampleClaimDescribesTheSourceRefNotTheVisibleID(t *testing.T) {
 		key, val := m[1], m[2]
 		if !strings.Contains(val, "依据编号") && !strings.Contains(val, "source reference") {
 			t.Errorf("%s says SAMPLE/ without saying it is the source reference: %q", key, val)
+		}
+	}
+}
+
+// A privacy claim must never be hardcoded, and must never be the reassuring one
+// by accident.
+//
+// The read-aloud card promised "音频不离开你的设备 / no audio leaves your
+// device". Both halves were false. Dictation is transcribed by the browser, and
+// on this Chromium `SpeechRecognition.available({processLocally:true})` answers
+// "unavailable" for zh-CN while the network path answers "available" — so the
+// audio leaves. And with a speech vendor configured, which production has, the
+// ANSWER TEXT is posted to that vendor; docs/17-read-aloud.md said so all along
+// while the page said the opposite.
+// See docs/bugfix/2026-08-31-the-privacy-claim-was-false.md
+func TestVoicePrivacyClaimIsNotHardcoded(t *testing.T) {
+	i18n := asset(t, "i18n.js")
+	for _, gone := range []string{"音频不离开你的设备", "no audio leaves your device"} {
+		if strings.Contains(i18n, gone) {
+			t.Errorf("the copy still promises %q; dictation audio reaches the browser maker, and a "+
+				"configured speech vendor receives the answer text", gone)
+		}
+	}
+
+	zh, en := localeBlocks(t, i18n)
+	for _, lang := range []struct{ name, block string }{{"zh-CN", zh}, {"en", en}} {
+		for _, key := range []string{`"home.feat.f6trained":`, `"home.feat.f6sent":`, `"home.feat.f6off":`} {
+			if !strings.Contains(lang.block, key) {
+				t.Errorf("%s is missing %s; the page could only state some of the deployments' answers", lang.name, key)
+			}
+		}
+	}
+
+	home := stripJSComments(asset(t, "home.js"))
+	for _, want := range []string{"speech_vendor_enabled", "speech_vendor_trains_on_text",
+		"home.feat.f6trained", "home.feat.f6sent", "home.feat.f6off"} {
+		if !strings.Contains(home, want) {
+			t.Errorf("home.js never mentions %s; the privacy line could not follow the deployment", want)
+		}
+	}
+	// The unknown case must land on the warning, not on the reassurance: a
+	// missing field is a reason to say "text may be sent", never "nothing is".
+	for _, guard := range []string{"m.speech_vendor_enabled !== false", "m.speech_vendor_trains_on_text !== false"} {
+		if !strings.Contains(home, guard) {
+			t.Errorf("%s is missing: an absent field must land on the WARNING sentence. A privacy claim "+
+				"that guesses towards 'nothing is sent' or 'nothing is trained on' is the guess that "+
+				"misleads somebody", guard)
+		}
+	}
+	if !strings.Contains(asset(t, "index.html"), `id="speechVendor" hidden`) {
+		t.Error("#speechVendor is not hidden in the markup; an unanswered /api/health would leave an empty line")
+	}
+}
+
+// Every permission must be withdrawable, and it must be named in words.
+//
+// The scope list lived in four places — the constants in domain, the API's
+// validation, this panel and the consent_request schema. A scope missing from
+// this one is a permission a person can be asked for and then cannot take back,
+// which makes "you can withdraw this at any time" something the service says and
+// does not do. The panel now renders whatever /api/meta lists; these hold that.
+// See docs/bugfix/2026-08-31-read-aloud-needs-consent.md
+func TestPermissionsPanelDoesNotKeepItsOwnScopeList(t *testing.T) {
+	app := stripJSComments(asset(t, "app.js"))
+	if !strings.Contains(app, "state.meta?.consent_scopes") {
+		t.Error("the permissions panel does not read consent_scopes from the server; a scope added " +
+			"server-side would have no revoke control")
+	}
+	// A hardcoded array of scope literals is the shape that went stale.
+	if regexp.MustCompile(`const scopes = \[\s*"`).MatchString(app) {
+		t.Error("the permissions panel has gone back to keeping its own list of scopes")
+	}
+	// Silence is the failure mode this replaces: an empty panel looks like
+	// "no permissions", not like "the list did not arrive".
+	if !strings.Contains(app, "CONSENT_SCOPES_MISSING") {
+		t.Error("an empty scope list is not reported; an empty permissions panel reads as 'nothing to withdraw'")
+	}
+}
+
+// Every scope this service asks for has to be readable in the person's language.
+// The panel falls back to the raw id, so a missing term shows somebody the
+// string "read_aloud_via_vendor" and asks them to decide about it.
+func TestEveryConsentScopeHasAName(t *testing.T) {
+	// The scope names live in TERMS, not STRINGS — localeBlocks reads the wrong
+	// table for this and reported every scope as missing, including ones that
+	// were there. The vocabulary a person reads about a permission is server-side
+	// vocabulary rendered for a reader, which is what TERMS is for.
+	zh, en := termsBlocks(t, asset(t, "i18n.js"))
+	for _, scope := range domain.ConsentScopes() {
+		key := `"scope.` + string(scope) + `":`
+		if !strings.Contains(zh, key) {
+			t.Errorf("%s has no zh-CN name; the permissions panel would show the raw id", scope)
+		}
+		if !strings.Contains(en, key) {
+			t.Errorf("%s has no English name; the permissions panel would show the raw id", scope)
+		}
+	}
+}
+
+// termsBlocks returns the zh-CN and en halves of the TERMS table, the way
+// localeBlocks does for STRINGS.
+func termsBlocks(t *testing.T, i18n string) (zh, en string) {
+	t.Helper()
+	start := strings.Index(i18n, "const TERMS = {")
+	if start < 0 {
+		t.Fatal("the TERMS table is gone; this fence cannot find the vocabulary any more")
+	}
+	block := i18n[start:]
+	zhStart := strings.Index(block, `"zh-CN": {`)
+	enStart := strings.Index(block, "\n  en: {")
+	end := strings.Index(block, "\n};")
+	if zhStart < 0 || enStart < 0 || end < 0 || enStart < zhStart || end < enStart {
+		t.Fatal("the TERMS table no longer has a zh-CN block followed by an en block")
+	}
+	return block[zhStart:enStart], block[enStart:end]
+}
+
+// The copy must not count the permissions.
+//
+// It said "四类授权" / "All four permissions", and adding a fifth (read-aloud
+// through a speech vendor) made it false without touching it — the same failure
+// as the corpus tally that said 21 against 26. A number in prose is a fact with
+// no producer.
+// See docs/bugfix/2026-08-31-honest-limits-were-not-honest.md
+func TestConsentCopyDoesNotCountThePermissions(t *testing.T) {
+	zh, en := localeBlocks(t, asset(t, "i18n.js"))
+	claim := regexp.MustCompile(`"home\.feat\.f4b":\s*"((?:[^"\\]|\\.)*)"`)
+	for _, lang := range []struct{ name, block string }{{"zh-CN", zh}, {"en", en}} {
+		m := claim.FindStringSubmatch(lang.block)
+		if m == nil {
+			t.Fatalf("%s has no home.feat.f4b; this fence no longer guards anything", lang.name)
+		}
+		for _, counted := range []string{"四类", "四项", "All four", "all four", "four permissions"} {
+			if strings.Contains(m[1], counted) {
+				t.Errorf("%s home.feat.f4b counts the permissions (%q): adding one makes it false "+
+					"without anybody touching it", lang.name, counted)
+			}
 		}
 	}
 }

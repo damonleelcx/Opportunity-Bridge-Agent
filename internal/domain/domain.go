@@ -213,7 +213,46 @@ const (
 	ConsentShareCaseworker ConsentScope = "share_with_caseworker"
 	ConsentSubmitOnBehalf  ConsentScope = "submit_on_behalf"
 	ConsentAggregate       ConsentScope = "aggregate_deidentified"
+	// ConsentReadAloudVendor covers sending the ANSWER TEXT to a speech vendor so
+	// it can be read aloud. It is a scope rather than a setting because the text
+	// is the person's situation - their city, their unemployment, the benefit
+	// they are claiming - and this service already asks permission merely to
+	// STORE those same facts. Disclosing that it leaves is not the same as
+	// asking. Nothing is sent unless the person presses read-aloud, and refusing
+	// costs them nothing: the browser's own voice reads it instead.
+	// See docs/bugfix/2026-08-31-read-aloud-needs-consent.md
+	ConsentReadAloudVendor ConsentScope = "read_aloud_via_vendor"
 )
+
+// ConsentScopes is every permission this service asks for, in the order a person
+// meets them.
+//
+// It exists because the list was written out by hand in four places - these
+// constants, the API's validation, the interface's revoke panel and the
+// consent_request tool schema - and a scope missing from any one of them fails
+// differently and quietly. Missing from the API, granting it answers 400.
+// Missing from the panel, the person cannot withdraw it, which turns "you can
+// withdraw this at any time" into something this service says and does not do.
+func ConsentScopes() []ConsentScope {
+	return []ConsentScope{
+		ConsentStoreProfile,
+		ConsentShareCaseworker,
+		ConsentSubmitOnBehalf,
+		ConsentAggregate,
+		ConsentReadAloudVendor,
+	}
+}
+
+// IsConsentScope reports whether a string names a permission this service asks
+// for. One membership test, so the API and the tools cannot disagree about it.
+func IsConsentScope(s string) bool {
+	for _, k := range ConsentScopes() {
+		if string(k) == s {
+			return true
+		}
+	}
+	return false
+}
 
 type ConsentGrant struct {
 	Scope     ConsentScope `json:"scope"`

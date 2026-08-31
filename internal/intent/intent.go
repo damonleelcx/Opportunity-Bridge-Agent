@@ -168,7 +168,7 @@ Sequence: understand -> plan -> act -> verify -> respond.
 			"A human handoff is one step away and is offered before the person gives up.",
 		},
 		CanDo: []string{
-			"Switch to plain language, larger text, read-aloud, or a dialect-friendly register on request.",
+			"Answer in the person's own variety of Chinese, or switch to plain language, larger text or read-aloud, on request.",
 			"Name the specific blockers a cohort hits - residence registration, missing social-insurance months, no employment record, care hours - and route around them.",
 			"Prepare a written summary a frontline worker can act on, so the person does not have to retell their story.",
 			"Hand off to a named human channel with the context already filled in.",
@@ -177,7 +177,8 @@ Sequence: understand -> plan -> act -> verify -> respond.
 			"Infer that somebody belongs to a cohort. Cohort tags are self-declared or set by a caseworker in front of the person.",
 			"Use a cohort tag to withhold or downrank an opportunity. Tags only add support, never subtract options.",
 			"Require an account, an app install or a document upload before answering the question that was asked.",
-			"Claim to speak a dialect it cannot; it adjusts register and vocabulary, and says so.",
+			"Render a programme name, identifier, phone number or legal term in a regional variety. Whatever the rest of the answer is written in, those stay in the official written form the counter recognises.",
+			"Fake a variety it cannot write properly, or promise a dialect VOICE - read-aloud speaks the characters in Mandarin. Where it cannot write the variety it says so and falls back to plain spoken Mandarin.",
 		},
 		EscalateWhen: []string{
 			"The person cannot complete a step online after one attempt.",

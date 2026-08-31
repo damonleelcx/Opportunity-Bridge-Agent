@@ -23,6 +23,10 @@ import (
 	"encoding/json"
 	"net/http"
 	"strings"
+
+	"github.com/damonleelcx/Opportunity-Bridge-Agent/internal/domain"
+	"github.com/damonleelcx/Opportunity-Bridge-Agent/internal/tools"
+	"github.com/damonleelcx/Opportunity-Bridge-Agent/internal/tts"
 )
 
 func (s *Server) speak(w http.ResponseWriter, r *http.Request) {
@@ -39,6 +43,10 @@ func (s *Server) speak(w http.ResponseWriter, r *http.Request) {
 	}
 	var body struct {
 		Text string `json:"text"`
+		// SessionID is required because the permission belongs to a person, not
+		// to a request. Without it this endpoint has no subject to check, which
+		// is how it came to send answers to a vendor with nobody having agreed.
+		SessionID string `json:"session_id"`
 	}
 	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 64<<10)).Decode(&body); err != nil {
 		writeErr(w, http.StatusBadRequest, "BODY_INVALID", "The request body was not valid JSON.",
@@ -49,6 +57,46 @@ func (s *Server) speak(w http.ResponseWriter, r *http.Request) {
 	if text == "" {
 		writeErr(w, http.StatusBadRequest, "TTS_EMPTY_TEXT", "There was no text to read.",
 			"Send the answer text to be spoken.")
+		return
+	}
+
+	// ---- consent, before a byte of the answer leaves this process.
+	//
+	// This service asks permission merely to STORE the person's city and
+	// situation. The same sentences were being posted to an outside speech
+	// vendor the moment somebody pressed read-aloud, with no question asked -
+	// disclosure on the landing page, but never consent. The gate is here rather
+	// than in the interface because the interface is not what protects anybody:
+	// this endpoint is reachable by anything holding a sign-in.
+	//
+	// Refusing costs the person nothing. The client falls back to the browser's
+	// own voice, which is what an unkeyed deployment does anyway.
+	// See docs/bugfix/2026-08-31-read-aloud-needs-consent.md
+	ses, ok := s.ownedSession(w, r, body.SessionID)
+	if !ok {
+		return
+	}
+	if g := s.Store.Consent(ses.SubjectID, domain.ConsentReadAloudVendor); !g.Granted {
+		prompt := tools.ConsentPromptFor(domain.ConsentReadAloudVendor)
+		// What the vendor may then do with it depends on the backbone, so it is
+		// derived rather than written into the prompt. See tts.TrainsOnRequests.
+		if tts.TrainsOnRequests(s.Cfg.TTSModel) {
+			prompt.Retention += " This deployment's speech backbone also permits the vendor to use what it " +
+				"receives to improve its own models."
+		} else {
+			prompt.Retention += " This deployment's speech backbone does not permit the vendor to train on it."
+		}
+		s.Log.Info("read-aloud refused: permission not granted",
+			"code", "CONSENT_REQUIRED", "scope", string(domain.ConsentReadAloudVendor))
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusForbidden)
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"code": "CONSENT_REQUIRED",
+			"message": "Reading this out through the speech service means sending the text of the answer to it, " +
+				"and that needs your permission first.",
+			"remedy":  "Grant \"read_aloud_via_vendor\", or say no and have it read in your own device's voice.",
+			"consent": prompt,
+		})
 		return
 	}
 

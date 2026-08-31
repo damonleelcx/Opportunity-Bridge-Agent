@@ -131,12 +131,16 @@ function renderDeploymentFacts() {
   if (!deployment) {
     fact("#corpusTally", "");
     fact("#liveStatus", "");
+    fact("#speechVendor", "");
     return;
   }
   fact("#corpusTally", t("home.limits.l1count")
     .replace("{records}", deployment.records)
     .replace("{guides}", deployment.guides));
   fact("#liveStatus", t(deployment.live ? "home.limits.l4on" : "home.limits.l4off"));
+  fact("#speechVendor", t(!deployment.speechVendor
+    ? "home.feat.f6off"
+    : deployment.speechTrains ? "home.feat.f6trained" : "home.feat.f6sent"));
 }
 
 function loadDeploymentFacts() {
@@ -157,7 +161,18 @@ function loadDeploymentFacts() {
           "the deployment facts under \"honest limits\" are omitted", m);
         return;
       }
-      deployment = { records, guides, live: m.live_search_enabled === true };
+      deployment = {
+        records, guides,
+        live: m.live_search_enabled === true,
+        // Absent or non-boolean is treated as "there is a vendor", because the
+        // sentence this picks is a privacy warning: guessing wrong towards
+        // "nothing is sent" is the guess that misleads somebody.
+        speechVendor: m.speech_vendor_enabled !== false,
+        // Same direction: absent or non-boolean means "assume it trains". The
+        // backbone is derived server-side, so this only ever guesses when
+        // /api/health answered something unexpected.
+        speechTrains: m.speech_vendor_trains_on_text !== false,
+      };
       renderDeploymentFacts();
     })
     .catch((e) => {

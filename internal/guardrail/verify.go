@@ -1,6 +1,7 @@
 package guardrail
 
 import (
+	"encoding/json"
 	"fmt"
 	"regexp"
 	"strings"
@@ -64,11 +65,26 @@ var verifiers = map[string]Verifier{
 	"answers_the_city":           verifyAnswersTheCity,
 }
 
-// Verify runs the named checks in order and returns every finding.
-// An unknown name is itself a finding: a typo in the intent registry must not
-// silently disable a check.
+// universalVerifiers run on every turn, whatever intent is answering and
+// whatever that intent lists.
+//
+// The registry's named verifiers encode an intent's policy: what a good answer
+// about jobs, or about a population, has to contain. These encode something
+// prior to that - what an answer IS. Keeping them out of the `verifiers` map is
+// the point: an intent cannot switch them off, and a new intent cannot forget
+// to name them.
+//
+// See docs/bugfix/2026-08-31-routing-json-shown-as-answer.md
+var universalVerifiers = []Verifier{verifyAnswerIsProse}
+
+// Verify runs the universal checks, then the named ones in order, and returns
+// every finding. An unknown name is itself a finding: a typo in the intent
+// registry must not silently disable a check.
 func Verify(names []string, in VerifyInput) []Finding {
 	var out []Finding
+	for _, v := range universalVerifiers {
+		out = append(out, v(in)...)
+	}
 	for _, n := range names {
 		v, ok := verifiers[n]
 		if !ok {
@@ -799,4 +815,83 @@ func hasDigit(s string) bool {
 		}
 	}
 	return false
+}
+
+// ------------------------------------------------------- answer is for a human
+
+// routingObject matches this service's own routing decision in the shape the
+// classifier emits it. Both keys are required, as JSON keys: an answer that
+// happens to use the word "intent" is prose; an answer carrying `"intent"` and
+// `"confidence"` beside each other is our internal object.
+var routingObject = regexp.MustCompile(
+	`"intent"\s*:[\s\S]{0,240}?"confidence"\s*:|"confidence"\s*:[\s\S]{0,240}?"intent"\s*:`)
+
+// verifyAnswerIsProse refuses to publish a machine object as an answer.
+//
+// What went wrong. The router asks the model "whose problem is this?" and gets
+// back {"intent": ..., "confidence": ..., "rationale": ...}. That object is an
+// internal signal; the interface already renders it as the route chip above the
+// conversation. It reached a person's screen as the answer itself. Every other
+// verifier then dutifully reported that this "answer" named no record, gave no
+// phone number and was not in the reply language - four true findings that
+// buried the one that mattered, and the person read a JSON blob followed by an
+// apology for it.
+//
+// Why Block rather than Repair. A Repair that fails twice is delivered anyway
+// with a note attached (the unresolved path in the agent loop), and "the JSON,
+// plus an apology" is not an improvement on the JSON. Block still gets one
+// redraft first - the loop redrafts on Block too - so a model that merely
+// slipped gets its second chance, and a model that slips twice produces a
+// refusal a person can act on instead of an object they cannot read.
+//
+// Why it is universal rather than named by each intent. Nothing about this is
+// specific to jobs, or to populations. An intent that could omit it would be an
+// intent allowed to show people machine output.
+//
+// See docs/bugfix/2026-08-31-routing-json-shown-as-answer.md
+func verifyAnswerIsProse(in VerifyInput) []Finding {
+	body := strings.TrimSpace(in.Answer)
+	if body == "" {
+		// An empty answer is the agent loop's own case and has its own message.
+		return nil
+	}
+	var out []Finding
+	if isWholeJSONValue(body) {
+		out = append(out, Finding{
+			Guard: "verify", Code: "ANSWER_IS_MACHINE_OUTPUT", Severity: Block,
+			Message:  "The entire answer is a machine object, not something written for a person to read.",
+			Evidence: []string{clip(body, 160)},
+			Remedy: "Write the answer as sentences addressed to the person. " +
+				"JSON belongs in tool arguments; it is never the answer.",
+		})
+	}
+	if routingObject.MatchString(body) {
+		out = append(out, Finding{
+			Guard: "verify", Code: "ROUTING_OBJECT_LEAKED", Severity: Block,
+			Message: "The answer carries the internal routing decision. That object is for the route chip in the interface, " +
+				"never for the reader.",
+			Evidence: []string{clip(body, 160)},
+			Remedy: "Do not restate which intent this was routed to. Answer the person's question in their language.",
+		})
+	}
+	return out
+}
+
+// isWholeJSONValue reports whether the text is one JSON object or array and
+// nothing else. Leading `{`/`[` is required so that a plain sentence, which
+// json.Valid rejects anyway, is never re-examined, and so that a fenced code
+// block quoting JSON inside a real answer does not match.
+func isWholeJSONValue(s string) bool {
+	if s[0] != '{' && s[0] != '[' {
+		return false
+	}
+	return json.Valid([]byte(s))
+}
+
+func clip(s string, n int) string {
+	r := []rune(s)
+	if len(r) <= n {
+		return s
+	}
+	return string(r[:n]) + "…"
 }

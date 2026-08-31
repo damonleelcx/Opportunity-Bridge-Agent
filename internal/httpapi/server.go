@@ -138,12 +138,59 @@ func writeJSON(w http.ResponseWriter, v any) {
 	_ = json.NewEncoder(w).Encode(v)
 }
 
+// deploymentFacts are the things the landing page states out loud about this
+// instance: how much corpus it holds, and whether the nationwide lookup is
+// connected. One producer, used by both /api/health and /api/meta, so the front
+// page and the conversation cannot disagree about them.
+//
+// They are readable from /api/health because the landing page is read by people
+// who are NOT signed in, and the gate's list of open paths is short on purpose.
+// /api/health is already public, already the "what is this deployment" endpoint
+// and already reported corpus_records; widening the gate to /api/meta for a
+// front-page sentence would trade a security boundary for a decoration.
+// See docs/bugfix/2026-08-31-honest-limits-were-not-honest.md
+func (s *Server) deploymentFacts() map[string]any {
+	return map[string]any{
+		// Why live_search_enabled is surfaced at all: with no search key the only
+		// live provider is the directory, which returns the official portal for a
+		// region and never a named employer or course. So a person outside the
+		// cities in the corpus gets the national framework and a website -
+		// correct, but it looks like "there is nothing for you" rather than "this
+		// instance cannot look". The startup log says LIVE_SEARCH_DISABLED; nobody
+		// reading the page can see a log.
+		// See docs/bugfix/2026-08-28-subject-identity-and-tracked-steps.md
+		"corpus_opportunities":  len(s.Agent.Corpus.Opportunities),
+		"corpus_knowledge_docs": len(s.Agent.Corpus.Docs),
+		"live_search_enabled":   s.Cfg.SearchAPIKey != "",
+		// Why the landing page needs this: its read-aloud card used to promise
+		// "no audio leaves your device". With a speech vendor configured, the
+		// ANSWER TEXT is sent to that vendor to be rendered - a person's city,
+		// their unemployment, the benefit they are claiming - and on the free
+		// backbone the vendor's terms allow using those requests to improve its
+		// models. docs/17-read-aloud.md said so all along; the page said the
+		// opposite. A privacy claim is the worst kind to hardcode, because it is
+		// true on the machine of whoever wrote it and false in production.
+		// See docs/bugfix/2026-08-31-the-privacy-claim-was-false.md
+		"speech_vendor_enabled": s.TTS != nil,
+		// Whether that vendor's terms let it train on what is sent. Derived, not
+		// written down: the copy on the landing page says one thing on the free
+		// backbone and another on a paid one, and a deployment that switches
+		// backbones must not have to remember to edit a sentence. Unknown
+		// backbones report true — see tts.paidBackbones for why that direction.
+		"speech_vendor_trains_on_text": s.TTS != nil && tts.TrainsOnRequests(s.Cfg.TTSModel),
+	}
+}
+
 func (s *Server) health(w http.ResponseWriter, r *http.Request) {
-	writeJSON(w, map[string]any{
+	out := map[string]any{
 		"status": "ok", "backend": s.Agent.LLM.Name(),
 		"agent_model": s.Cfg.AgentModel, "classifier_model": s.Cfg.ClassifierModel,
 		"corpus_records": len(s.Agent.Corpus.Opportunities), "cities": s.Agent.Corpus.Cities(),
-	})
+	}
+	for k, v := range s.deploymentFacts() {
+		out[k] = v
+	}
+	writeJSON(w, out)
 }
 
 // meta tells the interface what this deployment can actually do, so limits are
@@ -178,7 +225,7 @@ func (s *Server) meta(w http.ResponseWriter, r *http.Request) {
 			disabled = append(disabled, string(in.ID))
 		}
 	}
-	writeJSON(w, map[string]any{
+	out := map[string]any{
 		"agent_model": s.Cfg.AgentModel, "classifier_model": s.Cfg.ClassifierModel,
 		"backend": s.Agent.LLM.Name(), "effort": s.Cfg.Effort,
 		"k_anonymity_floor": s.Cfg.KAnonymityFloor,
@@ -188,18 +235,18 @@ func (s *Server) meta(w http.ResponseWriter, r *http.Request) {
 		"reply_language":    s.defaultLocale(),
 		"reply_languages":   config.ReplyLanguages,
 		"corpus_is_sample":  true,
-		// Why this is on /api/meta: with no search key the only live provider is
-		// the directory, which returns the official portal for a region and
-		// never a named employer or course. So a person outside the cities in
-		// the corpus gets the national framework and a website - correct, but it
-		// looks like "there is nothing for you" rather than "this instance
-		// cannot look". The startup log says LIVE_SEARCH_DISABLED; nobody
-		// reading the page can see a log.
-		// See docs/bugfix/2026-08-28-subject-identity-and-tracked-steps.md
-		"live_search_enabled": s.Cfg.SearchAPIKey != "",
-		"disabled_intents":    disabled,
-		"roles":               []string{string(domain.RoleResident), string(domain.RoleCaseworker), string(domain.RoleAnalyst)},
-	})
+		"disabled_intents":  disabled,
+		// The interface renders one revoke control per scope from this list. It
+		// used to keep its own copy, so a scope added on the server was one a
+		// person could be asked for and then could not withdraw.
+		// See docs/bugfix/2026-08-31-read-aloud-needs-consent.md
+		"consent_scopes": consentScopeNames(),
+		"roles":          []string{string(domain.RoleResident), string(domain.RoleCaseworker), string(domain.RoleAnalyst)},
+	}
+	for k, v := range s.deploymentFacts() {
+		out[k] = v
+	}
+	writeJSON(w, out)
 }
 
 func (s *Server) intents(w http.ResponseWriter, r *http.Request) {
@@ -450,16 +497,25 @@ func (s *Server) setConsent(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
+	// Validated against domain.ConsentScopes(), not against a list repeated here.
+	// A scope this switch had not been taught about answered 400 while existing
+	// everywhere else — the person would see the permission, press grant, and
+	// nothing would happen. See docs/bugfix/2026-08-31-read-aloud-needs-consent.md
 	scope := domain.ConsentScope(body.Scope)
-	switch scope {
-	case domain.ConsentStoreProfile, domain.ConsentShareCaseworker,
-		domain.ConsentSubmitOnBehalf, domain.ConsentAggregate:
-	default:
+	if !domain.IsConsentScope(body.Scope) {
 		writeErr(w, http.StatusBadRequest, "SCOPE_INVALID",
 			fmt.Sprintf("%q is not a permission this service asks for.", body.Scope),
-			"Valid scopes: store_profile, share_with_caseworker, submit_on_behalf, aggregate_deidentified.")
+			"Valid scopes: "+strings.Join(consentScopeNames(), ", ")+".")
 		return
 	}
 	g := s.Store.SetConsent(ses.SubjectID, scope, body.Granted, body.Note)
 	writeJSON(w, g)
+}
+
+func consentScopeNames() []string {
+	out := make([]string, 0, len(domain.ConsentScopes()))
+	for _, s := range domain.ConsentScopes() {
+		out = append(out, string(s))
+	}
+	return out
 }

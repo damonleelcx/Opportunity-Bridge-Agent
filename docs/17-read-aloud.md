@@ -15,7 +15,7 @@ bends around:
 | Needs | nothing | `OBA_TTS_API_KEY` + `OBA_TTS_VOICE_ID` |
 | Quality | whatever the OS ships | whatever the voice is |
 | Cost | none | none on `s2.1-pro-free`, otherwise per byte |
-| Privacy | the text never leaves the machine | **the answer is sent to the vendor** |
+| Privacy | the text never leaves the machine | **the answer is sent to the vendor**, and only after the person grants `read_aloud_via_vendor` — see `bugfix/2026-08-31-read-aloud-needs-consent.md` |
 
 With no key, `speechSynthesis` reads the answer and startup logs `TTS_DISABLED`.
 The browser asks `/api/tts` once, is told 503, and stops asking for the rest of

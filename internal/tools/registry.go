@@ -185,7 +185,7 @@ func (r *Registry) Call(
 			map[string]any{"tool": name, "scope": string(scope), "granted": g.Granted})
 		if !g.Granted {
 			return Result{
-					Consent: consentPromptFor(scope),
+					Consent: ConsentPromptFor(scope),
 				}, fmt.Errorf("CONSENT_REQUIRED: %q needs the %q permission, which has not been granted. "+
 					"Explain in plain words what would be stored and why, then ask. Do not retry until it is granted", name, scope)
 		}
@@ -270,7 +270,10 @@ func irreversibleImpact(name string) string {
 	return "This action leaves our boundary and cannot be undone."
 }
 
-func consentPromptFor(scope domain.ConsentScope) *ConsentPrompt {
+// ConsentPromptFor is the wording a person is shown for one permission. Exported
+// because read-aloud raises the same card from the HTTP layer rather than from a
+// tool call, and a second copy of these sentences would be a second policy.
+func ConsentPromptFor(scope domain.ConsentScope) *ConsentPrompt {
 	switch scope {
 	case domain.ConsentStoreProfile:
 		return &ConsentPrompt{
@@ -299,6 +302,20 @@ func consentPromptFor(scope domain.ConsentScope) *ConsentPrompt {
 			Plain:     "May I file an application for you? You will still see and approve each one before it is sent.",
 			WhatFor:   "So a filing does not fail because of a form field.",
 			Retention: "Each filing is shown to you in full and needs your approval separately.",
+		}
+	case domain.ConsentReadAloudVendor:
+		return &ConsentPrompt{
+			Scope: scope, Title: "Send answers to the speech service",
+			Plain: "To read answers out loud in the better voice, the text of the answer has to be sent to an " +
+				"outside speech service. May I?",
+			WhatFor: "So answers can be heard rather than read. Nothing is sent unless you press read-aloud, and " +
+				"if you say no the answer is still read out, in your own device's voice.",
+			// The sentence about what the vendor may then do with it is filled in
+			// by the caller from the configured backbone, because the answer
+			// differs between the free and paid ones and a hardcoded version goes
+			// stale the moment a deployment switches.
+			// See docs/bugfix/2026-08-31-the-privacy-claim-was-false.md
+			Retention: "Only the text of that one answer, only at the moment you press it. It is not stored here.",
 		}
 	case domain.ConsentAggregate:
 		return &ConsentPrompt{

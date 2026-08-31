@@ -58,7 +58,12 @@ So the rules are enforced in code, not in prose:
 - It cannot make a criterion easier.
 - It cannot tell you the answer when the published rule is ambiguous. It says
   which document would settle it, and offers a person.
-- It cannot speak a dialect it cannot write. It adjusts register and says so.
+- It answers in the person's own variety of Chinese, in the text. Where it
+  cannot write a variety properly it says so and falls back to plain spoken
+  Mandarin. Read-aloud has no dialect voice — those characters are spoken in
+  Mandarin. Programme names, ids, phone numbers and addresses always stay in
+  their official written form, because those are what the person reuses at a
+  counter. See `docs/bugfix/2026-08-31-dialect-moved-into-the-text.md`.
 
 ## Where it stops and fetches a human
 

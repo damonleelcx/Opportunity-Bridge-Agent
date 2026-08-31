@@ -883,10 +883,10 @@ func consentRequest() Tool {
 			"request at the end in one or two sentences.",
 		Risk: RiskRead,
 		Schema: Obj("Which permission.", map[string]*Schema{
-			"scope": Str("The permission being asked for.",
-				string(domain.ConsentStoreProfile), string(domain.ConsentShareCaseworker),
-				string(domain.ConsentSubmitOnBehalf), string(domain.ConsentAggregate)),
-			"why": StrMin("Why it is needed for what this person is trying to do.", 5),
+			// Built from domain.ConsentScopes() rather than listed again: a scope
+			// this enum omits is one the model can never ask for, silently.
+			"scope": Str("The permission being asked for.", consentScopeNames()...),
+			"why":   StrMin("Why it is needed for what this person is trying to do.", 5),
 		}, "scope", "why"),
 		Run: func(ctx context.Context, env Env, a map[string]any) (Result, error) {
 			scope := domain.ConsentScope(argStr(a, "scope"))
@@ -912,7 +912,7 @@ func consentRequest() Tool {
 					Meta: map[string]any{"consent_requested": string(scope), "already_granted": true},
 				}, nil
 			}
-			prompt := consentPromptFor(scope)
+			prompt := ConsentPromptFor(scope)
 			prompt.WhatFor = argStr(a, "why")
 			env.Rec.Info(obs.ConsentChecked, "consent requested", map[string]any{"scope": string(scope)})
 			return Result{
@@ -1281,4 +1281,14 @@ func joinCohorts(cs []domain.CohortTag) string {
 		out[i] = string(c)
 	}
 	return strings.Join(out, ", ")
+}
+
+// consentScopeNames is the scope vocabulary the model is offered, taken from the
+// one list in domain so it cannot drift from what the API will accept.
+func consentScopeNames() []string {
+	out := make([]string, 0, len(domain.ConsentScopes()))
+	for _, s := range domain.ConsentScopes() {
+		out = append(out, string(s))
+	}
+	return out
 }

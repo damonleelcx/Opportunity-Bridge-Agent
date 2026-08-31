@@ -94,6 +94,10 @@ var blockReasons = map[string]map[string]string{
 		"INTERNAL_ID_LEAKED":    "回答里出现了内部记录编号，可以被反查到具体的人。",
 		"UNSOURCED_AGGREGATE":   "回答给了数字，但这些数字没有经过匿名下限的处理。",
 		"NEXT_STEP_NOT_TRACKED": "这一轮找到了能办的事，但没有把它记进「进行中任务」，你下次回来就看不到了。",
+		// 这两条挡的是同一件事：把程序内部的东西当成回答发给人看。
+		// 见 docs/bugfix/2026-08-31-routing-json-shown-as-answer.md
+		"ANSWER_IS_MACHINE_OUTPUT": "这一条回答是程序内部的数据，不是写给人看的话。",
+		"ROUTING_OBJECT_LEAKED":    "回答里混进了系统内部的分流判断结果。那是给界面上那个标签用的，不该出现在正文里。",
 	},
 }
 

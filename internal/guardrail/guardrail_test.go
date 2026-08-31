@@ -432,3 +432,57 @@ func TestNoTrackingDemandedWithoutRetrieval(t *testing.T) {
 		t.Errorf("a clarifying question was asked to create a task: %v", got)
 	}
 }
+
+// The router's decision object reached a person's screen as the answer. These
+// hold the line that a machine object is never published as prose, and that an
+// intent cannot opt out of that by listing no verifiers.
+// See docs/bugfix/2026-08-31-routing-json-shown-as-answer.md
+
+func TestRoutingObjectIsNeverDeliveredAsAnAnswer(t *testing.T) {
+	// Verbatim from demo/scripted-turns.json - the exact text that was shown.
+	const leaked = `{"intent": "individual_pathway", "confidence": 0.92, ` +
+		`"rationale": "Same person, same objective; they are asking to have the step tracked."}`
+
+	// No verifier names are passed: the check must run anyway, or an intent
+	// that lists nothing would be allowed to show people machine output.
+	findings := guardrail.Verify(nil, guardrail.VerifyInput{
+		Intent: "individual_pathway", Answer: leaked, Locale: "zh-CN",
+	})
+	var codes []string
+	for _, f := range findings {
+		if f.Severity != guardrail.Block {
+			t.Errorf("%s is %s; a machine object must not be deliverable with a note attached",
+				f.Code, f.Severity)
+		}
+		codes = append(codes, f.Code)
+	}
+	for _, want := range []string{"ANSWER_IS_MACHINE_OUTPUT", "ROUTING_OBJECT_LEAKED"} {
+		if !containsString(codes, want) {
+			t.Errorf("missing %s; got %v", want, codes)
+		}
+	}
+}
+
+func TestProseIsNotMistakenForMachineOutput(t *testing.T) {
+	// Real answers, including ones that talk about intent, braces and numbers.
+	ok := []string{
+		"trn-002——龙泉驿技工学校的数控课，六周全日制。下一步：打 028-5551-0022。",
+		"I could not look that up. Call 12333 and ask which hall covers where you live.",
+		`The form asks your intent to return to work; answer it honestly. Confidence is not required.`,
+		"这条记下了{在你的任务清单里}，负责人是你。",
+	}
+	for _, s := range ok {
+		if f := guardrail.Verify(nil, guardrail.VerifyInput{Answer: s, Locale: "zh-CN"}); len(f) > 0 {
+			t.Errorf("prose was flagged: %q -> %v", s, f[0])
+		}
+	}
+}
+
+func containsString(xs []string, want string) bool {
+	for _, x := range xs {
+		if x == want {
+			return true
+		}
+	}
+	return false
+}

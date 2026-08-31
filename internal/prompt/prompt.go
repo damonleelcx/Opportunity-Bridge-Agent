@@ -368,6 +368,49 @@ func ContextLayer(o Options) string {
 // have to be stated or the instruction does damage: tool arguments stay English
 // because the index is English, and identifiers, phone numbers and addresses are
 // quoted verbatim - a "translated" address is an invented address.
+// DialectPolicy is the product's single statement of what it does with a
+// regional variety of Chinese. It is one constant because two copies of a
+// policy are two policies.
+//
+// ── Why it lives in the always-on language directive ─────────────────────────
+//
+// The policy used to be a refusal - "do not attempt to imitate a dialect you
+// cannot write" - and it was reachable only through the AccessDialect delivery
+// rule, which is switched on by an accessibility_set tool call. Both parts were
+// wrong.
+//
+// The refusal was written when it was assumed the model could not produce a real
+// variety. It can: asked for spoken Cantonese it returns 「你去办失业登记先，办完
+// 先至可以攞…带埋…同」, which is Cantonese syntax rather than Mandarin wearing
+// particles.
+//
+// The placement was worse, and only a live turn showed it. Somebody wrote in
+// Cantonese and asked, in Cantonese, to be answered in Cantonese. The agent
+// never called accessibility_set, so the rule never entered the prompt, and the
+// answer came back in Mandarin opening with "我写不到标准广东话". The capability
+// was wired to a state nobody sets. Writing in a variety IS the request; it does
+// not need a tool call first.
+//
+// The carve-out is the part that makes this safe. A programme name, an id, a
+// phone number and an office address are not prose - they are what the person
+// says at a counter and types into a form. Rendered in a regional variety they
+// become strings the counter does not recognise, which is a worse failure than a
+// stiff sentence.
+// See docs/bugfix/2026-08-31-dialect-moved-into-the-text.md
+const DialectPolicy = `
+- Regional varieties: if the person writes in one - Cantonese, Sichuanese,
+  Northeastern and so on - or asks to be answered in one, answer in the variety
+  the person is using, in its real spoken forms, not standard Chinese with a few
+  particles added.
+- The rule above about ids, phone numbers and addresses holds inside a dialect
+  answer too: those stay in their official written form, because they are what
+  the person will say at a counter and type into a form.
+- If you cannot write that variety properly, say so in one clause and use plain
+  spoken Mandarin instead. An imitation is worse than an honest fallback.
+- Read-aloud has no dialect voice on this deployment: these characters are
+  spoken in Mandarin. Do not promise otherwise.
+`
+
 func LanguageDirective(locale string) string {
 	const carveouts = `
 - This governs what you WRITE TO THE PERSON, and it also matches the corpus:
@@ -382,7 +425,7 @@ func LanguageDirective(locale string) string {
 
 Write the entire answer in Chinese - every sentence, every heading, every label,
 and the next step. The instructions above are in English because the code is;
-that says nothing about who is reading the answer.` + carveouts
+that says nothing about who is reading the answer.` + carveouts + DialectPolicy
 	case strings.HasPrefix(locale, "en"):
 		return `ANSWER IN ENGLISH.
 
@@ -392,7 +435,7 @@ Write the entire answer in English.` + carveouts
 
 Match their language exactly, including the script. If they wrote in Chinese,
 answer in Chinese; do not answer in English because these instructions are in
-English.` + carveouts
+English.` + carveouts + DialectPolicy
 	}
 }
 
@@ -405,7 +448,14 @@ func deliveryRules(needs []domain.AccessNeed) string {
 		case domain.AccessVoice:
 			b.WriteString("- Read aloud: write so it works when heard. No tables, no bullet markers read as symbols, spell out numbers that matter.\n")
 		case domain.AccessDialect:
-			b.WriteString("- Dialect: use everyday spoken vocabulary rather than written-official vocabulary. Do not attempt to imitate a dialect you cannot write.\n")
+			// The policy itself is always on (see DialectPolicy). What this need
+			// adds is persistence: the person set it once, so it applies on turns
+			// where this particular message happened to be in standard Chinese.
+			// Restating the whole policy here would put two copies of it in one
+			// prompt, which is how the two copies drift apart.
+			b.WriteString("- Dialect: a standing preference, not a one-off. Answer in this person's variety " +
+				"every turn under the regional-varieties rule above, even when their latest message is in " +
+				"standard Chinese.\n")
 		case domain.AccessLowBandwidth:
 			b.WriteString("- Weak connection: under 120 words total. Give the single most useful thing.\n")
 		case domain.AccessLargeText:
