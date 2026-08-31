@@ -1104,3 +1104,51 @@ func TestConsentCopyDoesNotCountThePermissions(t *testing.T) {
 		}
 	}
 }
+
+// The sample-data disclaimers must draw a line, not paint everything one colour.
+//
+// They said everything on screen was invented — 「全部是我们编的」, "Every job,
+// course and subsidy here is invented". That was true when the corpus was the
+// only source. Live search now runs in production, so a real posting with a real
+// date and a real link sits beside the invented ones, and the reader was being
+// told to dismiss it.
+//
+// This is the same class of stale claim as the corpus count and the privacy
+// promise, in the direction that looks safe: under-claiming a capability is
+// still telling somebody something untrue, and here it costs them a job lead.
+// See docs/bugfix/2026-08-31-honest-limits-were-not-honest.md
+func TestSampleDisclaimersDistinguishLiveResults(t *testing.T) {
+	zh, en := localeBlocks(t, asset(t, "i18n.js"))
+	keys := []string{"home.limits.l1b", "banner.sampleTitle2", "banner.sampleBody", "home.preview.disclaimer"}
+	for _, lang := range []struct {
+		name, block string
+		markers     []string
+	}{
+		{"zh-CN", zh, []string{"未核实", "官方入口"}},
+		{"en", en, []string{"unverified", "official entry point"}},
+	} {
+		for _, key := range keys {
+			m := regexp.MustCompile(`"` + regexp.QuoteMeta(key) + `":\s*"((?:[^"\\]|\\.)*)"`).FindStringSubmatch(lang.block)
+			if m == nil {
+				t.Errorf("%s has no %s; this fence no longer guards anything", lang.name, key)
+				continue
+			}
+			var found bool
+			for _, marker := range lang.markers {
+				if strings.Contains(m[1], marker) {
+					found = true
+				}
+			}
+			if !found {
+				t.Errorf("%s %s says what is invented without saying what is NOT: it mentions none of %v, "+
+					"so a reader is told to dismiss the live results too", lang.name, key, lang.markers)
+			}
+		}
+	}
+	// And the totalising phrasings must not come back.
+	for _, gone := range []string{"全部是我们编的", "均为虚构样例", "都是虚构样例"} {
+		if strings.Contains(zh, gone) {
+			t.Errorf("the copy still claims %q of everything on screen", gone)
+		}
+	}
+}

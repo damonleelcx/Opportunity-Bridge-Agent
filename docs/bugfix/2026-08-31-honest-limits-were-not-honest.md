@@ -183,3 +183,41 @@ Mutation drills: putting "21 条岗位、12 份指南" back into `home.limits.l1
 the copy fence; hardcoding `corpus_opportunities: 21` reds the meta fence; and
 setting `defaultMaxInFlight` back to an unbounded value reds the cap test with
 "peak concurrency 6". All three go green when reverted.
+
+## Follow-up: the same section then lied in the other direction
+
+Reported after deployment: "the entire app is working end to end, why are you
+still keeping 语料虚构?"
+
+The corpus **is** still invented — `data/opportunities.json` holds 26 records at
+organisations that do not exist. But the card said everything was:
+
+> 这里的岗位、培训、创业扶持、补贴和办事指南**全部**是我们编的
+> Every job, course and subsidy here is invented
+
+That stopped being true the moment live search was switched on in production.
+An answer now carries `live-002 龙岗普工 5000-6000`, published 2026-08-26, with a
+link — a real posting on a real site, sitting beside the invented ones.
+
+**Under-claiming is still telling somebody something untrue, and this one has a
+cost.** A reader who believes the front page dismisses a real, actionable job
+lead. It is the mirror image of the failures above and it survived precisely
+because it errs in the direction that looks cautious.
+
+The interface already draws the line the copy had erased: corpus results carry
+ids like `job-001` and the permanent 「演示语料」 flag, while live ones are labelled
+「网上岗位线索 · 未核实」 / 「官方入口」 with a publication date and a link. The copy now
+draws the same line, in all four places that carried the totalising sentence
+(`home.limits.l1b`, both banners, and the preview disclaimer), and the card's
+title says it outright: 「本地语料是虚构的，实时检索的不是」.
+
+`TestSampleDisclaimersDistinguishLiveResults` requires each of those four strings
+to name the live side, and refuses the totalising phrasings by name. Drilled: put
+「均为虚构样例」 back and it reds on both counts.
+
+⚠️ **Still open, and it is editorial rather than factual.** Two of the four cards
+under 「这个版本做不到的事」 now describe a capability with a caveat rather than an
+absence — dialect works in the text, the live lookup is connected. The heading is
+drifting from "what it cannot do" towards "where its edges are". Worth renaming;
+not renamed here, because that is a decision about the page's voice.
+
