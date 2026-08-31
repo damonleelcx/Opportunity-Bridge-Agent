@@ -267,7 +267,17 @@ button, select, textarea, input { font: inherit; color: inherit; }
    readable as text on the canvas — and putting white on it gives 2.6:1. The two
    tokens exist so this cannot be got wrong by reaching for the obvious name. */
 .btn-primary { background: var(--brand-fill); color: var(--brand-ink); border-color: var(--brand-fill); }
-.btn-primary:hover { filter: brightness(1.12); }
+/* The background and border are REDECLARED here, not just the filter.
+   .btn:hover sets `background: var(--surface-2)` and its specificity (0,2,0)
+   beats .btn-primary's (0,1,0) — so a hovered `class="btn btn-primary"` took the
+   plain surface while keeping color: var(--brand-ink), and the button vanished:
+   white on white in the light theme, and dark on dark in the dark one, because
+   both tokens invert together. Restoring them here wins on source order at equal
+   specificity. See TestPrimaryButtonKeepsItsFillOnHover. */
+.btn-primary:hover {
+  background: var(--brand-fill); border-color: var(--brand-fill);
+  filter: brightness(1.12);
+}
 
 /* ── the technical section, collapsed by default ───────────────────────── */
 .tech { margin-left: 48px; }

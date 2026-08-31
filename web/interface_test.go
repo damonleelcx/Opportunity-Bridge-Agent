@@ -1143,6 +1143,71 @@ func TestCopyDoesNotCountWhatTheRegistryDefines(t *testing.T) {
 	}
 }
 
+// A solid button must keep its fill while the pointer is on it.
+//
+// .btn:hover sets `background: var(--surface-2)`, and its specificity (0,2,0)
+// beats a modifier like .btn-primary (0,1,0). So any `class="btn btn-X"` whose
+// modifier paints a background loses that background on hover and keeps its own
+// text colour — which is invisible, in BOTH themes, because --brand-fill and
+// --brand-ink invert together: white on white in light, dark on dark in dark.
+//
+// This is only checkable against the markup: the CSS alone cannot say which
+// modifiers are actually combined with .btn. .btn-send, for instance, declares a
+// background and never restores it, and that is fine because nothing pairs it
+// with .btn. The moment something does, this fence turns red.
+func TestPrimaryButtonKeepsItsFillOnHover(t *testing.T) {
+	css := asset(t, "styles.css")
+	markup := asset(t, "index.html") + asset(t, "app.html") + asset(t, "app.js") + asset(t, "home.js")
+
+	// Modifiers seen on the same element as a bare `btn` class.
+	// Every class attribute is split into TOKENS and "btn" is matched exactly.
+	//
+	// A word-boundary regex was tried first and is wrong: `\bbtn\b` matches the
+	// "btn" inside "btn-send", because "-" is a non-word character. That reported
+	// the send button as broken when nothing pairs it with .btn.
+	paired := map[string]bool{}
+	for _, m := range regexp.MustCompile(`class="([^"]*)"`).FindAllStringSubmatch(markup, -1) {
+		fields := strings.Fields(m[1])
+		bare := false
+		for _, cls := range fields {
+			if cls == "btn" {
+				bare = true
+			}
+		}
+		if !bare {
+			continue
+		}
+		for _, cls := range fields {
+			if strings.HasPrefix(cls, "btn-") {
+				paired[cls] = true
+			}
+		}
+	}
+	if len(paired) == 0 {
+		t.Fatal("no `btn` + modifier pairing found in the markup; this fence no longer guards anything")
+	}
+
+	decl := func(sel string) (string, bool) {
+		m := regexp.MustCompile(`(?m)^\` + sel + `\s*\{([^}]*)\}`).FindStringSubmatch(css)
+		if m == nil {
+			return "", false
+		}
+		return m[1], true
+	}
+	for cls := range paired {
+		base, ok := decl("." + cls)
+		if !ok || !strings.Contains(base, "background") {
+			continue // modifier paints no background; .btn:hover taking over is fine
+		}
+		hover, ok := decl("." + cls + ":hover")
+		if !ok || !strings.Contains(hover, "background") {
+			t.Errorf(".%s paints a background but .%s:hover does not restore one. "+
+				"On hover .btn:hover wins on specificity and the button takes --surface-2 while keeping "+
+				"its own text colour, which is invisible in both themes.", cls, cls)
+		}
+	}
+}
+
 // The sample-data disclaimers must draw a line, not paint everything one colour.
 //
 // They said everything on screen was invented — 「全部是我们编的」, "Every job,
