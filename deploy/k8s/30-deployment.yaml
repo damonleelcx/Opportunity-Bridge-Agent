@@ -38,6 +38,25 @@ spec:
       labels:
         app.kubernetes.io/name: opportunity-bridge
     spec:
+      # ── Reaching the mail relay ────────────────────────────────────────────
+      #
+      # The relay is a pod in the `heros` namespace on this same cluster, and it
+      # presents a certificate for `mail.heros-agent.space`. STARTTLS verifies
+      # that name, so the name is what must be dialled — and the pinned ClusterIP
+      # is how this pod, and only this pod, resolves it.
+      #
+      # 🔴 NOT A COREDNS REWRITE. A cluster-wide rewrite of this public name also
+      # answers cert-manager's HTTP-01 self-check for it, pointing the controller
+      # that proves the name at an SMTP port. The challenge stays pending, no
+      # certificate is issued, and — worse — doing it AFTER a certificate exists
+      # works until the 60-day renewal fails the same silent way.
+      #
+      # The address is the pinned clusterIP in heros-agent's own mail.yaml. It is
+      # pinned there precisely so entries like this one stay correct.
+      # See docs/bugfix/2026-08-31-email-verification-and-reset.md
+      hostAliases:
+        - ip: 10.43.120.55
+          hostnames: [mail.heros-agent.space]
       securityContext:
         runAsNonRoot: true
         runAsUser: 65532

@@ -46,7 +46,7 @@ The obstacle here is usually not information. It is time, distance, language, a
 missing document, or the cost of one more failed attempt.
 
 - **Solves the friction before the topic.** Plain language, larger text, read
-  aloud, dialect-friendly register, assisted-at-a-window mode, low-bandwidth
+  aloud, an answer in the person's own variety of Chinese, assisted-at-a-window mode, low-bandwidth
   answers — set through `accessibility_set`, which is the same path the person's
   own toggle in the interface uses.
 - **Always offers an offline route.** A phone number, or an address with hours.

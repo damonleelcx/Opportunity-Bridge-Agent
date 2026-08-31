@@ -18,6 +18,7 @@ import (
 	"github.com/damonleelcx/Opportunity-Bridge-Agent/internal/prompt"
 	"github.com/damonleelcx/Opportunity-Bridge-Agent/internal/retrieval"
 	"github.com/damonleelcx/Opportunity-Bridge-Agent/internal/store"
+	"github.com/damonleelcx/Opportunity-Bridge-Agent/internal/talentsource"
 	"github.com/damonleelcx/Opportunity-Bridge-Agent/internal/tools"
 )
 
@@ -34,6 +35,9 @@ type Agent struct {
 	// Live is consulted when the corpus has no local listing for a city. Nil is
 	// legitimate: the corpus is then all there is.
 	Live livesource.Provider
+	// Talent looks for PEOPLE outside the opt-in pool, for the recruiter intent.
+	// Nil is the common case and means the pool is all there is.
+	Talent talentsource.Provider
 }
 
 // Input is one turn.
@@ -194,7 +198,7 @@ func (a *Agent) Run(ctx context.Context, in Input) (Result, error) {
 
 	env := tools.Env{
 		Cfg: a.Cfg, Store: a.Store, Corpus: a.Corpus, Index: a.Index,
-		Session: ses, Rec: rec, Live: a.Live,
+		Session: ses, Rec: rec, Live: a.Live, Talent: a.Talent,
 		Approvals: map[string]store.PendingApproval{},
 		// One sequence for the whole turn. Built here because this is the only
 		// scope that IS the turn: env is made once per Run and reused across

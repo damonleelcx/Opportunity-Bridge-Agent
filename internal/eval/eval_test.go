@@ -21,7 +21,10 @@ func TestShippedDatasets(t *testing.T) {
 		AgentModel: "test", Effort: "high", MaxTokens: 4096,
 		MaxIterations: 8, MaxToolCalls: 12, MaxWallClock: 30 * time.Second,
 		MaxOutputTokens: 100000, KAnonymityFloor: 5,
-		CorpusDir: "../../data",
+		// The fixture corpus, not the shipped one: the evaluation cases cite
+		// local programmes, and those left the product when the invented
+		// organisations did. See testdata/README.md.
+		CorpusDir: "../../testdata/corpus",
 	}
 	c, err := corpus.Load(cfg.CorpusDir)
 	if err != nil {

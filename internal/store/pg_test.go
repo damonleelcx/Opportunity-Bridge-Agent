@@ -13,6 +13,8 @@ package store_test
 
 import (
 	"context"
+	"io"
+	"log/slog"
 	"os"
 	"testing"
 	"time"
@@ -213,5 +215,34 @@ func TestAnUnreachableDatabaseRefusesToStart(t *testing.T) {
 		"postgres://nobody:nobody@127.0.0.1:1/nothing?sslmode=disable&connect_timeout=1", nil)
 	if err == nil {
 		t.Fatal("an unreachable database started anyway; the operator would believe their data is safe")
+	}
+}
+
+// A fresh store must be able to issue a link on its very first sign-up.
+//
+// Every map in the snapshot has to be built in BOTH places that produce one —
+// the empty state and the loader — and a nil map here does not fail at startup,
+// it panics on the first write. The first write is the first person who signs
+// up. See docs/bugfix/2026-08-31-email-verification-and-reset.md
+func TestFreshStoreCanIssueAnEmailToken(t *testing.T) {
+	s := store.New("", slog.New(slog.NewTextHandler(io.Discard, nil)))
+	if _, err := s.CreateAccount("first", "hash"); err != nil {
+		t.Fatalf("create: %v", err)
+	}
+	if err := s.SetEmail("first", "First@Example.com"); err != nil {
+		t.Fatalf("set email: %v", err)
+	}
+	tok, err := s.IssueEmailToken("first", store.PurposeVerifyEmail, "first@example.com", store.VerifyTokenTTL)
+	if err != nil || tok == "" {
+		t.Fatalf("issue: %v", err)
+	}
+	// And the address was normalised on the way in, or two spellings become two
+	// accounts and a reset link becomes ambiguous.
+	a, ok := s.Account("first")
+	if !ok || a.Email != "first@example.com" {
+		t.Errorf("email = %q, want the normalised form", a.Email)
+	}
+	if a.EmailVerified {
+		t.Error("a freshly set address is verified; nobody has proved they can read it")
 	}
 }

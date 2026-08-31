@@ -73,6 +73,24 @@ type Config struct {
 	SearchAPIURL    string
 	SearchKeyHeader string
 
+	// External talent lookup, for the recruiter intent. Both OFF unless keyed,
+	// like every other vendor seam here.
+	//
+	// These answer "how many people of this shape exist outside our opt-in
+	// pool" - a market-size question. They never return a name, a contact or a
+	// profile URL, from either vendor, even where the vendor supplies one. See
+	// internal/talentsource for why that is the only coherent position.
+	//
+	// ‼️ PDLAPIURL exists mainly so it can be pointed at PDL's SANDBOX
+	// (https://sandbox.api.peopledatalabs.com/v5/person/search), which answers
+	// with SYNTHETIC records at zero credit cost. That is the right endpoint to
+	// develop and demo against: it exercises the whole adapter without a real
+	// person's data being read at all.
+	PDLAPIKey    string
+	PDLAPIURL    string
+	ApolloAPIKey string
+	ApolloAPIURL string
+
 	// Read-aloud through a speech vendor. Off unless keyed, for the same reason
 	// web search is: a feature that silently degrades is worse than one that
 	// says it is not switched on. With no key the browser reads answers with its
@@ -86,6 +104,33 @@ type Config struct {
 	TTSVoiceID string
 	TTSModel   string
 	TTSAPIURL  string
+
+	// Outgoing mail: confirm this address, and set a new password. OFF unless
+	// SMTPHost is set, like every other vendor seam here — a deployment with no
+	// relay still signs people up and still signs them in, it just cannot offer
+	// a password reset, and it says so instead of showing a form that does
+	// nothing.
+	//
+	// 🔴 PublicOrigin HAS NO DEFAULT, and mail stays off without it. Every link
+	// in an outgoing message is absolute, and a guessed origin produces mail
+	// that is either useless (a link to localhost) or dangerous (a link to
+	// whatever host header the request happened to carry). Refusing to send is
+	// the only honest answer to "we do not know where this service lives".
+	//
+	// SMTPFrom must be an address the relay credential is permitted to send as:
+	// the relay runs with spoof protection, which maps a login to its own
+	// address and the aliases pointing at it. SMTPReplyTo is separate on
+	// purpose — the address a credential may SEND as and the mailbox a person
+	// should REACH are different questions, and collapsing them into one
+	// address means an alias that changes where inbound mail is delivered.
+	// See docs/bugfix/2026-08-31-email-verification-and-reset.md
+	PublicOrigin string
+	SMTPHost     string
+	SMTPPort     string
+	SMTPFrom     string
+	SMTPReplyTo  string
+	SMTPUsername string
+	SMTPPassword string
 
 	// InviteCodes gate sign-up. EMPTY MEANS SIGN-UP IS CLOSED, not open: a
 	// deployment that forgets to set them must refuse new accounts, never admit
@@ -152,8 +197,19 @@ func Load() (Config, error) {
 		// services, and the surrounding prompt being written in English is an
 		// artefact of the code, not a signal about who is reading the answer.
 		ReplyLanguage:   env("OBA_REPLY_LANGUAGE", "zh-CN"),
+		PublicOrigin:    strings.TrimRight(env("OBA_PUBLIC_ORIGIN", ""), "/"),
+		SMTPHost:        env("OBA_SMTP_HOST", ""),
+		SMTPPort:        env("OBA_SMTP_PORT", "587"),
+		SMTPFrom:        env("OBA_SMTP_FROM", ""),
+		SMTPReplyTo:     env("OBA_SMTP_REPLY_TO", ""),
+		SMTPUsername:    env("OBA_SMTP_USERNAME", ""),
+		SMTPPassword:    env("OBA_SMTP_PASSWORD", ""),
 		SearchProvider:  SearchProvider(env("OBA_SEARCH_PROVIDER", string(SearchBocha))),
 		SearchAPIKey:    env("OBA_SEARCH_API_KEY", ""),
+		PDLAPIKey:       env("OBA_PDL_API_KEY", ""),
+		PDLAPIURL:       env("OBA_PDL_API_URL", ""),
+		ApolloAPIKey:    env("OBA_APOLLO_API_KEY", ""),
+		ApolloAPIURL:    env("OBA_APOLLO_API_URL", ""),
 		SearchAPIURL:    env("OBA_SEARCH_API_URL", ""),
 		SearchKeyHeader: env("OBA_SEARCH_KEY_HEADER", ""),
 		TTSAPIKey:       env("OBA_TTS_API_KEY", ""),
@@ -197,6 +253,15 @@ func Load() (Config, error) {
 		}
 	}
 	return c, c.Validate()
+}
+
+// MailConfigured reports whether this deployment can put a message in somebody's
+// inbox. Every piece is required: a relay with no origin sends links nobody can
+// follow, and an origin with no relay sends nothing at all. Reporting "on" while
+// one of them is missing is how a password-reset form comes to look like it
+// worked. See cmd/obagent/main.go, which logs which piece is absent.
+func (c Config) MailConfigured() bool {
+	return c.SMTPHost != "" && c.SMTPFrom != "" && c.PublicOrigin != ""
 }
 
 func (c Config) Validate() error {

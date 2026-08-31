@@ -21,12 +21,35 @@ const (
 	// RoleAnalyst is planning/policy staff. Analysts never see identified
 	// records - only de-identified aggregates above the k-anonymity floor.
 	RoleAnalyst Role = "analyst"
+	// RoleRecruiter is an employer or agency looking for people to hire.
+	//
+	// This is the only role whose interest points the other way down the bridge:
+	// every other role is trying to get one person to an opportunity, and a
+	// recruiter is trying to get one opportunity to a person. That inversion is
+	// why it carries the tightest limits in the product. A recruiter reaches
+	// exactly one intent, sees only people who asked to be seen
+	// (ConsentDiscoverable), sees them without names, and cannot reach anybody
+	// until that person accepts. See docs/18-recruiter-and-outreach.md.
+	RoleRecruiter Role = "recruiter"
 )
 
+// Roles is every actor this service recognises, in the order they appear in the
+// interface's role picker.
+//
+// It exists for the same reason ConsentScopes does: the list had been written
+// out by hand in the constants, the API's /api/meta payload and the interface,
+// and a role missing from any one of them fails differently and quietly. Missing
+// from meta, the role cannot be selected and the intent behind it is dead code
+// that still passes its tests.
+func Roles() []Role {
+	return []Role{RoleResident, RoleCaseworker, RoleAnalyst, RoleRecruiter}
+}
+
 func (r Role) Valid() bool {
-	switch r {
-	case RoleResident, RoleCaseworker, RoleAnalyst:
-		return true
+	for _, k := range Roles() {
+		if k == r {
+			return true
+		}
 	}
 	return false
 }
@@ -213,13 +236,154 @@ const (
 	ConsentShareCaseworker ConsentScope = "share_with_caseworker"
 	ConsentSubmitOnBehalf  ConsentScope = "submit_on_behalf"
 	ConsentAggregate       ConsentScope = "aggregate_deidentified"
+	// ConsentReadAloudVendor covers sending the ANSWER TEXT to a speech vendor so
+	// it can be read aloud. It is a scope rather than a setting because the text
+	// is the person's situation - their city, their unemployment, the benefit
+	// they are claiming - and this service already asks permission merely to
+	// STORE those same facts. Disclosing that it leaves is not the same as
+	// asking. Nothing is sent unless the person presses read-aloud, and refusing
+	// costs them nothing: the browser's own voice reads it instead.
+	// See docs/bugfix/2026-08-31-read-aloud-needs-consent.md
+	ConsentReadAloudVendor ConsentScope = "read_aloud_via_vendor"
+	// ConsentDiscoverable puts this person into the pool a recruiter may search.
+	//
+	// It is opt-in and it is separate from every other scope on purpose. Being
+	// counted in a statistic (ConsentAggregate) and being findable by an employer
+	// are different exposures with different consequences, and a person who
+	// agreed to the first has not agreed to the second. Nobody is in the pool by
+	// default, no other scope implies it, and withdrawing it removes them from
+	// the next search - see Store.DiscoverableProfiles, which filters on this
+	// scope so that no caller can forget to.
+	//
+	// What it does NOT grant: it never releases a name or a contact channel.
+	// Those move only when the person accepts a specific Outreach.
+	ConsentDiscoverable ConsentScope = "discoverable_by_employers"
 )
+
+// ConsentScopes is every permission this service asks for, in the order a person
+// meets them.
+//
+// It exists because the list was written out by hand in four places - these
+// constants, the API's validation, the interface's revoke panel and the
+// consent_request tool schema - and a scope missing from any one of them fails
+// differently and quietly. Missing from the API, granting it answers 400.
+// Missing from the panel, the person cannot withdraw it, which turns "you can
+// withdraw this at any time" into something this service says and does not do.
+func ConsentScopes() []ConsentScope {
+	return []ConsentScope{
+		ConsentStoreProfile,
+		ConsentShareCaseworker,
+		ConsentSubmitOnBehalf,
+		ConsentAggregate,
+		ConsentReadAloudVendor,
+		ConsentDiscoverable,
+	}
+}
+
+// notYetOfferedScopes exist in this file but are deliberately NOT offered to
+// anybody yet, because nothing reads them.
+//
+// It is a LIST, not a deletion, so the omission is a written decision rather
+// than a line somebody forgot. TestEveryScopeIsOfferedOrExplained refuses to let
+// a scope be in neither list, which is the failure this replaces: a scope
+// missing from ConsentScopes() is one the API rejects, the model cannot ask for,
+// and the interface renders no control to withdraw - all silently.
+// See docs/bugfix/2026-08-31-read-aloud-needs-consent.md
+//
+// It is EMPTY, and that is the correct state, not a sign the mechanism is unused.
+// ConsentDiscoverable sat here for the few minutes between the scope being
+// declared and the tools that read it landing: at that moment nothing reached
+// Store.DiscoverableProfiles, so offering the permission would have put somebody
+// into a pool nothing searched. candidate_search now reaches it and
+// talent_sourcing routes to it, so the premise for withholding it is gone and
+// the line moved back - which is exactly the move the withholding commit said
+// wiring the feature up would require.
+// See docs/18-recruiter-and-outreach.md
+func notYetOfferedScopes() []ConsentScope {
+	return nil
+}
+
+// NotYetOffered reports whether a scope exists but is withheld. Exported so an
+// operator surface can say "known, not switched on" rather than "unknown".
+func NotYetOffered(s string) bool {
+	for _, k := range notYetOfferedScopes() {
+		if string(k) == s {
+			return true
+		}
+	}
+	return false
+}
+
+// IsConsentScope reports whether a string names a permission this service asks
+// for. One membership test, so the API and the tools cannot disagree about it.
+func IsConsentScope(s string) bool {
+	for _, k := range ConsentScopes() {
+		if string(k) == s {
+			return true
+		}
+	}
+	return false
+}
 
 type ConsentGrant struct {
 	Scope     ConsentScope `json:"scope"`
 	Granted   bool         `json:"granted"`
 	GrantedAt time.Time    `json:"granted_at"`
 	Note      string       `json:"note,omitempty"`
+}
+
+// OutreachStatus is the lifecycle of one contact request. It is short for the
+// same reason TaskStatus is: every extra state is a state somebody has to be
+// told about.
+type OutreachStatus string
+
+const (
+	// OutreachPending means the candidate has not answered yet. The recruiter
+	// has no name and no channel while a request sits here.
+	OutreachPending OutreachStatus = "pending"
+	// OutreachAccepted is the ONLY state in which a contact channel is released.
+	OutreachAccepted OutreachStatus = "accepted"
+	OutreachDeclined OutreachStatus = "declined"
+	// OutreachWithdrawn is the candidate taking back an acceptance. It closes the
+	// channel again; consent that cannot be withdrawn was never consent.
+	OutreachWithdrawn OutreachStatus = "withdrawn"
+)
+
+// Outreach is one recruiter asking to contact one person, and that person's
+// answer. It is the hinge the whole recruiter feature turns on.
+//
+// Why a record and not a message: "the employer may contact you" is a decision
+// with two parties, a before and an after, and a state that must survive the
+// conversation that created it. Held only in chat it would be unauditable - the
+// person could not later see who asked, what they were told, or withdraw it. The
+// record is also what the guardrails read: an answer may carry a contact channel
+// only if an Outreach in state OutreachAccepted says it may.
+//
+// SubjectID never leaves the server on a recruiter's behalf. The recruiter knows
+// only CandidateRef, which is derived per recruiter so that two recruiters
+// comparing notes cannot tell they are looking at the same person.
+type Outreach struct {
+	ID string `json:"id"`
+	// CandidateRef is the handle the recruiter sees. See tools.CandidateRef.
+	CandidateRef string `json:"candidate_ref"`
+	// SubjectID is who this is actually about. Recruiter-facing payloads must
+	// strip it; resident-facing ones may keep it, because it is their own.
+	SubjectID    string `json:"subject_id"`
+	RecruiterID  string `json:"recruiter_id"`
+	RecruiterOrg string `json:"recruiter_org"`
+	// Position is the concrete job on offer. A request with no named job is a
+	// fishing expedition and the tool schema refuses it.
+	Position string         `json:"position"`
+	City     string         `json:"city,omitempty"`
+	Message  string         `json:"message"`
+	Status   OutreachStatus `json:"status"`
+	// Channel is how the two sides actually reach each other once accepted. It is
+	// empty in every other state, including after a withdrawal.
+	Channel   Channel   `json:"channel,omitempty"`
+	CreatedAt time.Time `json:"created_at"`
+	DecidedAt time.Time `json:"decided_at,omitempty"`
+	// Reason is what the candidate said when declining, if they chose to say.
+	Reason string `json:"reason,omitempty"`
 }
 
 // DemandSignal is one de-identified record contributed to gap analysis. It is

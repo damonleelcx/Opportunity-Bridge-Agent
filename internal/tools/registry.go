@@ -16,6 +16,7 @@ import (
 	"github.com/damonleelcx/Opportunity-Bridge-Agent/internal/obs"
 	"github.com/damonleelcx/Opportunity-Bridge-Agent/internal/retrieval"
 	"github.com/damonleelcx/Opportunity-Bridge-Agent/internal/store"
+	"github.com/damonleelcx/Opportunity-Bridge-Agent/internal/talentsource"
 )
 
 // Risk classifies what a tool can do to the world, which is what decides
@@ -45,6 +46,10 @@ type Env struct {
 	// Live looks things up outside the corpus. Nil is legitimate and means the
 	// corpus is all there is.
 	Live livesource.Provider
+	// Talent looks for PEOPLE outside the first-party opt-in pool. Nil is
+	// legitimate and the common case: with no vendor key the pool is all there
+	// is, and external_talent_scan says so rather than returning nothing.
+	Talent talentsource.Provider
 	// LiveSeq numbers live results across the WHOLE turn, so two searches in one
 	// turn cannot both produce a live-003. It is a pointer because Env is copied
 	// into every tool call and the count has to survive that. Nil numbers each
@@ -185,7 +190,7 @@ func (r *Registry) Call(
 			map[string]any{"tool": name, "scope": string(scope), "granted": g.Granted})
 		if !g.Granted {
 			return Result{
-					Consent: consentPromptFor(scope),
+					Consent: ConsentPromptFor(scope),
 				}, fmt.Errorf("CONSENT_REQUIRED: %q needs the %q permission, which has not been granted. "+
 					"Explain in plain words what would be stored and why, then ask. Do not retry until it is granted", name, scope)
 		}
@@ -266,11 +271,18 @@ func irreversibleImpact(name string) string {
 	case "application_submit":
 		return "Sends an application to an external authority on this person's behalf. It cannot be recalled, " +
 			"and a wrong or duplicate filing can cost them the attempt."
+	case "outreach_request":
+		return "Puts a named employer's approach in front of a real person, under this recruiter's name. " +
+			"It cannot be unsent. No contact details are released by it - the person still decides - but " +
+			"their attention is spent either way, and a mistargeted approach is the cost they pay."
 	}
 	return "This action leaves our boundary and cannot be undone."
 }
 
-func consentPromptFor(scope domain.ConsentScope) *ConsentPrompt {
+// ConsentPromptFor is the wording a person is shown for one permission. Exported
+// because read-aloud raises the same card from the HTTP layer rather than from a
+// tool call, and a second copy of these sentences would be a second policy.
+func ConsentPromptFor(scope domain.ConsentScope) *ConsentPrompt {
 	switch scope {
 	case domain.ConsentStoreProfile:
 		return &ConsentPrompt{
@@ -299,6 +311,35 @@ func consentPromptFor(scope domain.ConsentScope) *ConsentPrompt {
 			Plain:     "May I file an application for you? You will still see and approve each one before it is sent.",
 			WhatFor:   "So a filing does not fail because of a form field.",
 			Retention: "Each filing is shown to you in full and needs your approval separately.",
+		}
+	case domain.ConsentReadAloudVendor:
+		return &ConsentPrompt{
+			Scope: scope, Title: "Send answers to the speech service",
+			Plain: "To read answers out loud in the better voice, the text of the answer has to be sent to an " +
+				"outside speech service. May I?",
+			WhatFor: "So answers can be heard rather than read. Nothing is sent unless you press read-aloud, and " +
+				"if you say no the answer is still read out, in your own device's voice.",
+			// The sentence about what the vendor may then do with it is filled in
+			// by the caller from the configured backbone, because the answer
+			// differs between the free and paid ones and a hardcoded version goes
+			// stale the moment a deployment switches.
+			// See docs/bugfix/2026-08-31-the-privacy-claim-was-false.md
+			Retention: "Only the text of that one answer, only at the moment you press it. It is not stored here.",
+		}
+	case domain.ConsentDiscoverable:
+		return &ConsentPrompt{
+			Scope: scope, Title: "Let employers find you",
+			Plain: "May employers looking to hire see your skills, your city and your experience - " +
+				"without your name and without any way to contact you?",
+			WhatFor: "So work can find you instead of only the other way round. They see what you can do, " +
+				"never who you are. If one wants to reach you, you get the message first and you decide. " +
+				"Saying no changes nothing else about this service.",
+			// Says what is NOT shared as well as what is, because the fear this
+			// question raises is being called by strangers, and answering the fear
+			// is the only honest way to ask.
+			Retention: "You can switch this off at any time and you disappear from the next search. " +
+				"Your name, your phone and your address are never in it. Nobody gets a way to contact you " +
+				"unless you accept them one by one, and you can take that back too.",
 		}
 	case domain.ConsentAggregate:
 		return &ConsentPrompt{

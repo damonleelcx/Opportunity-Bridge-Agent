@@ -57,7 +57,7 @@ That gap is made of **information asymmetry** and **transactional friction**.
 This agent attacks both. It cannot attack the shortage underneath, and it says
 so — see [what it must never do](#the-boundary-that-matters-most).
 
-## Four audiences, four intents
+## Five audiences, five intents
 
 Each bullet of the brief became a first-class **intent** in
 [`internal/intent/intent.go`](internal/intent/intent.go), carrying its own goal,
@@ -68,8 +68,9 @@ chips, the eval suite and the docs all read that one registry.
 | Intent | For | Does |
 |---|---|---|
 | **`individual_pathway`** | one person | Records skills, experience, city and constraints; matches real jobs, training, entrepreneurship support and subsidies; reads out published criteria as met / unmet / unknown; drafts material; tracks the follow-up; explains the procedure |
-| **`low_access_support`** | graduates, workers changing trade, gig workers, migrant workers, caregiving families | Solves the friction before the topic — plain language, larger text, read aloud, dialect-friendly register, assisted-at-a-window mode; always offers a phone number or an address with hours; hands off to a person early, with the context already written down |
+| **`low_access_support`** | graduates, workers changing trade, gig workers, migrant workers, caregiving families | Solves the friction before the topic — plain language, larger text, read aloud, an answer in the person's own variety of Chinese, assisted-at-a-window mode; always offers a phone number or an address with hours; hands off to a person early, with the context already written down |
 | **`service_orchestration`** | frontline staff | Stitches employment, training, social insurance, medical insurance, childcare, eldercare and housing procedures into one tracked list per person, with owners, channels and explicit dependencies — so the resident stops being the integration layer between counters |
+| **`talent_sourcing`** | employers and agencies | Searches an **opt-in** pool of people who switched on "discoverable by employers" — no names, no contact details, no protected attributes, no ranking. To reach anybody it sends one request about one named job, gated on a human approval, and that person decides. Withdrawing the permission empties the pool of them on the next search |
 | **`supply_demand_insight`** | planners | Over consented, de-identified aggregates only: finds where *the jobs are here but people cannot reach them* and *the support exists but nobody claims it*, with a k-anonymity floor, the consent coverage stated next to every figure, and association rather than cause |
 
 ## The boundary that matters most
@@ -216,7 +217,7 @@ internal/agent ─── the loop: understand → plan → act → verify → re
 |---|---|
 | `cmd/obagent` | the server |
 | `cmd/obaeval` | the evaluation runner |
-| `data/` | **sample** corpus — every id starts with `SAMPLE/` |
+| `data/` | **sample** corpus — every record's `source_ref` starts with `SAMPLE/` |
 | `evals/` | 27 cases: success, edge, adversarial, routing |
 | `demo/` | the offline replay script |
 | `.env.example` | every variable, documented; `.env` itself is gitignored |
@@ -261,21 +262,56 @@ Every failure carries a code, what it means for the person, and what to do next.
 
 ## Honest limits
 
-- **The corpus is invented.** Twenty-one listings and twelve procedure guides,
-  shaped like the real thing so the machinery can be exercised end to end. Ids
-  begin with `SAMPLE/` and that prefix reaches the screen.
+- **The corpus is invented.** Listings, courses, start-up support, subsidies and
+  procedure guides, shaped like the real thing so the machinery can be exercised
+  end to end. Every record's `source_ref` begins with `SAMPLE/`, and the app
+  carries a permanent "sample corpus" flag. The exact counts are reported by
+  `/api/meta` (`corpus_opportunities`, `corpus_knowledge_docs`) rather than
+  written down here, because a number in prose drifts the moment a record is
+  added — it once said 21 while the answer was 26. See
+  `docs/bugfix/2026-08-31-honest-limits-were-not-honest.md`.
 - **`application_submit` has no live authority endpoint.** It records and tracks
   the filing and says plainly that the person must still complete it through the
   channel shown. A demo that claimed to have filed something would be worse than
   one that says it cannot.
-- **Voice uses the browser's own speech APIs.** No audio leaves the device; a
-  browser without them is told so, with the offline route.
-- **Dialect support is register, not dialect.** It says so rather than
-  pretending.
-- **The sample corpus is written in English**, so a Chinese answer quotes English
-  programme titles and addresses verbatim. That is deliberate — translating an
-  address is the same thing as inventing one — and it goes away when the corpus
-  is replaced with real Chinese-language feeds.
+- **A forgotten password is recoverable, and only through a confirmed address.**
+  New accounts give an email; existing ones keep working and can add one. An
+  unconfirmed address blocks nothing except the reset itself. The reset request
+  answers identically whether or not an address is registered, links are
+  single-use, and setting a password signs every device out. Mail is off unless
+  `OBA_SMTP_HOST`, `OBA_SMTP_FROM` and `OBA_PUBLIC_ORIGIN` are all set, and the
+  sign-in page then stops offering a reset rather than showing a dead form. See
+  `docs/bugfix/2026-08-31-email-verification-and-reset.md`.
+- **Read-aloud through a speech vendor needs the person's permission**
+  (`read_aloud_via_vendor`), checked in the handler before any text leaves.
+  Refusing costs nothing: the browser's own voice reads the answer instead. See
+  `docs/bugfix/2026-08-31-read-aloud-needs-consent.md`.
+- **Voice is not private by default, and the page says so.** Dictation is
+  transcribed by the browser, which on the major browsers means the browser
+  maker's servers — the audio does leave the device, though it never passes
+  through this service. Read-aloud uses the browser's own voice unless a speech
+  vendor is configured; where one is, the **answer text** is sent to that vendor
+  to be rendered, and on the free backbone the vendor's terms allow using those
+  requests to improve its models. Which of the two a deployment is doing is read
+  from `/api/health` rather than written into the copy. See
+  `docs/17-read-aloud.md` and
+  `docs/bugfix/2026-08-31-the-privacy-claim-was-false.md`.
+- **Dialect lives in the text, not in the voice.** It answers in the variety the
+  person is using. Read-aloud has no dialect voice, so those characters are
+  spoken in Mandarin. Where it cannot write a variety properly it says so and
+  falls back to plain spoken Mandarin rather than faking it, and programme
+  names, ids, phone numbers and addresses always stay in their official written
+  form. See `docs/bugfix/2026-08-31-dialect-moved-into-the-text.md`.
+- **Names, ids, addresses and phone numbers are never translated or restyled** —
+  not into the answer's language, and not into a regional variety. A translated
+  address is an invented address, and an id the counter does not recognise is
+  worse than no id. This is enforced in the language directive rather than left
+  to judgement, because a live result or a future feed can arrive in any
+  language. (This bullet used to describe the corpus as English-language. It
+  is not, and has not been for some time: everything in `data/` is Chinese, and
+  a fence in `internal/corpus` now fails when the documents and the data
+  disagree. See `docs/bugfix/2026-08-31-the-privacy-claim-was-false.md` for why
+  claims like that are derived rather than written down wherever they can be.)
 
 ## Licence
 

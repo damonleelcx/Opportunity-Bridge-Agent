@@ -23,7 +23,7 @@ import (
 
 func testEnv(t *testing.T, role domain.Role, consent ...domain.ConsentScope) Env {
 	t.Helper()
-	c, err := corpus.Load("../../data")
+	c, err := corpus.Load("../../testdata/corpus")
 	if err != nil {
 		t.Fatalf("corpus: %v", err)
 	}

@@ -8,6 +8,10 @@ export GOWORK := off
 BIN      := bin
 ADDR     ?= :8787
 CORPUS   ?= data
+# The offline demo and the evaluation suite cite local programmes that are no
+# longer shipped: they moved to testdata/corpus when the invented organisations
+# left the product. See testdata/README.md.
+FIXTURE  ?= testdata/corpus
 STATE    ?= .state/oba.json
 DEMO     ?= demo/scripted-turns.json
 
@@ -39,7 +43,7 @@ run-deepseek: ## Run against DeepSeek (needs DEEPSEEK_API_KEY); model ids follow
 
 .PHONY: demo
 demo: ## Run offline against the scripted backend - no API key, no network
-	OBA_ADDR=$(ADDR) OBA_CORPUS_DIR=$(CORPUS) OBA_BACKEND=scripted OBA_SCRIPT=$(DEMO) \
+	OBA_ADDR=$(ADDR) OBA_CORPUS_DIR=$(FIXTURE) OBA_BACKEND=scripted OBA_SCRIPT=$(DEMO) \
 	  go run ./cmd/obagent
 
 .PHONY: test
@@ -105,6 +109,11 @@ check: ## fmt check, vet, test - what CI runs
 	@test -z "$$(gofmt -l . | grep -v '^$$')" || { echo "gofmt needed:"; gofmt -l .; exit 1; }
 	go vet ./...
 	go test ./...
+
+.PHONY: talent-smoke
+talent-smoke: ## Live smoke the external talent vendors (needs keys in .env)
+	@set -a; . ./.env; set +a; \
+	go test ./internal/talentsource/ -run 'TestLive' -count=1 -v
 
 .PHONY: fmt
 fmt: ## Format everything

@@ -1,9 +1,11 @@
 package livesource_test
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
+	"log/slog"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -655,5 +657,138 @@ func TestIntentsForMapsCorpusKindsOntoSearchableIntents(t *testing.T) {
 		if fmt.Sprint(got) != fmt.Sprint(tc.want) {
 			t.Errorf("IntentsFor(%v) = %v, want %v", tc.kinds, got, tc.want)
 		}
+	}
+}
+
+// The provider must not put more requests on the wire than the vendor accepts.
+//
+// One Lookup fans out six requests, and a turn issues several lookups. Ungated,
+// a measured 深圳 turn had roughly eighteen in flight at once and lost five to
+// 429 — three of them the `oneWeek` window, which is the one whose loss makes
+// the answer fall back to `noLimit` and offer listings a year and a half old.
+// See docs/bugfix/2026-08-31-honest-limits-were-not-honest.md
+func TestLookupDoesNotExceedTheInFlightCap(t *testing.T) {
+	var mu sync.Mutex
+	inFlight, peak, served := 0, 0, 0
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		mu.Lock()
+		inFlight++
+		served++
+		if inFlight > peak {
+			peak = inFlight
+		}
+		mu.Unlock()
+
+		// Held open long enough that every request the provider is willing to
+		// issue concurrently overlaps here. Without the hold the fan-out could
+		// finish one request before starting the next and the peak would say
+		// nothing.
+		time.Sleep(60 * time.Millisecond)
+
+		mu.Lock()
+		inFlight--
+		mu.Unlock()
+		w.Write(page([2]string{"深圳数控操作工", pinned.AddDate(0, 0, -3).Format("2006-01-02")}))
+	}))
+	defer srv.Close()
+
+	b := bocha(srv.URL)
+	// Explicit width, so this tests the mechanism rather than restating the
+	// shipped default. The default has its own test below.
+	b.MaxInFlight = 2
+	if _, err := b.Lookup(context.Background(), livesource.Query{City: "深圳", Keyword: "数控", Limit: 5}); err != nil {
+		t.Fatalf("lookup: %v", err)
+	}
+
+	mu.Lock()
+	defer mu.Unlock()
+	// Six requests still get made — the cap paces them, it does not drop any.
+	if served != 6 {
+		t.Errorf("served %d requests, want 6 (two intents x three windows); "+
+			"the cap must pace the fan-out, not shrink it", served)
+	}
+	if peak > 2 {
+		t.Errorf("peak concurrency %d with MaxInFlight=2: the cap is not being honoured, and "+
+			"what the vendor refuses is whichever window loses the race", peak)
+	}
+}
+
+// The shipped default is one at a time, and that number came from a sweep.
+//
+// Two at a time lost eight of eighteen requests to 429 against the live API;
+// one lost none, twice, including immediately after a run that had just loaded
+// the vendor's window. An earlier probe said three was safe — it had measured
+// bursts six seconds apart rather than the sustained traffic a turn produces,
+// and at three a live turn still lost four windows. If somebody raises this,
+// they should have a fresh measurement, not an intuition.
+// See docs/bugfix/2026-08-31-honest-limits-were-not-honest.md
+func TestTheShippedDefaultSerialisesSearchRequests(t *testing.T) {
+	var mu sync.Mutex
+	inFlight, peak := 0, 0
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		mu.Lock()
+		inFlight++
+		if inFlight > peak {
+			peak = inFlight
+		}
+		mu.Unlock()
+		time.Sleep(30 * time.Millisecond)
+		mu.Lock()
+		inFlight--
+		mu.Unlock()
+		w.Write(page([2]string{"深圳数控操作工", pinned.AddDate(0, 0, -3).Format("2006-01-02")}))
+	}))
+	defer srv.Close()
+
+	b := bocha(srv.URL) // no MaxInFlight: whatever the product ships with
+	if _, err := b.Lookup(context.Background(), livesource.Query{City: "深圳", Keyword: "数控", Limit: 5}); err != nil {
+		t.Fatalf("lookup: %v", err)
+	}
+	mu.Lock()
+	defer mu.Unlock()
+	if peak != 1 {
+		t.Errorf("the shipped default allows %d requests at once; the live sweep says anything "+
+			"above one is refused, and the refusal takes the freshest window with it", peak)
+	}
+}
+
+// Waiting for a slot must end when the turn does, and must say it was never sent.
+//
+// A queued request that outlived its context would be charged to a turn that has
+// already given up, and reporting it as a vendor failure would send an operator
+// looking at an API that never saw the request. The distinction is only visible
+// in the per-window log — Lookup surfaces one error for the whole fan-out, and
+// which one that is depends on ask order, not on what actually went wrong.
+func TestWaitingForASlotEndsWithTheTurn(t *testing.T) {
+	release := make(chan struct{})
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		<-release
+		w.Write(page())
+	}))
+	defer srv.Close()
+	defer close(release)
+
+	var logs bytes.Buffer
+	b := bocha(srv.URL)
+	b.Log = slog.New(slog.NewTextHandler(&logs, nil))
+	// Width one, so exactly one request occupies the wire and the other five
+	// can only be queued.
+	b.MaxInFlight = 1
+
+	ctx, cancel := context.WithTimeout(context.Background(), 150*time.Millisecond)
+	defer cancel()
+	if _, err := b.Lookup(ctx, livesource.Query{City: "深圳", Keyword: "数控", Limit: 5}); err == nil {
+		t.Fatal("a lookup whose context expired while queued reported success")
+	}
+
+	out := logs.String()
+	if !strings.Contains(out, "SEARCH_NOT_ATTEMPTED") {
+		t.Errorf("no window reported SEARCH_NOT_ATTEMPTED; five of six requests could not have been "+
+			"sent at width one, so something is reporting them as though they were:\n%s", out)
+	}
+	// The gate must never manufacture the vendor error it exists to prevent.
+	if strings.Contains(out, "SEARCH_RATE_LIMITED") {
+		t.Errorf("a queued request was reported as rate-limited by the vendor, which never saw it:\n%s", out)
 	}
 }

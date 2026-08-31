@@ -60,13 +60,41 @@ const (
 	MaxChars = 3000
 )
 
+// paidBackbones are the Fish synthesis backbones whose terms do NOT permit using
+// requests to improve the vendor's models.
+//
+// It is an allowlist rather than a denylist, and that direction is the point.
+// The one thing this table decides is a sentence on the landing page telling a
+// person whether the answer they are about to have read aloud - their city,
+// their unemployment, the benefit they are claiming - may be trained on. A
+// backbone this table has not heard of is therefore treated as one that trains.
+// Over-warning costs a reader some caution they did not need; under-warning
+// costs them something they cannot take back.
+//
+// `s1` is deliberately absent: its terms were not checked, so it warns.
+// See docs/bugfix/2026-08-31-the-privacy-claim-was-false.md
+var paidBackbones = map[string]bool{
+	"s2.1-pro": true,
+	"s2-pro":   true,
+}
+
+// TrainsOnRequests reports whether this deployment's backbone may be trained on.
+// An empty model resolves the same way NewFish resolves it, so the answer cannot
+// disagree with what is actually being called.
+func TrainsOnRequests(model string) bool { return !paidBackbones[resolveModel(model)] }
+
+func resolveModel(model string) string {
+	if model == "" {
+		return DefaultFishModel
+	}
+	return model
+}
+
 func NewFish(endpoint, apiKey, voiceID, model string, log *slog.Logger) *Fish {
 	if endpoint == "" {
 		endpoint = DefaultFishEndpoint
 	}
-	if model == "" {
-		model = DefaultFishModel
-	}
+	model = resolveModel(model)
 	return &Fish{
 		Endpoint: endpoint, APIKey: apiKey, VoiceID: voiceID, Model: model,
 		// A generous timeout: synthesis is roughly a fifth of real time, so a

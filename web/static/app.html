@@ -40,7 +40,7 @@
          so setGateMode owns it. Leaving the attribute on would let setLocale's
          sweep put "先登录" back over "注册账号" on every language switch. -->
     <h1 class="gate-title" id="gateTitle">先登录</h1>
-    <p class="gate-lede" data-i18n="gate.lede">你的对话、档案和进行中任务只属于你的账号，别人看不到。</p>
+    <p class="gate-lede" id="gateLede" data-i18n="gate.lede">你的对话、档案和进行中任务只属于你的账号，别人看不到。</p>
 
     <label class="gate-field">
       <span data-i18n="gate.username">用户名</span>
@@ -62,6 +62,16 @@
         </button>
       </span>
     </label>
+    <!-- Required to create an account, absent when signing in. It is the ONLY
+         route back into an account whose password is forgotten: there is no
+         support desk here that can identify a person, and losing the account
+         loses the profile, the tracked tasks and the consents with it.
+         See docs/bugfix/2026-08-31-email-verification-and-reset.md -->
+    <label class="gate-field" id="gateEmailField" hidden>
+      <span data-i18n="gate.email">邮箱</span>
+      <input id="gateEmail" name="email" type="email" autocomplete="email" inputmode="email">
+      <small class="gate-hint" data-i18n="gate.emailHint">忘了密码时，这是唯一能把账号找回来的办法。</small>
+    </label>
     <label class="gate-field" id="gateInviteField" hidden>
       <span data-i18n="gate.invite">邀请码</span>
       <input id="gateInvite" name="invite" autocomplete="off">
@@ -72,6 +82,10 @@
 
     <button id="gateSubmit" class="btn btn-primary gate-submit" type="submit" data-i18n="gate.signIn">登录</button>
     <button id="gateSwitch" class="link gate-switch" type="button" data-i18n="gate.toSignUp">还没有账号？去注册</button>
+    <!-- Hidden until /api/health says this deployment can actually send mail. A
+         form that silently does nothing is worse than an absent one: the person
+         waits for a message nobody sent. -->
+    <button id="gateForgot" class="link gate-switch" type="button" hidden data-i18n="gate.forgot">忘了密码？</button>
 
     <!-- The gate is now the first screen, and it covers the sidebar where the
          language control lives. A bilingual product whose only reachable
@@ -238,6 +252,17 @@
         <button id="forget" class="link-danger" data-i18n="profile.clear">清空记录</button>
       </div>
       <div id="records"></div>
+    </section>
+
+    <!-- The address, its state, and the controls for both. This is the only
+         place an account created before addresses existed can get one — and
+         without one there is no way back in after a forgotten password.
+         See docs/bugfix/2026-08-31-email-verification-and-reset.md -->
+    <section class="card">
+      <div class="card-head">
+        <h3 data-i18n="email.title">邮箱</h3>
+      </div>
+      <div id="emailPanel"></div>
     </section>
 
     <section class="card">

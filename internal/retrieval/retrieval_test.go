@@ -11,7 +11,7 @@ import (
 
 func load(t *testing.T) *retrieval.Index {
 	t.Helper()
-	c, err := corpus.Load("../../data")
+	c, err := corpus.Load("../../testdata/corpus")
 	if err != nil {
 		t.Fatalf("corpus: %v", err)
 	}
@@ -60,7 +60,7 @@ func TestTokenizerHandlesBothScripts(t *testing.T) {
 
 func TestFiltersAreHardNotSoft(t *testing.T) {
 	idx := load(t)
-	c0, _ := corpus.Load("../../data")
+	c0, _ := corpus.Load("../../testdata/corpus")
 	// A LOCAL listing in the wrong city must not surface. Ranking a good text
 	// match above a location filter is how somebody gets sent 400km away.
 	for _, h := range idx.SearchOpportunities(retrieval.Query{Text: "数控 机加工", City: "拉萨"}) {
@@ -75,7 +75,7 @@ func TestFiltersAreHardNotSoft(t *testing.T) {
 	if len(hits) == 0 {
 		t.Fatal("no training results in Chengdu")
 	}
-	c, _ := corpus.Load("../../data")
+	c, _ := corpus.Load("../../testdata/corpus")
 	for _, h := range hits {
 		o, ok := c.Opportunity(h.ID)
 		if !ok {
@@ -114,7 +114,7 @@ func TestRankingExplainsItself(t *testing.T) {
 // instead of being told there is nothing.
 func TestNationalRecordsReachEveryCity(t *testing.T) {
 	idx := load(t)
-	c, _ := corpus.Load("../../data")
+	c, _ := corpus.Load("../../testdata/corpus")
 	hits := idx.SearchOpportunities(retrieval.Query{Text: "失业保险金 培训补贴 社保", City: "深圳"})
 	if len(hits) == 0 {
 		t.Fatal("a city with no local listings got nothing at all")
@@ -134,7 +134,7 @@ func TestNationalRecordsReachEveryCity(t *testing.T) {
 // employer with an address is more actionable than a policy summary.
 func TestLocalListingsOutrankTheNationalFramework(t *testing.T) {
 	idx := load(t)
-	c, _ := corpus.Load("../../data")
+	c, _ := corpus.Load("../../testdata/corpus")
 	hits := idx.SearchOpportunities(retrieval.Query{Text: "培训 补贴", City: "成都"})
 	if len(hits) < 2 {
 		t.Fatalf("expected both scopes, got %d hits", len(hits))

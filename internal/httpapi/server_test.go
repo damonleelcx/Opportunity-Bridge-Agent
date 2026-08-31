@@ -45,7 +45,7 @@ func newServerWith(t *testing.T, script llm.Script, tweak func(*config.Config)) 
 func newServerTweaking(t *testing.T, script llm.Script, tweak func(*config.Config),
 	tweakSrv func(*httpapi.Server)) *httptest.Server {
 	t.Helper()
-	c, err := corpus.Load("../../data")
+	c, err := corpus.Load("../../testdata/corpus")
 	if err != nil {
 		t.Fatalf("corpus: %v", err)
 	}
@@ -128,8 +128,12 @@ func anon(t *testing.T, srv *httptest.Server) *http.Client {
 func signedIn(t *testing.T, srv *httptest.Server, username string) *http.Client {
 	t.Helper()
 	c := anon(t, srv)
+	// An address is required of new accounts — it is the only route back into
+	// one whose password is forgotten. Derived from the username so every test
+	// account has its own and no two collide, which is itself enforced.
 	res := postAs(t, c, srv.URL+"/api/auth/signup", map[string]string{
 		"username": username, "password": "a passphrase worth typing", "invite_code": "let-me-in",
+		"email": store.NormaliseUsername(username) + "@example.test",
 	})
 	defer res.Body.Close()
 	if res.StatusCode != http.StatusOK {
@@ -296,8 +300,104 @@ func TestMetaDeclaresTheLimitsUpFront(t *testing.T) {
 			t.Errorf("meta does not declare %q, so a person discovers the limit by hitting it", k)
 		}
 	}
+	// The harness loads the FIXTURE corpus, which is still the invented one, so
+	// true is the right answer here — and it is derived from that data rather
+	// than declared. A literal kept the 「演示语料」 badge over the five real
+	// national schemes once the invented records left the product.
+	// See docs/bugfix/2026-08-31-the-invented-corpus-left-the-product.md
 	if m["corpus_is_sample"] != true {
-		t.Error("the interface must be told the corpus is sample data")
+		t.Error("the interface is not told the fixture corpus contains invented records")
+	}
+
+	// The landing page states how large the corpus is, and it used to state it
+	// as a number typed into the copy: it said 21 while the answer was 26. The
+	// count now has one producer, and this is the join between the producer and
+	// the page. See docs/bugfix/2026-08-31-honest-limits-were-not-honest.md
+	c, err := corpus.Load("../../testdata/corpus")
+	if err != nil {
+		t.Fatalf("corpus: %v", err)
+	}
+	for _, want := range []struct {
+		key string
+		n   int
+	}{
+		{"corpus_opportunities", len(c.Opportunities)},
+		{"corpus_knowledge_docs", len(c.Docs)},
+	} {
+		got, ok := m[want.key].(float64)
+		if !ok {
+			t.Errorf("meta does not report %q, so the page has no source for the tally and would fall "+
+				"back to a number somebody typed", want.key)
+			continue
+		}
+		if int(got) != want.n {
+			t.Errorf("meta reports %s=%d, corpus holds %d", want.key, int(got), want.n)
+		}
+	}
+}
+
+// The landing page states these facts, and its readers are not signed in.
+//
+// They were first served from /api/meta, which is behind the gate: an anonymous
+// reader got a 401 and the two sentences under "honest limits" never appeared —
+// silently, on the one section of the page whose job is to be accurate. They now
+// come from /api/health, which is already open, and this holds that open.
+// See docs/bugfix/2026-08-31-honest-limits-were-not-honest.md
+func TestDeploymentFactsAreReadableWithoutSigningIn(t *testing.T) {
+	srv := newServer(t, llm.Script{Turns: []llm.ScriptedTurn{{Text: "x"}}})
+	defer srv.Close()
+
+	// srv.Client() trusts the test certificate and carries no cookie jar, so
+	// this is a stranger with no sign-in.
+	res, err := srv.Client().Get(srv.URL + "/api/health")
+	if err != nil {
+		t.Fatalf("health: %v", err)
+	}
+	defer res.Body.Close()
+	if res.StatusCode != http.StatusOK {
+		t.Fatalf("an anonymous reader got %d from /api/health; the landing page cannot state anything", res.StatusCode)
+	}
+	var m map[string]any
+	_ = json.NewDecoder(res.Body).Decode(&m)
+
+	c, err := corpus.Load("../../testdata/corpus")
+	if err != nil {
+		t.Fatalf("corpus: %v", err)
+	}
+	for _, want := range []struct {
+		key string
+		n   int
+	}{
+		{"corpus_opportunities", len(c.Opportunities)},
+		{"corpus_knowledge_docs", len(c.Docs)},
+	} {
+		got, ok := m[want.key].(float64)
+		if !ok {
+			t.Errorf("/api/health does not report %q; the landing page would fall back to a number "+
+				"somebody typed, which is how it came to say 21 when the answer was 26", want.key)
+			continue
+		}
+		if int(got) != want.n {
+			t.Errorf("health reports %s=%d, corpus holds %d", want.key, int(got), want.n)
+		}
+	}
+	// The landing page's privacy sentence branches on this. A deployment that
+	// does not report it is one whose page cannot tell the reader whether their
+	// answer text is sent to a speech vendor.
+	// See docs/bugfix/2026-08-31-the-privacy-claim-was-false.md
+	if _, ok := m["speech_vendor_enabled"].(bool); !ok {
+		t.Error("/api/health does not report speech_vendor_enabled; the page could not say whether " +
+			"pressing read-aloud sends the answer text to a third party")
+	}
+	if _, ok := m["live_search_enabled"].(bool); !ok {
+		t.Error("/api/health does not report live_search_enabled; the page could not say whether " +
+			"THIS deployment has the nationwide lookup, only that the product needs it configured")
+	}
+	// And nothing personal rode along with them.
+	for _, forbidden := range []string{"sessions", "subject_id", "username", "accounts"} {
+		if _, present := m[forbidden]; present {
+			t.Errorf("/api/health carries %q; it is an unauthenticated endpoint", forbidden)
+		}
 	}
 }
 
@@ -539,6 +639,7 @@ func TestSignInCookieCarriesItsProtections(t *testing.T) {
 
 	res := postAs(t, anon(t, srv), srv.URL+"/api/auth/signup", map[string]string{
 		"username": "flagcheck", "password": "a passphrase worth typing", "invite_code": "let-me-in",
+		"email": "flagcheck@example.test",
 	})
 	defer res.Body.Close()
 	var found *http.Cookie
@@ -573,6 +674,7 @@ func TestSignOutRevokesServerSide(t *testing.T) {
 	fresh := anon(t, srv)
 	up := postAs(t, fresh, srv.URL+"/api/auth/signup", map[string]string{
 		"username": "leaver", "password": "a passphrase worth typing", "invite_code": "let-me-in",
+		"email": "leaver@example.test",
 	})
 	up.Body.Close()
 	var stolen *http.Cookie

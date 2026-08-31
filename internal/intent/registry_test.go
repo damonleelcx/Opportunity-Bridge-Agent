@@ -18,11 +18,19 @@ import (
 func TestEveryAudienceHasAnIntent(t *testing.T) {
 	// The product brief names four audiences. Each is an intent, not a prompt
 	// paragraph - if one is deleted, this fails.
+	//
+	// talent_sourcing is the fifth and it is NOT from the brief: it was added
+	// later, deliberately, to let employers reach people who opted in. It is
+	// listed here so the same completeness checks apply to it, and so that
+	// deleting it is a decision somebody makes rather than a line that rots.
+	// Its own boundary is fenced separately - see TestRecruiterCannotReachResidentIntents
+	// and internal/tools/recruiter_test.go.
 	want := []intent.ID{
 		intent.IndividualPathway,
 		intent.LowAccessSupport,
 		intent.ServiceOrchestration,
 		intent.SupplyDemandInsight,
+		intent.TalentSourcing,
 	}
 	for _, id := range want {
 		in, ok := intent.Get(id)
@@ -49,7 +57,7 @@ func TestEveryAudienceHasAnIntent(t *testing.T) {
 		}
 	}
 	if got := len(intent.All()); got != len(want) {
-		t.Errorf("registry holds %d intents, expected exactly the %d audiences", got, len(want))
+		t.Errorf("registry holds %d intents, expected exactly the %d listed above", got, len(want))
 	}
 }
 
