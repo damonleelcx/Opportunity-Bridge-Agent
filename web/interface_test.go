@@ -1143,6 +1143,38 @@ func TestCopyDoesNotCountWhatTheRegistryDefines(t *testing.T) {
 	}
 }
 
+// The settings drawer must survive a refresh, and the role most of all.
+//
+// Locale and theme already read localStorage on boot. Role and intent did not:
+// boot calls newSession($("#role").value) immediately after buildRoleSelect()
+// has rebuilt the options, so the value read back was whatever came first —
+// resident — and newSession then cleared the pinned intent. A recruiter who
+// refreshed was silently put back into a resident session, which is the one
+// setting where "it forgot" also means "it changed who you are".
+//
+// The reachability guard is fenced alongside it because restoring a pin blindly
+// is worse than not restoring it: an intent left over from another role is
+// refused by the server with INTENT_NOT_PERMITTED_FOR_ROLE, so every turn would
+// fail until the person noticed a dropdown they never touched.
+func TestSettingsDrawerSurvivesARefresh(t *testing.T) {
+	app := stripJSComments(asset(t, "app.js"))
+	for _, want := range []string{`"oba.role"`, `"oba.intent"`, `"oba.locale"`, `"oba.theme"`} {
+		if !strings.Contains(app, want) {
+			t.Errorf("app.js never touches %s, so that control resets on every refresh", want)
+		}
+	}
+	// Stored values are validated before use, not trusted. Without these the app
+	// posts a role the server rejects, or pins an intent this role cannot reach.
+	if !strings.Contains(app, "state.meta.roles") || !strings.Contains(app, "includes(wanted)") {
+		t.Error("the remembered role is used without checking it against meta.roles; " +
+			"a role removed between deploys would be posted to /api/sessions and rejected")
+	}
+	if !strings.Contains(app, "state.intents.some") {
+		t.Error("the remembered intent is restored without checking it is reachable in this role; " +
+			"a stale pin makes every turn fail with INTENT_NOT_PERMITTED_FOR_ROLE")
+	}
+}
+
 // A capped list must say what it capped.
 //
 // externalScanCard draws only the first few vendor shapes, because a scan can

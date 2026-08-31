@@ -100,8 +100,43 @@ async function boot() {
   paintWho();
   buildRoleSelect();
   wire();
+  // Validated against meta.roles rather than trusted: a role removed from
+  // domain.Roles() between deploys would otherwise be posted to /api/sessions,
+  // which rejects it, and the app would fail to boot on a stale preference.
+  const wanted = recall("oba.role", "");
+  if (wanted && (state.meta.roles || []).includes(wanted)) $("#role").value = wanted;
   await newSession($("#role").value);
   await refreshSessions();
+}
+
+// remember / recall are the settings drawer's memory.
+//
+// Locale and theme already survived a refresh because they read localStorage on
+// boot. Role and intent did not: boot calls newSession($("#role").value) right
+// after buildRoleSelect() has rebuilt the options, so the value read back is
+// whatever happens to be first — resident — and newSession then clears the
+// pinned intent. A recruiter who refreshed was silently put back in a resident
+// session, which is the one place where "it forgot" also means "it changed who
+// you are".
+//
+// Wrapped, because localStorage throws rather than returning null in a private
+// window and in some embedded browsers, and a settings preference is not worth
+// failing the whole boot for.
+function recall(key, fallback) {
+  try {
+    return localStorage.getItem(key) ?? fallback;
+  } catch {
+    return fallback;
+  }
+}
+
+function remember(key, value) {
+  try {
+    if (value) localStorage.setItem(key, value);
+    else localStorage.removeItem(key);
+  } catch {
+    /* a preference that cannot be stored is not an error worth showing */
+  }
 }
 
 function buildRoleSelect() {
@@ -131,11 +166,17 @@ function wire() {
     await refreshSessions();
     if (state.session) state.session.locale = e.target.value;
   });
-  $("#role").addEventListener("change", (e) => newSession(e.target.value));
+  $("#role").addEventListener("change", (e) => {
+    remember("oba.role", e.target.value);
+    return newSession(e.target.value);
+  });
   $("#newSession").addEventListener("click", () => newSession($("#role").value));
 
   wireDrawers();
-  $("#intentPick").addEventListener("change", (e) => { state.pinnedIntent = e.target.value; });
+  $("#intentPick").addEventListener("change", (e) => {
+    state.pinnedIntent = e.target.value;
+    remember("oba.intent", e.target.value);
+  });
 
   $("#composer").addEventListener("submit", (e) => { e.preventDefault(); send($("#input").value); });
   const input = $("#input");
@@ -237,6 +278,22 @@ async function loadIntents() {
     o.title = it.goal;
     sel.append(o);
   }
+  // Restore the pinned intent, but only if it is REACHABLE IN THIS ROLE.
+  //
+  // newSession clears the pin, so this is what carries it across a refresh. The
+  // reachability check is the load-bearing half: a pin left over from another
+  // role is rejected by the server with INTENT_NOT_PERMITTED_FOR_ROLE, so
+  // restoring it blindly would make every turn fail until the person noticed a
+  // dropdown they never touched. An unreachable pin is dropped from storage too,
+  // rather than left to fail again on the next load.
+  if (!state.pinnedIntent) {
+    const wanted = recall("oba.intent", "");
+    if (wanted) {
+      const reachable = state.intents.some((it) => it.id === wanted && it.enabled !== false);
+      if (reachable) state.pinnedIntent = wanted;
+      else remember("oba.intent", "");
+    }
+  }
   sel.value = state.pinnedIntent;
 }
 
@@ -319,6 +376,9 @@ async function openSession(id) {
   const d = await api("GET", `/api/sessions/${id}`);
   state.session = d.session;
   $("#role").value = d.session.role;
+  // Opening somebody's earlier conversation is also a choice of role, so the
+  // next refresh should land back in it rather than in resident.
+  remember("oba.role", d.session.role);
   $("#transcript").innerHTML = "";
   greeting();
   for (const turn of d.session.history || []) {
