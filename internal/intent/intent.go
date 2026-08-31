@@ -454,16 +454,61 @@ is the pool or the market.
 	},
 }
 
+// universalTools are offered on EVERY intent, whatever it lists.
+//
+// Same reasoning as guardrail.universalVerifiers: the registry's AllowedTools
+// encode what an intent is FOR, and these encode something prior to it — what
+// the interface can always do. An intent cannot switch them off, and a new
+// intent cannot forget to name them.
+//
+// accessibility_set is here because the delivery toggles (plain language, large
+// text, read aloud) sit in the chrome and are visible in every session. Turning
+// one off SENDS A MESSAGE asking the agent to change it, so an intent without
+// the tool leaves the model able to say "of course" and unable to do anything:
+// the box reappears on the next load, having apparently been ignored. Three of
+// the five intents were in that state — service_orchestration,
+// supply_demand_insight and talent_sourcing — and the toggle was dead in all of
+// them. See docs/bugfix/2026-08-28-plain-language-could-not-be-turned-off.md,
+// which fixed the wording and could not fix this.
+var universalTools = []string{"accessibility_set"}
+
+// intents is the registry as everything downstream reads it: the table above,
+// plus the tools no intent may be without. Normalising here rather than at each
+// call site means Get, All, ForRole and the prompt assembly cannot disagree
+// about what a given intent may do.
+var intents = withUniversalTools(registry)
+
+func withUniversalTools(in []Intent) []Intent {
+	out := make([]Intent, len(in))
+	copy(out, in)
+	for i := range out {
+		have := make(map[string]bool, len(out[i].AllowedTools))
+		for _, name := range out[i].AllowedTools {
+			have[name] = true
+		}
+		// A fresh slice: appending to the literal's backing array would let two
+		// intents share storage and overwrite each other's last entry.
+		merged := append([]string(nil), out[i].AllowedTools...)
+		for _, name := range universalTools {
+			if !have[name] {
+				merged = append(merged, name)
+			}
+		}
+		out[i].AllowedTools = merged
+	}
+	return out
+}
+
 var byID = func() map[ID]Intent {
-	m := make(map[ID]Intent, len(registry))
-	for _, in := range registry {
+	m := make(map[ID]Intent, len(intents))
+	for _, in := range intents {
 		m[in.ID] = in
 	}
 	return m
 }()
 
 // All returns every intent in display order.
-func All() []Intent { return append([]Intent(nil), registry...) }
+func All() []Intent { return append([]Intent(nil), intents...) }
 
 // Get returns the intent, and whether it exists.
 func Get(id ID) (Intent, bool) {
@@ -520,8 +565,8 @@ func ToolAllowed(id ID, tool string) bool {
 
 // IDs returns every real intent id, sorted, for tests and docs generation.
 func IDs() []string {
-	out := make([]string, 0, len(registry))
-	for _, in := range registry {
+	out := make([]string, 0, len(intents))
+	for _, in := range intents {
 		out = append(out, string(in.ID))
 	}
 	sort.Strings(out)

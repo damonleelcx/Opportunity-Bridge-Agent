@@ -156,3 +156,76 @@ func TestIndividualPathwayRequiresTheStepToBeRecorded(t *testing.T) {
 	}
 	t.Error("individual_pathway does not run next_step_is_tracked; a step handed over in text only goes unrecorded")
 }
+
+// The delivery toggles sit in the chrome and are visible in EVERY session, so
+// every intent has to be able to act on them.
+//
+// Turning "plain language" off does not flip a client-side setting: it sends a
+// message asking the agent to change it, and the agent needs accessibility_set
+// to do so. An intent without the tool leaves the model able to say "of course"
+// and unable to do anything — the box reappears on the next load, having
+// apparently been ignored. Three of the five intents were in exactly that state
+// (service_orchestration, supply_demand_insight, talent_sourcing) and the
+// toggle was dead in all of them.
+//
+// This is why universalTools exists, and why this test reads intent.All()
+// rather than the literal: an intent cannot switch them off, and a new intent
+// cannot forget to name them.
+func TestEveryIntentCanChangeHowAnswersAreDelivered(t *testing.T) {
+	reg := tools.Default()
+	for _, in := range intent.All() {
+		var found bool
+		for _, name := range in.AllowedTools {
+			if name == "accessibility_set" {
+				found = true
+			}
+		}
+		if !found {
+			t.Errorf("%s cannot call accessibility_set, so the delivery toggles are dead in it: "+
+				"the person unticks a box, the model says yes, and nothing changes", in.ID)
+		}
+	}
+	if _, ok := reg.Get("accessibility_set"); !ok {
+		t.Fatal("accessibility_set is not registered; this fence no longer guards anything")
+	}
+}
+
+// Merging the universal tools must not corrupt the per-intent lists.
+//
+// Appending straight onto a slice literal's backing array lets two intents share
+// storage and silently overwrite each other's last entry, which would remove a
+// tool from an intent that names it.
+func TestUniversalToolsDoNotClobberTheIntentsOwnList(t *testing.T) {
+	for _, in := range intent.All() {
+		seen := map[string]int{}
+		for _, name := range in.AllowedTools {
+			seen[name]++
+		}
+		for name, n := range seen {
+			if n > 1 {
+				t.Errorf("%s lists %q %d times; the universal merge is duplicating entries", in.ID, name, n)
+			}
+		}
+	}
+	// The intents that named their own tools still have them.
+	must := map[intent.ID][]string{
+		intent.TalentSourcing:       {"candidate_search", "external_talent_scan", "outreach_request"},
+		intent.SupplyDemandInsight:  {"gap_analysis"},
+		intent.ServiceOrchestration: {"case_task_create", "document_prepare"},
+	}
+	for id, want := range must {
+		in, ok := intent.Get(id)
+		if !ok {
+			t.Fatalf("%s is missing", id)
+		}
+		have := map[string]bool{}
+		for _, n := range in.AllowedTools {
+			have[n] = true
+		}
+		for _, n := range want {
+			if !have[n] {
+				t.Errorf("%s lost %q when the universal tools were merged in", id, n)
+			}
+		}
+	}
+}
