@@ -1748,8 +1748,6 @@ function setGateMode(mode) {
   $("#gateForgot").hidden = !(mode === "signin") || state.meta?.mail_enabled === false;
 
   if (reset || newpass) {
-    $("#gateInviteField").hidden = true;
-    $("#gateInvite").required = false;
     $("#gateTitle").textContent = t(newpass ? "gate.resetNewTitle" : "gate.resetTitle");
     $("#gateLede").textContent = t(newpass ? "gate.resetNewLede" : "gate.resetLede");
     $("#gateSubmit").textContent = t(newpass ? "gate.resetSave" : "gate.resetSend");
@@ -1759,8 +1757,6 @@ function setGateMode(mode) {
     return;
   }
   $("#gateLede").textContent = t("gate.lede");
-  $("#gateInviteField").hidden = !up;
-  $("#gateInvite").required = up;
   // Required to create an account, absent when signing in. It is the only route
   // back into an account whose password is forgotten.
   // See docs/bugfix/2026-08-31-email-verification-and-reset.md
@@ -1769,7 +1765,7 @@ function setGateMode(mode) {
   $("#gatePass").setAttribute("autocomplete", up ? "new-password" : "current-password");
   // The heading says which of the two things this form is. It used to be pinned
   // to "先登录" by data-i18n, so somebody who tapped 去注册 was still being told to
-  // sign in while filling in an invite code — the one screen where being sure
+  // sign in while filling in a new password — the one screen where being sure
   // what you are doing matters most, since the wrong guess loses what you typed.
   $("#gateTitle").textContent = t(up ? "gate.titleSignUp" : "gate.title");
   $("#gateSubmit").textContent = t(up ? "gate.signUp" : "gate.signIn");
@@ -1798,8 +1794,8 @@ function setPeek(on) {
 
 // The server's own message is shown rather than a generic one. Its errors are
 // written to be read by the person, and each carries a remedy — replacing them
-// with "something went wrong" is how somebody ends up stuck on a wrong invite
-// code with nothing to act on.
+// with "something went wrong" is how somebody ends up stuck on a taken username
+// or a mistyped address with nothing to act on.
 function gateError(msg) {
   const el = $("#gateError");
   el.textContent = msg || "";
@@ -1857,7 +1853,6 @@ function wireGate() {
       state.account = await api("POST", up ? "/api/auth/signup" : "/api/auth/signin", {
         username: $("#gateUser").value,
         password: $("#gatePass").value,
-        invite_code: up ? $("#gateInvite").value : undefined,
         email: up ? $("#gateEmail").value : undefined,
       });
       $("#gatePass").value = "";

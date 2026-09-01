@@ -17,7 +17,6 @@ package httpapi
 
 import (
 	"context"
-	"crypto/subtle"
 	"encoding/json"
 	"errors"
 	"net/http"
@@ -98,7 +97,7 @@ func (s *Server) gate(next http.Handler) http.Handler {
 		} else if !isOpenPath(r.Method, r.URL.Path) {
 			writeErr(w, http.StatusUnauthorized, "SIGNIN_REQUIRED",
 				"You need to be signed in to do that.",
-				"Sign in, or create an account with an invite code.")
+				"Sign in, or create an account — it takes a username, a password and an email address.")
 			return
 		}
 		next.ServeHTTP(w, r)
@@ -117,30 +116,29 @@ func (s *Server) resolveAccount(r *http.Request) (*store.Account, bool) {
 
 func (s *Server) signUp(w http.ResponseWriter, r *http.Request) {
 	var body struct {
-		Username   string `json:"username"`
-		Password   string `json:"password"`
-		InviteCode string `json:"invite_code"`
-		Email      string `json:"email"`
+		Username string `json:"username"`
+		Password string `json:"password"`
+		Email    string `json:"email"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
 		writeErr(w, http.StatusBadRequest, "BODY_INVALID",
-			"The request body was not valid JSON.", "Send a username, a password and an invite code.")
+			"The request body was not valid JSON.", "Send a username, a password and an email address.")
 		return
 	}
-	// Sign-up closed is the state a deployment lands in when nobody configured
-	// invite codes. Refusing is the safe direction: the alternative is an open
-	// registration form on a public endpoint attached to a paid model key.
-	if len(s.Cfg.InviteCodes) == 0 {
-		writeErr(w, http.StatusForbidden, "SIGNUP_CLOSED",
-			"This deployment is not accepting new accounts.",
-			"Ask whoever runs it for an account, or set OBA_INVITE_CODES to open sign-up.")
-		return
-	}
-	if !s.inviteAccepted(body.InviteCode) {
-		writeErr(w, http.StatusForbidden, "INVITE_INVALID",
-			"That invite code is not valid.", "Check the code you were given, including its case.")
-		return
-	}
+	// Sign-up is OPEN: a username, a password and an address are the whole of it.
+	//
+	// It used to need an invite code, and an unconfigured deployment refused
+	// every sign-up outright (SIGNUP_CLOSED / INVITE_INVALID). That gate was
+	// removed deliberately — the people this service is for are the ones who
+	// arrive from a forwarded link with nobody to ask for a code, and a
+	// registration form they cannot get through is the same as no service.
+	// What the gate was protecting is a paid model key behind an open endpoint.
+	// That protection now rests on the ingress rate limit (30/min per IP) and
+	// the PER-TURN ceilings in agent.Budget — NOT on registration being closed,
+	// and NOT on any per-account spend cap, because there is no such cap. If
+	// the rate limit comes off, or the spend needs bounding per account, this
+	// is the decision to revisit — do not re-add a code silently.
+	// See docs/bugfix/2026-09-01-sign-up-no-longer-needs-an-invite-code.md
 	if n := len([]rune(store.NormaliseUsername(body.Username))); n == 0 || n > maxUsernameRunes {
 		writeErr(w, http.StatusBadRequest, "USERNAME_INVALID",
 			"A username is required, up to 40 characters.", "Pick a shorter name.")
@@ -265,7 +263,7 @@ func (s *Server) signIn(w http.ResponseWriter, r *http.Request) {
 // See docs/bugfix/2026-08-31-signin-error-denied-a-reset-that-exists.md
 func (s *Server) writeSignInRefused(w http.ResponseWriter) {
 	remedy := "Check both. This deployment cannot send mail, so there is no password reset here — " +
-		"ask whoever sent you the invite link for a new invite."
+		"ask whoever runs it to help you back in."
 	if s.Mail != nil {
 		remedy = "Check both. If you have forgotten the password, use the password reset on this " +
 			"form; it mails a link to the account's confirmed address."
@@ -288,7 +286,7 @@ func (s *Server) me(w http.ResponseWriter, r *http.Request) {
 	acct := accountFor(r)
 	if acct == nil {
 		writeErr(w, http.StatusUnauthorized, "SIGNIN_REQUIRED",
-			"Nobody is signed in.", "Sign in, or create an account with an invite code.")
+			"Nobody is signed in.", "Sign in, or create an account.")
 		return
 	}
 	writeJSON(w, meFor(acct))
@@ -338,22 +336,6 @@ func (s *Server) signInCookie(value string, ttl time.Duration) *http.Cookie {
 		Expires:  time.Now().UTC().Add(ttl),
 		MaxAge:   int(ttl.Seconds()),
 	}
-}
-
-func (s *Server) inviteAccepted(code string) bool {
-	code = strings.TrimSpace(code)
-	if code == "" {
-		return false
-	}
-	// Constant-time against every configured code: a byte-by-byte comparison
-	// that returns early leaks the prefix of a valid code to a patient caller.
-	ok := false
-	for _, want := range s.Cfg.InviteCodes {
-		if subtle.ConstantTimeCompare([]byte(code), []byte(want)) == 1 {
-			ok = true
-		}
-	}
-	return ok
 }
 
 // ------------------------------------------------------- attempt throttling

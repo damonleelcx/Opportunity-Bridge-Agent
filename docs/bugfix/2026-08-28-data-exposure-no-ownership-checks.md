@@ -104,8 +104,10 @@ to another browser and another machine.
 
 Order matters, and the first startup will log one warning that is expected:
 
-1. Put `OBA_INVITE_CODES` (and `OBA_DEMO_ACCOUNT`) into AWS Secrets Manager under
-   `opportunity-bridge/auth`; the `ExternalSecret` pulls them in.
+1. Put `OBA_DEMO_ACCOUNT` into AWS Secrets Manager under
+   `opportunity-bridge/auth`; the `ExternalSecret` pulls it in.
+   (This step read `OBA_INVITE_CODES` too, until sign-up stopped needing one —
+   see 2026-09-01-sign-up-no-longer-needs-an-invite-code.md.)
 2. Deploy. **The site now requires an account, and no accounts exist yet.**
    Startup logs `LEGACY_ADOPTION_FAILED` because the demo account is not there —
    correct, and not fatal.
@@ -122,8 +124,8 @@ Order matters, and the first startup will log one warning that is expected:
 | `TestOneAccountCannotReachAnother` | read, continue, delete, consent and list, all refused across accounts — and the owner still can |
 | `TestNothingIsReachableWithoutSigningIn` | no account, no data and no spending; health stays open for the probes |
 | `TestCreateSessionIgnoresASpoofedSubject` | naming a subject in the body does not claim it |
-| `TestSignUpNeedsAValidInviteCode` | missing and wrong codes both refused |
-| `TestSignUpIsClosedWithoutInviteCodes` | unconfigured means closed, asserted on the reason not just the status |
+| ~~`TestSignUpNeedsAValidInviteCode`~~ | **superseded.** Missing and wrong codes both refused — deliberately removed with the invite gate on 2026-09-01, replaced by `TestSignUpNeedsNoInviteCode`. Not a lapsed fence |
+| ~~`TestSignUpIsClosedWithoutInviteCodes`~~ | **superseded**, same change. Unconfigured no longer means closed; sign-up is open |
 | `TestWrongPasswordIsRefusedAndSaysNothingMore` | no account-existence oracle |
 | `TestSignInCookieCarriesItsProtections` | HttpOnly, Secure, SameSite |
 | `TestSignOutRevokesServerSide` | a copied cookie stops working too |
