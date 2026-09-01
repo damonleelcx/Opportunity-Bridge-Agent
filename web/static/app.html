@@ -49,7 +49,7 @@
     <label class="gate-field">
       <span data-i18n="gate.password">密码</span>
       <!-- A typed password is wrong invisibly, and on this form the retry is
-           expensive: sign-up also asks for an invite code, and a person who
+           expensive: sign-up also asks for an email address, and a person who
            cannot see what they typed has no way to tell which of the two they
            got wrong. Off by default and reset every time the gate opens — a
            service window is a shoulder-surfing environment.
@@ -71,11 +71,6 @@
       <span data-i18n="gate.email">邮箱</span>
       <input id="gateEmail" name="email" type="email" autocomplete="email" inputmode="email">
       <small class="gate-hint" data-i18n="gate.emailHint">忘了密码时，这是唯一能把账号找回来的办法。</small>
-    </label>
-    <label class="gate-field" id="gateInviteField" hidden>
-      <span data-i18n="gate.invite">邀请码</span>
-      <input id="gateInvite" name="invite" autocomplete="off">
-      <small class="gate-hint" data-i18n="gate.inviteHint">没有邀请码就注册不了，问一下给你链接的人。</small>
     </label>
 
     <p id="gateError" class="gate-error" role="alert" hidden></p>

@@ -339,7 +339,7 @@ func (s *Server) createSession(w http.ResponseWriter, r *http.Request) {
 	if acct == nil {
 		writeErr(w, http.StatusUnauthorized, "SIGNIN_REQUIRED",
 			"You need to be signed in to start a conversation.",
-			"Sign in, or create an account with an invite code.")
+			"Sign in, or create an account — it takes a username, a password and an email address.")
 		return
 	}
 	ses := s.Store.CreateSession(role, acct.SubjectID, locale)

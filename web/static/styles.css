@@ -525,7 +525,7 @@ button, select, textarea, input { font: inherit; color: inherit; }
 /* Any element given an explicit display beats the UA stylesheet's rule for
    [hidden], so `el.hidden = true` stops working on it. Every element below sets
    a display, and three of them are toggled that way — the gate itself, the
-   invite field, and the signed-in-as row. One rule, stated once, rather than a
+   email field, and the signed-in-as row. One rule, stated once, rather than a
    `[hidden]` companion beside each. */
 .gate[hidden], .gate-field[hidden], .who[hidden] { display: none; }
 
@@ -539,11 +539,13 @@ button, select, textarea, input { font: inherit; color: inherit; }
      Plain `align-items: center` alone cannot be scrolled back to: a centred
      flex item that overflows overflows in BOTH directions, and the part above
      the top edge is unreachable — there is no scroll position that shows it.
-     In 注册 mode the card is ~886px (username, password, email + its hint,
-     invite + its hint), so on any viewport below roughly 750px the bottom of it
+     In 注册 mode the card carries the most rows (username, password, email +
+     its hint) and was ~886px when this was found — when sign-up also asked for
+     an invite code — so on any viewport below roughly 750px the bottom of it
      — the language pair, and the way back to the landing page — was simply cut
      off with no way to reach it. A phone in landscape and a 13" laptop with 大字号
-     on both land there.
+     on both land there. The card is shorter now that the invite row is gone,
+     which moves the cut-off point; it does not remove it.
      `safe center` is the whole fix: it behaves as `start` exactly when centring
      would overflow, which is when the overflow becomes scrollable instead of
      lost. The plain `center` above it is the fallback for a browser that does

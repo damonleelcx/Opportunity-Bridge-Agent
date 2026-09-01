@@ -28,13 +28,6 @@ func newServer(t *testing.T, script llm.Script) *httptest.Server {
 	return newServerWith(t, script, nil)
 }
 
-// newServerNoInvites is a deployment where nobody configured OBA_INVITE_CODES —
-// the state a careless install lands in, and the one sign-up must refuse.
-func newServerNoInvites(t *testing.T) *httptest.Server {
-	return newServerWith(t, llm.Script{Turns: []llm.ScriptedTurn{{Text: "ok"}}},
-		func(c *config.Config) { c.InviteCodes = nil })
-}
-
 func newServerWith(t *testing.T, script llm.Script, tweak func(*config.Config)) *httptest.Server {
 	return newServerTweaking(t, script, tweak, nil)
 }
@@ -54,10 +47,7 @@ func newServerTweaking(t *testing.T, script llm.Script, tweak func(*config.Confi
 		MaxIterations: 6, MaxToolCalls: 8, MaxWallClock: 20 * time.Second,
 		MaxOutputTokens: 50000, KAnonymityFloor: 5, CorpusDir: "../../data",
 		ReplyLanguage: "zh-CN",
-		// Sign-up is closed unless codes are configured, so the tests configure
-		// one. That default is itself under test in TestSignUpIsClosedWithoutInviteCodes.
-		InviteCodes: []string{"let-me-in"},
-		SignInTTL:   time.Hour,
+		SignInTTL:     time.Hour,
 	}
 	if tweak != nil {
 		tweak(&cfg)
@@ -132,7 +122,7 @@ func signedIn(t *testing.T, srv *httptest.Server, username string) *http.Client 
 	// one whose password is forgotten. Derived from the username so every test
 	// account has its own and no two collide, which is itself enforced.
 	res := postAs(t, c, srv.URL+"/api/auth/signup", map[string]string{
-		"username": username, "password": "a passphrase worth typing", "invite_code": "let-me-in",
+		"username": username, "password": "a passphrase worth typing",
 		"email": store.NormaliseUsername(username) + "@example.test",
 	})
 	defer res.Body.Close()
@@ -561,46 +551,53 @@ func TestCreateSessionIgnoresASpoofedSubject(t *testing.T) {
 	}
 }
 
-func TestSignUpNeedsAValidInviteCode(t *testing.T) {
+// Sign-up is OPEN: a username, a password and an address are the whole of it.
+//
+// This is a FENCE over a deliberate product decision, not an accident. Sign-up
+// used to need an invite code, and a deployment with none configured refused
+// every account outright (SIGNUP_CLOSED / INVITE_INVALID). Both gates were
+// removed: the people this service is for arrive from a forwarded link with
+// nobody to ask for a code. If this test goes red because a code is being asked
+// for again, that is a product change and needs saying out loud, not a fix.
+// See docs/bugfix/2026-09-01-sign-up-no-longer-needs-an-invite-code.md
+func TestSignUpNeedsNoInviteCode(t *testing.T) {
 	srv := newServer(t, llm.Script{Turns: []llm.ScriptedTurn{{Text: "ok"}}})
 	defer srv.Close()
 	c := anon(t, srv)
 
-	for name, code := range map[string]string{"missing": "", "wrong": "open-sesame"} {
-		t.Run(name, func(t *testing.T) {
-			res := postAs(t, c, srv.URL+"/api/auth/signup", map[string]string{
-				"username": "gatecrasher-" + name, "password": "a passphrase worth typing", "invite_code": code,
-			})
-			defer res.Body.Close()
-			if res.StatusCode != http.StatusForbidden {
-				t.Errorf("status %d: an account was created with a %s invite code", res.StatusCode, name)
-			}
-		})
+	res := postAs(t, c, srv.URL+"/api/auth/signup", map[string]string{
+		"username": "arrived-from-a-link", "password": "a passphrase worth typing",
+		"email": "arrived-from-a-link@example.test",
+	})
+	defer res.Body.Close()
+	if res.StatusCode != http.StatusOK {
+		b, _ := io.ReadAll(res.Body)
+		t.Fatalf("sign-up with no invite code answered %d, want 200: %s", res.StatusCode, b)
+	}
+	// Signed in on the spot, as the sign-up path has always done — the account
+	// is not merely created, it is usable.
+	me := getAs(t, c, srv.URL+"/api/auth/me")
+	defer me.Body.Close()
+	if me.StatusCode != http.StatusOK {
+		t.Errorf("the new account is not signed in: /api/auth/me answered %d", me.StatusCode)
 	}
 }
 
-// An unconfigured deployment must refuse new accounts, not admit everybody.
-// The failure this guards against is a public sign-up form attached to a paid
-// model key, arrived at by forgetting a setting.
-func TestSignUpIsClosedWithoutInviteCodes(t *testing.T) {
+// An invite code sent by an old client is IGNORED, not refused. The field left
+// the request body; a stale page or a bookmarked script that still sends one
+// must still be able to create an account.
+func TestSignUpIgnoresAStaleInviteCodeField(t *testing.T) {
 	srv := newServer(t, llm.Script{Turns: []llm.ScriptedTurn{{Text: "ok"}}})
 	defer srv.Close()
-	srvNoCodes := newServerNoInvites(t)
-	defer srvNoCodes.Close()
 
-	res := postAs(t, anon(t, srvNoCodes), srvNoCodes.URL+"/api/auth/signup", map[string]string{
-		"username": "anybody", "password": "a passphrase worth typing", "invite_code": "anything",
+	res := postAs(t, anon(t, srv), srv.URL+"/api/auth/signup", map[string]string{
+		"username": "old-client", "password": "a passphrase worth typing",
+		"email": "old-client@example.test", "invite_code": "whatever-it-used-to-be",
 	})
 	defer res.Body.Close()
-	var e struct{ Code string }
-	_ = json.NewDecoder(res.Body).Decode(&e)
-	if res.StatusCode != http.StatusForbidden || e.Code != "SIGNUP_CLOSED" {
-		// Matching the REASON, not just the status: an unconfigured deployment
-		// also refuses with INVITE_INVALID as a side effect of having no codes
-		// to match, so a status-only assertion passes even when the
-		// closed-by-default rule has been deleted.
-		t.Errorf("status %d code %q: sign-up is not explicitly closed on a deployment with no invite codes",
-			res.StatusCode, e.Code)
+	if res.StatusCode != http.StatusOK {
+		b, _ := io.ReadAll(res.Body)
+		t.Fatalf("sign-up carrying a stale invite_code answered %d, want 200: %s", res.StatusCode, b)
 	}
 }
 
@@ -638,7 +635,7 @@ func TestSignInCookieCarriesItsProtections(t *testing.T) {
 	defer srv.Close()
 
 	res := postAs(t, anon(t, srv), srv.URL+"/api/auth/signup", map[string]string{
-		"username": "flagcheck", "password": "a passphrase worth typing", "invite_code": "let-me-in",
+		"username": "flagcheck", "password": "a passphrase worth typing",
 		"email": "flagcheck@example.test",
 	})
 	defer res.Body.Close()
@@ -673,7 +670,7 @@ func TestSignOutRevokesServerSide(t *testing.T) {
 	// still works after it.
 	fresh := anon(t, srv)
 	up := postAs(t, fresh, srv.URL+"/api/auth/signup", map[string]string{
-		"username": "leaver", "password": "a passphrase worth typing", "invite_code": "let-me-in",
+		"username": "leaver", "password": "a passphrase worth typing",
 		"email": "leaver@example.test",
 	})
 	up.Body.Close()

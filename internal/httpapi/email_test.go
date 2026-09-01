@@ -78,8 +78,7 @@ func signUpWith(t *testing.T, srv *httptest.Server, username, email string) *htt
 	t.Helper()
 	c := anon(t, srv)
 	res := postAs(t, c, srv.URL+"/api/auth/signup", map[string]string{
-		"username": username, "password": "a-long-enough-passphrase",
-		"invite_code": "let-me-in", "email": email,
+		"username": username, "password": "a-long-enough-passphrase", "email": email,
 	})
 	defer res.Body.Close()
 	if res.StatusCode != http.StatusOK {
@@ -99,8 +98,7 @@ func TestSignUpRequiresAnAddressItCanReach(t *testing.T) {
 	defer srv.Close()
 	for _, bad := range []string{"", "not-an-address", "no@domain", "two@@at.example", "sp ace@x.example"} {
 		res := postAs(t, anon(t, srv), srv.URL+"/api/auth/signup", map[string]string{
-			"username": "u" + bad, "password": "a-long-enough-passphrase",
-			"invite_code": "let-me-in", "email": bad,
+			"username": "u" + bad, "password": "a-long-enough-passphrase", "email": bad,
 		})
 		res.Body.Close()
 		if res.StatusCode != http.StatusBadRequest {
@@ -405,7 +403,7 @@ func TestSignInRefusalOffersTheResetOnlyWhenThereIsOne(t *testing.T) {
 			t.Errorf("the remedy does not say why there is no reset here, so the absent "+
 				"忘了密码 control reads as a bug: %q", remedy)
 		}
-		if !strings.Contains(remedy, "invite") {
+		if !strings.Contains(remedy, "ask whoever runs it") {
 			t.Errorf("the remedy leaves somebody locked out with nothing to do next: %q", remedy)
 		}
 		if strings.Contains(remedy, "use the password reset") {

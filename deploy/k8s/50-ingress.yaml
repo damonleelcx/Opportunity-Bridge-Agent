@@ -8,10 +8,15 @@ spec:
     scheme: https
     permanent: true
 ---
-# Every turn spends model tokens. This is no longer the only thing standing
-# between a stranger and that budget — sign-in is, as of
-# docs/bugfix/2026-08-28-data-exposure-no-ownership-checks.md — but it still
-# caps sign-in guessing and the cost of a single noisy account.
+# Every turn spends model tokens, and this is the main thing standing between a
+# stranger and that budget.
+#
+# It was demoted when accounts arrived (2026-08-28-data-exposure-no-ownership-
+# checks.md) and PROMOTED BACK when sign-up stopped needing an invite code
+# (2026-09-01-sign-up-no-longer-needs-an-invite-code.md): anybody can hold an
+# account now, and there is no per-account spend cap, so this per-IP limit plus
+# the per-turn ceilings in agent.Budget are what bound the cost. Loosening it is
+# a spending decision, not a tuning one.
 apiVersion: traefik.io/v1alpha1
 kind: Middleware
 metadata:
