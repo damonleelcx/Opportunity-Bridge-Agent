@@ -351,3 +351,115 @@ func confirm(t *testing.T, srv *httptest.Server, c *http.Client, m *fakeMail) {
 	}
 	res.Body.Close()
 }
+
+// A refused sign-in must not deny a password reset this deployment can perform.
+//
+// The remedy under SIGNIN_REFUSED used to say flatly that there is no reset yet.
+// That was true when it was written and false once one existed, so the person
+// who most needed it was told by the service itself not to look — while the
+// 忘了密码 control sat on the very same form. Copy that states a product
+// limitation goes stale silently: nothing fails, it just lies.
+//
+// Both directions are asserted. A deployment with no mail must still say so
+// plainly, and say WHY, because there the control really is absent and "use the
+// reset" would send somebody hunting for a button that is not there.
+// See docs/bugfix/2026-08-31-signin-error-denied-a-reset-that-exists.md
+func TestSignInRefusalOffersTheResetOnlyWhenThereIsOne(t *testing.T) {
+	refusal := func(t *testing.T, srv *httptest.Server) (code, remedy string) {
+		t.Helper()
+		res := postAs(t, anon(t, srv), srv.URL+"/api/auth/signin",
+			map[string]string{"username": "nobody-at-all", "password": "not the passphrase"})
+		defer res.Body.Close()
+		var e struct{ Code, Message, Remedy string }
+		if err := json.NewDecoder(res.Body).Decode(&e); err != nil {
+			t.Fatalf("decode refusal: %v", err)
+		}
+		if res.StatusCode != http.StatusUnauthorized || e.Code != "SIGNIN_REFUSED" {
+			t.Fatalf("status %d code %q: not the refusal this test is about", res.StatusCode, e.Code)
+		}
+		return e.Code, e.Remedy
+	}
+
+	t.Run("mail configured: point at the reset", func(t *testing.T) {
+		srv := mailServer(t, &fakeMail{})
+		defer srv.Close()
+		_, remedy := refusal(t, srv)
+		if !strings.Contains(remedy, "password reset") {
+			t.Errorf("the remedy does not mention the reset that this deployment can actually "+
+				"perform: %q", remedy)
+		}
+		// The exact sentence that was wrong, and any of its neighbours.
+		for _, denial := range []string{"no reset", "no password reset", "not yet", "cannot send mail"} {
+			if strings.Contains(strings.ToLower(remedy), denial) {
+				t.Errorf("the remedy denies a reset this deployment can perform (%q): %q",
+					denial, remedy)
+			}
+		}
+	})
+
+	t.Run("no mail: say so, and why", func(t *testing.T) {
+		srv := newServer(t, llm.Script{Turns: []llm.ScriptedTurn{{Text: "ok"}}})
+		defer srv.Close()
+		_, remedy := refusal(t, srv)
+		if !strings.Contains(remedy, "cannot send mail") {
+			t.Errorf("the remedy does not say why there is no reset here, so the absent "+
+				"忘了密码 control reads as a bug: %q", remedy)
+		}
+		if !strings.Contains(remedy, "invite") {
+			t.Errorf("the remedy leaves somebody locked out with nothing to do next: %q", remedy)
+		}
+		if strings.Contains(remedy, "use the password reset") {
+			t.Errorf("the remedy points at a control this deployment does not show: %q", remedy)
+		}
+	})
+}
+
+// The remedy varies by deployment; it must not vary by account.
+//
+// This is the hazard the change above introduces. writeSignInRefused exists to
+// give one answer to "no such account" and "wrong password", because a
+// difference between them is a free way to ask whether a named person has an
+// account on a service about unemployment and benefits. A remedy that branched
+// on anything about the account — it exists, it has an address, the address is
+// confirmed — would reopen that hole through the one field nobody looks at.
+//
+// Whole bodies are compared, not Code and Message. TestWrongPasswordIsRefused-
+// AndSaysNothingMore predates the remedy varying at all and decodes only those
+// two fields, so a divergence in the third would pass it.
+func TestTheRefusalIsIdenticalForKnownAndUnknownAccounts(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		srv  func(*testing.T) *httptest.Server
+	}{
+		{"mail configured", func(t *testing.T) *httptest.Server { return mailServer(t, &fakeMail{}) }},
+		{"no mail", func(t *testing.T) *httptest.Server {
+			return newServer(t, llm.Script{Turns: []llm.ScriptedTurn{{Text: "ok"}}})
+		}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			srv := tc.srv(t)
+			defer srv.Close()
+			// The account has to exist for the "known" probe to mean anything.
+			// signedIn signs it up; the probes below use a fresh anonymous
+			// client so a live cookie cannot change the answer.
+			_ = signedIn(t, srv, "realperson")
+			c := anon(t, srv)
+
+			body := func(username string) string {
+				res := postAs(t, c, srv.URL+"/api/auth/signin",
+					map[string]string{"username": username, "password": "not the passphrase"})
+				defer res.Body.Close()
+				b, err := io.ReadAll(res.Body)
+				if err != nil {
+					t.Fatalf("read refusal: %v", err)
+				}
+				return string(b)
+			}
+			known, unknown := body("realperson"), body("nobody-at-all")
+			if known != unknown {
+				t.Errorf("the refusal distinguishes a real account from an unknown one:\n"+
+					"  known:   %s  unknown: %s", known, unknown)
+			}
+		})
+	}
+}

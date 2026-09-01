@@ -50,8 +50,16 @@ button, select, textarea, input { font: inherit; color: inherit; }
   border-right: 1px solid var(--line);
   display: flex; flex-direction: column;
 }
+/* An <a>, so: no inherited underline across the name and the wordmark, and a
+   focus ring, since it is now the first thing Tab reaches in the shell and a
+   keyboard user cannot see a cursor change. The hover underline is on the name
+   alone — the whole point of making this a link is that somebody notices it is
+   one, and a mark that reacts to nothing reads as decoration.
+   See docs/bugfix/2026-08-31-the-gate-was-a-dead-end.md */
 .brand { display: flex; align-items: center; gap: 12px; padding: 22px 20px 18px;
-         border-bottom: 1px solid var(--line-soft); }
+         border-bottom: 1px solid var(--line-soft); text-decoration: none; }
+.brand:hover .brand-text h1 { text-decoration: underline; }
+.brand:focus-visible { outline: 2px solid var(--brand); outline-offset: -2px; }
 .brand-mark { width: 40px; height: 40px; flex: 0 0 auto; }
 .brand-text { min-width: 0; }
 .brand-text h1 { margin: 0; font-size: 1.05em; font-weight: 700; color: var(--ink-900); line-height: 1.25; }
@@ -523,9 +531,28 @@ button, select, textarea, input { font: inherit; color: inherit; }
 
 .gate {
   position: fixed; inset: 0; z-index: 50;
-  display: flex; align-items: center; justify-content: center;
+  display: flex; justify-content: center;
   padding: 24px;
   background: var(--bg);
+  /* The card is centred until it is taller than the viewport, and scrollable
+     from that point on.
+     Plain `align-items: center` alone cannot be scrolled back to: a centred
+     flex item that overflows overflows in BOTH directions, and the part above
+     the top edge is unreachable — there is no scroll position that shows it.
+     In 注册 mode the card is ~886px (username, password, email + its hint,
+     invite + its hint), so on any viewport below roughly 750px the bottom of it
+     — the language pair, and the way back to the landing page — was simply cut
+     off with no way to reach it. A phone in landscape and a 13" laptop with 大字号
+     on both land there.
+     `safe center` is the whole fix: it behaves as `start` exactly when centring
+     would overflow, which is when the overflow becomes scrollable instead of
+     lost. The plain `center` above it is the fallback for a browser that does
+     not know the keyword — it drops the second declaration and keeps the old
+     behaviour rather than falling back to top-aligned everywhere.
+     See docs/bugfix/2026-08-31-the-gate-was-a-dead-end.md */
+  align-items: center;
+  align-items: safe center;
+  overflow-y: auto;
 }
 .gate-card {
   width: 100%; max-width: 380px;
@@ -590,6 +617,17 @@ button, select, textarea, input { font: inherit; color: inherit; }
    same class on the live-result link would be underlined always and hover would
    do nothing. This makes the anchor behave the way the class already promises. */
 a.link { text-decoration: none; white-space: nowrap; }
+/* The way out of the gate, back to the page that explains what this is.
+   Muted rather than brand-coloured on purpose: 去注册 and 忘了密码 are what most
+   people on this screen need, and an escape hatch drawn as loudly as those two
+   turns three equal-looking links into a decision. The arrow lives here rather
+   than in the string so a translation only ever supplies words.
+   It sits after .link deliberately: both are a single class, so the later rule
+   is the one that applies. Moved above .link and this reverts to brand purple
+   with nothing to say it did.
+   See docs/bugfix/2026-08-31-the-gate-was-a-dead-end.md */
+.gate-home { color: var(--ink-500); }
+.gate-home::before { content: "\2190\00a0"; }
 
 .who {
   display: flex; align-items: center; justify-content: space-between; gap: 8px;

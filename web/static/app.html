@@ -87,6 +87,19 @@
          waits for a message nobody sent. -->
     <button id="gateForgot" class="link gate-switch" type="button" hidden data-i18n="gate.forgot">忘了密码？</button>
 
+    <!-- The gate is the first screen of /app, and until this link existed it was
+         also a dead end: a person who followed 开始对话 from the landing page and
+         then wanted to read the introduction again — or who simply arrived here
+         by a pasted link and does not yet know what this is — had nothing to
+         press but the browser's Back button, which does not exist on a kiosk and
+         is not obvious to the people this is for. A plain <a> rather than script
+         so it works before app.js runs and in the modes the form switches
+         through (signup / reset / newpass), none of which touch it.
+         The arrow is drawn by CSS (.gate-home::before), not carried in the
+         string, so a translation only ever supplies words.
+         See docs/bugfix/2026-08-31-the-gate-was-a-dead-end.md -->
+    <a id="gateHome" class="link gate-switch gate-home" href="/" data-i18n="nav.backHome">返回首页</a>
+
     <!-- The gate is now the first screen, and it covers the sidebar where the
          language control lives. A bilingual product whose only reachable
          language on the first screen is one of them is not bilingual. -->
@@ -105,13 +118,36 @@
 
 <!-- ── sidebar ─────────────────────────────────────────────────────────── -->
 <aside class="sidebar" id="sidebar" aria-label="Conversations">
-  <div class="brand">
+  <!-- The brand is the way back to the landing page from the signed-in shell,
+       which otherwise has no route out of /app either — the gate's link is gone
+       once you are through it. An <a> on the mark is the convention people
+       already expect, and it is the same element the landing page's own header
+       uses (`<a class="brand" href="/">` in index.html), so the mark behaves the
+       same way on both sides of signing in rather than being a link on one page
+       and dead on the other. A <div> here would be that inconsistency.
+
+       `?stay` is load-bearing, not decoration. The landing page forwards anyone
+       who is already signed in straight to /app (forwardIfSignedIn in home.js),
+       which is right for a bookmark and wrong for this link: a plain href="/"
+       here round-trips and lands the person back exactly where they started,
+       and since it forwards with location.replace it leaves no history entry,
+       so Back does not rescue them either. `?stay` is that function's own
+       documented opt-out, and whoever presses THIS asked for the landing page
+       on purpose.
+
+       The gate's link above is a plain "/" and should stay one: nobody looking
+       at the gate has a session, so there is nothing to forward — and in the
+       one case where there might be (a transient /api/auth/me failure painting
+       the gate over a live session) being carried into the app is the right
+       answer rather than a bounce.
+       See docs/bugfix/2026-08-31-the-gate-was-a-dead-end.md -->
+  <a class="brand" href="/?stay" data-i18n-title="nav.backHome" title="返回首页">
     <span class="brand-mark" id="brandAvatar" aria-hidden="true"></span>
     <div class="brand-text">
       <h1 data-i18n="app.name">阿桥</h1>
       <p>Opportunity Bridge</p>
     </div>
-  </div>
+  </a>
 
   <div class="sidebar-scroll">
     <p class="rail-label" data-i18n="panel.sessions">对话历史</p>
