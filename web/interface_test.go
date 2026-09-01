@@ -564,6 +564,13 @@ func TestFilledSurfacesUseTheFillTokenNotTheAccent(t *testing.T) {
 
 // stripCSSComments removes /* … */ so a fence reads declarations rather than the
 // prose explaining them.
+// Markup comments are where the reasons live in these files, and several of
+// them quote the very element a fence is looking for. Reading a comment as
+// evidence would make those fences pass on their own explanation.
+func stripHTMLComments(html string) string {
+	return regexp.MustCompile(`(?s)<!--.*?-->`).ReplaceAllString(html, "")
+}
+
 func stripCSSComments(css string) string {
 	var b strings.Builder
 	for {
@@ -1445,5 +1452,170 @@ func TestEveryDeliverySettingHasAReaderFacingLabel(t *testing.T) {
 			t.Errorf("%s appears %d time(s) in the TERMS table; it needs one per language, "+
 				"or that reader sees the raw id", key, n)
 		}
+	}
+}
+
+// The gate must offer a way back to the landing page.
+//
+// /app opens on the sign-in gate, which covers the whole shell — the sidebar,
+// the brand, every other control. Before this link there was nothing on it that
+// led anywhere: somebody who followed 开始对话 from the landing page and then
+// wanted to read the introduction again, or who arrived on a pasted link and
+// did not yet know what this is, could only use the browser's Back button. That
+// is not present at a service-window kiosk and is not obvious to the people
+// this is built for, so the first screen was a dead end for them.
+//
+// It has to be a plain <a href="/">, for two reasons that both fail silently:
+// it must work before app.js runs (the gate is painted from markup), and it
+// must survive the four modes the form switches through — signin, signup, reset
+// and newpass — none of which touch it. Turn it into a scripted button and both
+// guarantees go, with no error to say so.
+// See docs/bugfix/2026-08-31-the-gate-was-a-dead-end.md
+func TestGateOffersAWayBackToTheLandingPage(t *testing.T) {
+	html := stripHTMLComments(asset(t, "app.html"))
+
+	gate := html[strings.Index(html, `<div id="gate"`):]
+	if end := strings.Index(gate, "</form>"); end > 0 {
+		gate = gate[:end]
+	}
+	if len(gate) < 200 {
+		t.Fatal("could not isolate the gate form; this fence no longer guards anything")
+	}
+
+	link := regexp.MustCompile(`<a\b[^>]*\bid="gateHome"[^>]*>`).FindString(gate)
+	if link == "" {
+		t.Fatal("the gate has no <a id=\"gateHome\">: the first screen of /app is a dead " +
+			"end for anyone who cannot use the browser's Back button")
+	}
+	if !strings.Contains(link, `href="/"`) {
+		t.Errorf("gateHome does not point at the landing page: %s", link)
+	}
+	if !strings.Contains(link, `data-i18n="nav.backHome"`) {
+		t.Errorf("gateHome carries no data-i18n key, so it stays Chinese for an English "+
+			"reader while the rest of the gate switches: %s", link)
+	}
+
+	// hidden here would be the same dead end with extra steps, and setGateMode
+	// never unhides it.
+	if strings.Contains(link, "hidden") {
+		t.Errorf("gateHome is hidden in the markup and nothing unhides it: %s", link)
+	}
+
+	// Both languages, or the sweep renders the key itself at one of them.
+	i18n := asset(t, "i18n.js")
+	if n := strings.Count(i18n, `"nav.backHome":`); n < 2 {
+		t.Errorf(`"nav.backHome" appears %d time(s) in the STRINGS table; it needs one per language`, n)
+	}
+}
+
+// The signed-in shell must have the same way back, on the brand.
+//
+// The gate's link is gone the moment somebody signs in, and the shell has no
+// other route out of /app — the sidebar, the composer and the overview all stay
+// inside it. The mark is where people already press for this, and it is what
+// the landing page's own header does (`<a class="brand" href="/">`), so the two
+// sides of signing in behave the same rather than the mark being a link on one
+// page and dead on the other.
+// See docs/bugfix/2026-08-31-the-gate-was-a-dead-end.md
+func TestTheBrandLeadsHomeFromInsideTheApp(t *testing.T) {
+	// Comments stripped first: the markup below carries an explanation that
+	// quotes the landing page's own `<a class="brand" href="/">`, and a fence
+	// that reads its own justification as evidence proves nothing.
+	html := stripHTMLComments(asset(t, "app.html"))
+
+	sidebar := html[strings.Index(html, `<aside class="sidebar"`):]
+	if end := strings.Index(sidebar, "</aside>"); end > 0 {
+		sidebar = sidebar[:end]
+	}
+	if len(sidebar) < 200 {
+		t.Fatal("could not isolate the sidebar; this fence no longer guards anything")
+	}
+
+	brand := regexp.MustCompile(`<(\w+)\b[^>]*\bclass="brand"[^>]*>`).FindStringSubmatch(sidebar)
+	if brand == nil {
+		t.Fatal("the sidebar has no .brand element at all")
+	}
+	if brand[1] != "a" {
+		t.Fatalf("the sidebar brand is a <%s>, not a link: once signed in there is no way "+
+			"back to the landing page from anywhere in /app", brand[1])
+	}
+	// `/?stay`, not `/`. The landing page forwards a signed-in visitor straight
+	// back to /app (forwardIfSignedIn in home.js), and everyone using THIS link
+	// is by definition signed in — so a plain "/" is a link that round-trips and
+	// changes nothing, with no history entry to go back through either, because
+	// the forward uses location.replace. It looks correct in the markup, in
+	// review and in a signed-out browser; it is dead only for the people who
+	// actually have it.
+	if !strings.Contains(brand[0], `href="/?stay"`) {
+		t.Errorf("the sidebar brand does not carry ?stay, so the landing page bounces the "+
+			"signed-in person who pressed it straight back into /app: %s", brand[0])
+	}
+	// A logo that goes home is a convention, not a label. The tooltip is the
+	// only thing that says so to somebody who does not know the convention.
+	if !strings.Contains(brand[0], `data-i18n-title="nav.backHome"`) {
+		t.Errorf("the sidebar brand carries no translated tooltip, so what it does is "+
+			"guessable only by convention, and only in one language: %s", brand[0])
+	}
+
+	// An <a> underlines everything inside it by default, which here is the
+	// product name and the wordmark under it.
+	css := stripCSSComments(asset(t, "styles.css"))
+	rule := regexp.MustCompile(`\.brand \{[^}]*\}`).FindString(css)
+	if !strings.Contains(rule, "text-decoration: none") {
+		t.Errorf(".brand does not clear the anchor underline; the sidebar name and wordmark "+
+			"render underlined: %s", rule)
+	}
+	if !strings.Contains(css, ".brand:focus-visible") {
+		t.Error(".brand has no focus ring. It is now the first thing Tab reaches in the " +
+			"shell, and a keyboard user gets no pointer cursor to tell them it is a link")
+	}
+
+	// The link above is only alive while the landing page honours ?stay. That is
+	// a contract between two files that never import each other, so it is
+	// asserted rather than assumed: drop the opt-out in home.js and the brand
+	// silently becomes a no-op again, with nothing in this file to show for it.
+	home := stripJSComments(asset(t, "home.js"))
+	if !strings.Contains(home, `has("stay")`) {
+		t.Error("home.js no longer honours ?stay, so the sidebar brand now forwards " +
+			"straight back into /app: the way out of the shell is closed again")
+	}
+}
+
+// The gate must be scrollable once it is taller than the viewport.
+//
+// A centred flex item that overflows overflows in both directions, and the part
+// above the top edge cannot be scrolled to — no scroll position shows it. In 注册
+// mode the gate card is ~886px, so below roughly 750px of viewport height the
+// bottom of the card (the language pair, and the link back to the landing page)
+// was cut off with nothing able to reach it. `safe center` behaves as `start`
+// exactly when centring would overflow, which is what turns that lost overflow
+// into scrollable overflow.
+//
+// Both halves are load-bearing and each is silent alone: `overflow-y: auto`
+// without `safe` scrolls to a top that is still clipped, and `safe` without
+// `overflow-y` aligns correctly to content that still cannot be reached.
+// See docs/bugfix/2026-08-31-the-gate-was-a-dead-end.md
+func TestTheGateCanBeScrolledWhenItOutgrowsTheViewport(t *testing.T) {
+	css := stripCSSComments(asset(t, "styles.css"))
+
+	rule := regexp.MustCompile(`(^|\n)\.gate \{[^}]*\}`).FindString(css)
+	if rule == "" {
+		t.Fatal("no .gate rule found; this fence no longer guards anything")
+	}
+	if !strings.Contains(rule, "overflow-y: auto") {
+		t.Errorf(".gate does not scroll. A card taller than the viewport is cut off with "+
+			"no way to reach the rest of it: %s", rule)
+	}
+	if !strings.Contains(rule, "align-items: safe center") {
+		t.Errorf(".gate centres unsafely. Scrolling cannot reach the top of a centred "+
+			"item that overflows, so overflow-y alone does not fix it: %s", rule)
+	}
+	// The unprefixed declaration has to come first or a browser that knows
+	// `safe` never sees it, and one that does not is left with no align-items.
+	safe := strings.Index(rule, "align-items: safe center")
+	plain := strings.Index(rule, "align-items: center")
+	if plain < 0 || plain > safe {
+		t.Errorf(".gate declares `safe center` without a plain `align-items: center` "+
+			"before it as the fallback: %s", rule)
 	}
 }

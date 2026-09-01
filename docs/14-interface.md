@@ -215,9 +215,22 @@ a value that goes stale the moment somebody signs out in another tab, and a
 stale one sends a signed-**out** reader to a login form instead of to this page.
 The brief flash is the cheaper mistake.
 
-`/?stay=1` opts out of the forward. That is how the page stays reachable for
+`/?stay` opts out of the forward. That is how the page stays reachable for
 anybody who already has an account — including whoever is reviewing a change to
-it.
+it. (Spelled `?stay=1` here until 2026-08-31; the code tests `has("stay")` and
+never reads a value, and two spellings for one flag is how the wrong one gets
+copied.)
+
+**The way back is the sidebar brand, and it needs that opt-out.** `/app` used to
+have no route to the landing page from either state: the gate covers the whole
+shell, and the shell's own controls all stay inside `/app`. The gate now carries
+a plain `返回首页` link, and in the shell the brand is an `<a href="/?stay">` —
+the same element the landing header uses, so the mark behaves the same way on
+both sides of signing in. The query string is not decoration: everybody pressing
+that link is signed in by definition, so a plain `/` would be forwarded straight
+back to `/app`, with no history entry to return through either. A fence asserts
+both ends of that contract, because the two files never import each other. See
+[bugfix/2026-08-31-the-gate-was-a-dead-end.md](bugfix/2026-08-31-the-gate-was-a-dead-end.md).
 
 ### What it shares with the app, and why the files moved
 

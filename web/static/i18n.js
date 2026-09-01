@@ -39,6 +39,9 @@ const STRINGS = {
     "gate.resetSave": "保存新密码",
     "gate.resetDone": "密码已经改好了，用新密码登录吧。",
     "gate.backToSignIn": "返回登录",
+    // Two places: the way out of the gate, and the sidebar brand's tooltip once
+    // signed in. One string rather than two identical ones under different keys.
+    "nav.backHome": "返回首页",
     "email.title": "邮箱",
     "email.none": "这个账号还没有邮箱。忘了密码就找不回来了。",
     "email.unverified": "还没确认。确认之后才能用它找回密码。",
@@ -390,6 +393,7 @@ const STRINGS = {
     "gate.resetSave": "Save the new password",
     "gate.resetDone": "Your password has been changed. Sign in with the new one.",
     "gate.backToSignIn": "Back to sign in",
+    "nav.backHome": "Back to the home page",
     "email.title": "Email",
     "email.none": "This account has no address. Forget the password and there is no way back in.",
     "email.unverified": "Not confirmed yet. Confirming it is what makes a password reset possible.",

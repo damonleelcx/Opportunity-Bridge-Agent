@@ -233,12 +233,12 @@ func (s *Server) signIn(w http.ResponseWriter, r *http.Request) {
 		// unemployment and benefits, is itself a disclosure.
 		store.SpendVerificationTime(body.Password)
 		s.attemptFailed(body.Username)
-		writeSignInRefused(w)
+		s.writeSignInRefused(w)
 		return
 	}
 	if !store.VerifyPassword(acct.PasswordHash, body.Password) {
 		s.attemptFailed(body.Username)
-		writeSignInRefused(w)
+		s.writeSignInRefused(w)
 		return
 	}
 	s.attemptSucceeded(body.Username)
@@ -248,10 +248,30 @@ func (s *Server) signIn(w http.ResponseWriter, r *http.Request) {
 
 // writeSignInRefused is one message for both "no such account" and "wrong
 // password". Telling them apart is a free account-existence oracle.
-func writeSignInRefused(w http.ResponseWriter) {
+//
+// The remedy tracks what this deployment can actually do. It used to say flatly
+// that there is no password reset — true when it was written, false since
+// docs/bugfix/2026-08-31-email-verification-and-reset.md added one. So the
+// person who most needed the reset was told, by the service itself, not to look
+// for it: the 忘了密码 control is right there on the same form, and the sentence
+// under the error said it did not exist.
+//
+// Branching on s.Mail is safe here, and the distinction matters: it is a
+// property of the DEPLOYMENT, identical for every username, so it adds nothing
+// to the oracle this function exists to close. Branching on anything about the
+// account — whether it exists, whether it has an address, whether that address
+// is confirmed — would reopen exactly that hole, which is why the wording below
+// describes how reset works in general and never this account in particular.
+// See docs/bugfix/2026-08-31-signin-error-denied-a-reset-that-exists.md
+func (s *Server) writeSignInRefused(w http.ResponseWriter) {
+	remedy := "Check both. This deployment cannot send mail, so there is no password reset here — " +
+		"ask whoever sent you the invite link for a new invite."
+	if s.Mail != nil {
+		remedy = "Check both. If you have forgotten the password, use the password reset on this " +
+			"form; it mails a link to the account's confirmed address."
+	}
 	writeErr(w, http.StatusUnauthorized, "SIGNIN_REFUSED",
-		"That username and password do not match.",
-		"Check both. If you have forgotten the password, ask for a new invite — there is no reset yet.")
+		"That username and password do not match.", remedy)
 }
 
 func (s *Server) signOut(w http.ResponseWriter, r *http.Request) {
