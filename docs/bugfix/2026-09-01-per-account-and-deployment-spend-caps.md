@@ -111,13 +111,26 @@ under the hundreds of bounces it causes.
 
 | Setting | Ships as | Basis |
 | --- | --- | --- |
-| `OBA_ACCOUNT_DAILY_TOKENS` | 2,000,000 | ~40–100 substantial turns. A heavy genuine day sits well under it |
-| `OBA_DEPLOYMENT_DAILY_TOKENS` | 50,000,000 | **a placeholder informed by no invoice** |
+| `OBA_ACCOUNT_DAILY_TOKENS` | 2,000,000 | ~54 turns/day at the measured cost below |
+| `OBA_DEPLOYMENT_DAILY_TOKENS` | 50,000,000 | ~1,366 turns/day across everybody. **Still informed by no invoice** |
 
-The second number is a guess and is labelled as one everywhere it appears. Read
-`spend_today_tokens` for a week and set it from what the service actually uses
-and what you are willing to spend. That is why the gauge shipped with the cap
-rather than after it.
+**One measured production turn: 36,588 tokens.** Taken on 2026-09-01 immediately
+after this shipped — one resident asking about care work in Chengdu, with live
+search on, against `deepseek-v4-pro`. One sample, not an average, and the
+cheapest turns will be a fraction of it; but it is a real number and it replaces
+the estimate that first stood here ("40–100 substantial turns", which was
+optimistic by roughly half).
+
+What it makes concrete:
+
+- an account gets about **54 turns a day**. Comfortable for somebody working
+  through a problem; not comfortable for somebody scripting one.
+- the service as a whole gets about **1,366 turns a day** before the circuit
+  breaker trips.
+
+Whether 54 is the right number for a person in a service window is a product
+judgement, not a technical one, and it is now answerable with arithmetic instead
+of a guess. Read `spend_today_tokens` over a week before moving either.
 
 `0` disables either ceiling. That direction is deliberate and is fenced: the
 opposite reading — absent setting means "capped at zero" — is the exact trap the
