@@ -49,6 +49,16 @@ type Account struct {
 	// them. Adopting them as a list keeps every record intact and still gives
 	// them exactly one owner.
 	AlsoOwns []string `json:"also_owns,omitempty"`
+
+	// SpendDay and SpentTokens are this account's model spending for ONE UTC
+	// day, and they are a pair: the day is what makes the count mean anything.
+	// A count whose day is not today reads as zero, which is the entire reset
+	// mechanism — there is no nightly sweep to fail. See spend.go.
+	//
+	// Both are omitempty and both default to zero, so accounts that predate the
+	// cap simply start at nothing on their next turn. No backfill, no migration.
+	SpendDay    string `json:"spend_day,omitempty"`
+	SpentTokens int64  `json:"spent_tokens,omitempty"`
 }
 
 // Owns reports whether this account may act on a subject.

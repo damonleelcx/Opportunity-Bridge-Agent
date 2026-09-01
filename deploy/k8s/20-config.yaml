@@ -28,6 +28,19 @@ data:
   OBA_MAX_ITERATIONS: "6"
   OBA_MAX_TOOL_CALLS: "12"
   OBA_MAX_WALLCLOCK_SEC: "150"
+  # Daily spending ceilings, in tokens. The budgets above bound ONE turn; these
+  # bound how many. Both matter now that sign-up needs no invite code and
+  # anybody with the address can hold an account.
+  #
+  # Two of them because one is not enough: accounts are free, so a per-account
+  # allowance on its own multiplies by however many somebody registers.
+  # OBA_DEPLOYMENT_DAILY_TOKENS is the circuit breaker across all of them — when
+  # it trips NOBODY is answered until 00:00 UTC, which is why it sits well above
+  # normal use. /api/health reports `spend_today_tokens` against it, so set this
+  # from a week of real readings rather than from the value shipped here.
+  # See docs/bugfix/2026-09-01-per-account-and-deployment-spend-caps.md
+  OBA_ACCOUNT_DAILY_TOKENS: "2000000"
+  OBA_DEPLOYMENT_DAILY_TOKENS: "50000000"
   OBA_K_ANONYMITY: "5"
   # Which search vendor the live lookup uses. Named explicitly rather than left
   # to the default, for the same reason the model ids are: a deployment should

@@ -64,28 +64,40 @@ One inline policy on the node's existing instance role, rendered from
 Nothing wildcard, and nothing that widens the node's access to whatever else
 shares the box.
 
-## ⚠️ The endpoint is public and unauthenticated
+## ⚠️ The endpoint is public, and sign-up is open
 
-Anyone with the URL can hold a conversation, and every turn spends DeepSeek
-tokens. What is in place:
+Anyone with the URL can create an account and hold a conversation, and every
+turn spends DeepSeek tokens. This section used to end "say which and it is a
+short change", listing three options for closing an endpoint that had no
+authentication at all. All three questions have since been answered, and the
+answers are what is in place today:
 
-- A Traefik rate limit (30 requests/minute per source IP, burst 60).
-- Tighter budgets than local: 6 iterations, 12 tool calls, 150s wall clock per
-  turn.
+- **Accounts** (2026-08-28). Everything except `/api/health` and the sign-in
+  endpoints requires one. That was option 3 on the old list.
+- **Open sign-up** (2026-09-01). Creating an account needs a username, a
+  password and an email address — no invite code. Options 1 and 2 on the old
+  list, basic-auth and a shared access code, were deliberately NOT taken: this
+  service is reached from forwarded links and posters by people who have nobody
+  to ask for a credential.
+  See `bugfix/2026-09-01-sign-up-no-longer-needs-an-invite-code.md`.
+- **Daily spending ceilings** (2026-09-01), which is what actually bounds the
+  bill now that the first two decisions let anybody in:
+  `OBA_ACCOUNT_DAILY_TOKENS` per account and `OBA_DEPLOYMENT_DAILY_TOKENS`
+  across the whole service, both per UTC day.
+  See `bugfix/2026-09-01-per-account-and-deployment-spend-caps.md`.
+- A Traefik rate limit (30 requests/minute per source IP, burst 60), which
+  bounds the RATE. The ceilings above bound the TOTAL — different questions.
+- Tighter per-turn budgets than local: 6 iterations, 12 tool calls, 150s wall
+  clock. These bound one turn, not how many.
 - No real personal data anywhere — the corpus is sample data, and the only thing
   stored is what a visitor types.
 
-What is **not** in place is authentication. The exposure is a token bill, not a
-data breach, but it is unbounded above the rate limit. Options, cheapest first:
-
-1. Traefik basic-auth middleware in front of the ingress — five lines, no
-   application change, and the obvious choice for a demo link shared with named
-   people.
-2. A shared access code checked by the app, so the URL alone is not enough.
-3. Real accounts, which the product will need anyway before it holds anything
-   about a real person.
-
-Say which and it is a short change.
+**What to watch.** `/api/health` reports `spend_today_tokens` against
+`spend_ceiling_tokens`. The shipped ceiling is a starting value that no invoice
+informed; read the gauge for a week and set it from what the service actually
+uses. If it trips, the logs carry `SERVICE_BUDGET_REACHED` at ERROR from the
+turn that crossed it, and every turn after that is refused until 00:00 UTC —
+for everybody, which is the cost of a global circuit breaker.
 
 ## Operating it
 

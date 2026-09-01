@@ -134,6 +134,10 @@ type snapshot struct {
 	// Outreach is the recruiter/candidate contact handshake. See outreach.go.
 	Outreach map[string]*domain.Outreach `json:"outreach,omitempty"`
 	Seq      int                         `json:"seq"`
+	// Spend is the whole deployment's model spending for one UTC day — the
+	// circuit breaker's counter. A scalar belonging to the store as a whole,
+	// like Seq and LegacyAdopted, and persisted the same way. See spend.go.
+	Spend DeploymentSpend `json:"spend,omitempty"`
 }
 
 type Store struct {

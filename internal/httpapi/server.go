@@ -208,10 +208,23 @@ func (s *Server) deploymentFacts() map[string]any {
 }
 
 func (s *Server) health(w http.ResponseWriter, r *http.Request) {
+	_, deploymentSpent := s.Store.SpentToday("")
 	out := map[string]any{
 		"status": "ok", "backend": s.Agent.LLM.Name(),
 		"agent_model": s.Cfg.AgentModel, "classifier_model": s.Cfg.ClassifierModel,
 		"corpus_records": len(s.Agent.Corpus.Opportunities), "cities": s.Agent.Corpus.Cities(),
+		// The day's model spending against the ceiling that stops it. Reported
+		// here and NOT in deploymentFacts because these are operating numbers,
+		// not something the landing page states about the product — and
+		// deploymentFacts also feeds /api/meta.
+		//
+		// This endpoint is public (the probes need it), so these two numbers are
+		// public. What they reveal is roughly how busy the service is, which is
+		// the price of being able to tune the ceiling from real use instead of
+		// from a guess — and knowing the service is near its limit tells an
+		// abuser nothing they would not learn from their next request.
+		"spend_today_tokens":   deploymentSpent,
+		"spend_ceiling_tokens": s.Cfg.DeploymentDailyTokens,
 	}
 	for k, v := range s.deploymentFacts() {
 		out[k] = v
@@ -409,6 +422,12 @@ func (s *Server) postMessage(w http.ResponseWriter, r *http.Request) {
 	if _, ok := s.ownedSession(w, r, id); !ok {
 		return
 	}
+	// The spend gate stands here, BEFORE the stream opens, so a refusal is an
+	// ordinary JSON error the interface already knows how to render inline
+	// rather than an error event inside a half-started answer.
+	if !s.spendAllowed(w, r) {
+		return
+	}
 	if body.Locale != "" {
 		if !validLocale(body.Locale) {
 			writeErr(w, http.StatusBadRequest, "LOCALE_INVALID",
@@ -448,13 +467,18 @@ func (s *Server) postMessage(w http.ResponseWriter, r *http.Request) {
 	ctx, cancel := context.WithTimeout(r.Context(), s.Cfg.MaxWallClock+30*time.Second)
 	defer cancel()
 
-	_, err := s.Agent.Run(ctx, agent.Input{
+	res, err := s.Agent.Run(ctx, agent.Input{
 		SessionID: id, Message: body.Message,
 		Intent: intent.ID(body.Intent), Sink: send,
 	})
 	if err != nil {
 		send(agent.Event{Kind: agent.EvError, Text: err.Error()})
 	}
+	// Charged AFTER the turn, from what it actually cost, and charged even when
+	// it ended in an error: a turn that failed on its last iteration still spent
+	// everything before it, and not charging for failures is an invitation to
+	// spend the budget on turns engineered to fail.
+	s.recordSpend(r, res.Usage)
 	fmt.Fprint(w, "data: {\"kind\":\"close\"}\n\n")
 	flusher.Flush()
 }
