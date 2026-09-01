@@ -61,17 +61,19 @@ risk did not disappear with the gate; it fell onto what was already there:
   tokens, wall clock. They bound ONE turn;
 - an email address required at sign-up — not proof of a person, but a cost.
 
-**What does not exist: any per-account spend cap.** `agent.Budget` is per turn,
-not per account, and nothing counts what an account has spent in total. Before
-this change that did not matter much, because holding an account meant somebody
-had handed you a code. It matters now: a determined stranger can register and
-keep spending, and the only thing slowing them is 30 requests a minute from one
-address.
+**~~What does not exist: any per-account spend cap.~~ CLOSED the same day.**
+`agent.Budget` is per turn, not per account, and when this was written nothing
+counted what an account had spent in total. That gap was the accepted trade here
+and it did not stay open: daily spending ceilings shipped on 2026-09-01, per
+account AND across the whole deployment — the second because a per-account
+allowance on its own multiplies by however many accounts somebody registers, and
+accounts are free now precisely because of this change.
+See 2026-09-01-per-account-and-deployment-spend-caps.md.
 
-That is the accepted trade, not an oversight — but it is the thing to watch, and
-a per-account ceiling is the natural next piece of work if the model bill moves.
-The code comment at the sign-up handler says the same at the point where
-somebody would otherwise quietly re-add a code.
+The sentence is struck through rather than deleted so the reasoning above still
+reads in order: the caps exist BECAUSE this change removed the gate, and anybody
+weighing whether to re-add an invite code should see that the cheaper answer was
+found somewhere else.
 
 ## The other option, and why not it
 

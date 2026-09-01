@@ -13,10 +13,15 @@ spec:
 #
 # It was demoted when accounts arrived (2026-08-28-data-exposure-no-ownership-
 # checks.md) and PROMOTED BACK when sign-up stopped needing an invite code
-# (2026-09-01-sign-up-no-longer-needs-an-invite-code.md): anybody can hold an
-# account now, and there is no per-account spend cap, so this per-IP limit plus
-# the per-turn ceilings in agent.Budget are what bound the cost. Loosening it is
-# a spending decision, not a tuning one.
+# (2026-09-01-sign-up-no-longer-needs-an-invite-code.md), since anybody can hold
+# an account now.
+#
+# It is no longer the only thing: daily spending ceilings arrived the same day
+# (2026-09-01-per-account-and-deployment-spend-caps.md). They do a DIFFERENT job
+# and neither replaces the other — this bounds the RATE, which is what protects
+# a one-replica pod from being flooded; the ceilings bound the TOTAL, which is
+# what protects the bill. Loosening either is a spending decision, not a tuning
+# one.
 apiVersion: traefik.io/v1alpha1
 kind: Middleware
 metadata:

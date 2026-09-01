@@ -397,6 +397,10 @@ func (b *pgBackend) loadMeta(ctx context.Context, s *snapshot) error {
 			if err := json.Unmarshal(raw, &s.LegacyAdopted); err != nil {
 				return fmt.Errorf("LOAD_FAILED: meta.%s: %w", key, err)
 			}
+		case metaDeploymentSpend:
+			if err := json.Unmarshal(raw, &s.Spend); err != nil {
+				return fmt.Errorf("LOAD_FAILED: meta.%s: %w", key, err)
+			}
 		}
 	}
 	return rows.Err()
@@ -405,6 +409,16 @@ func (b *pgBackend) loadMeta(ctx context.Context, s *snapshot) error {
 const (
 	metaSeq           = "seq"
 	metaLegacyAdopted = "legacy_adopted"
+	// metaDeploymentSpend is the day's running total for the whole service.
+	//
+	// A `meta` key rather than a new table or column: it is a scalar owned by
+	// the store, which is what this table is for, and adding it needs no DDL at
+	// all. That matters in both directions — an older binary rolled back to
+	// simply ignores a key it does not know, and loadMeta's switch does the
+	// same, so a roll-forward picks the counter back up where it left off
+	// instead of handing everybody a fresh allowance.
+	// See docs/bugfix/2026-09-01-per-account-and-deployment-spend-caps.md
+	metaDeploymentSpend = "deployment_spend"
 )
 
 // ---------------------------------------------------------------------- save
@@ -661,8 +675,9 @@ func (b *pgBackend) saveSignIns(ctx context.Context, tx pgx.Tx, s *snapshot) err
 
 func (b *pgBackend) saveMeta(ctx context.Context, tx pgx.Tx, s *snapshot) error {
 	for key, val := range map[string]any{
-		metaSeq:           s.Seq,
-		metaLegacyAdopted: s.LegacyAdopted,
+		metaSeq:             s.Seq,
+		metaLegacyAdopted:   s.LegacyAdopted,
+		metaDeploymentSpend: s.Spend,
 	} {
 		raw, err := json.Marshal(val)
 		if err != nil {

@@ -32,6 +32,20 @@ type Config struct {
 	MaxOutputTokens int64
 	MaxRetries      int
 
+	// Spending ceilings, per UTC day. These bound the BILL; the stopping
+	// conditions above bound one turn, which is a different question — eight
+	// iterations of sixteen thousand output tokens is a legitimate turn and an
+	// unbounded number of them is not.
+	//
+	// Two of them, not one, and the second is not redundant: sign-up needs no
+	// invite code, so a per-account allowance multiplies by however many
+	// accounts somebody registers. AccountDailyTokens bounds one account;
+	// DeploymentDailyTokens is the circuit breaker that bounds all of them.
+	// Zero disables either one.
+	// See docs/bugfix/2026-09-01-per-account-and-deployment-spend-caps.md
+	AccountDailyTokens    int64
+	DeploymentDailyTokens int64
+
 	// Guardrails.
 	KAnonymityFloor int // smallest reportable cell in supply_demand_insight
 
@@ -180,15 +194,23 @@ func Load() (Config, error) {
 		MaxWallClock:    time.Duration(envInt("OBA_MAX_WALLCLOCK_SEC", 180)) * time.Second,
 		MaxOutputTokens: int64(envInt("OBA_MAX_OUTPUT_TOKENS", 120000)),
 		MaxRetries:      envInt("OBA_MAX_RETRIES", 2),
-		KAnonymityFloor: envInt("OBA_K_ANONYMITY", 5),
-		DatabaseURL:     env("OBA_DATABASE_URL", ""),
-		DataDir:         env("OBA_DATA_DIR", "data"),
-		StatePath:       env("OBA_STATE_PATH", ""),
-		CorpusDir:       env("OBA_CORPUS_DIR", ""),
-		TranscriptLog:   env("OBA_TRANSCRIPT_LOG", ""),
-		Backend:         backend,
-		ScriptPath:      env("OBA_SCRIPT", ""),
-		DeepSeekBaseURL: env("OBA_DEEPSEEK_BASE_URL", ""),
+		// 2M/day is roughly 40-100 substantial turns: a heavy genuine day sits
+		// well under it, so a person using this as intended never meets it.
+		AccountDailyTokens: int64(envInt("OBA_ACCOUNT_DAILY_TOKENS", 2_000_000)),
+		// A STARTING VALUE, not a figure derived from an invoice. /api/health
+		// reports the day's running total so this can be set from what the
+		// service actually uses. When it trips, nobody can ask anything until
+		// UTC midnight — which is why it belongs well above legitimate use.
+		DeploymentDailyTokens: int64(envInt("OBA_DEPLOYMENT_DAILY_TOKENS", 50_000_000)),
+		KAnonymityFloor:       envInt("OBA_K_ANONYMITY", 5),
+		DatabaseURL:           env("OBA_DATABASE_URL", ""),
+		DataDir:               env("OBA_DATA_DIR", "data"),
+		StatePath:             env("OBA_STATE_PATH", ""),
+		CorpusDir:             env("OBA_CORPUS_DIR", ""),
+		TranscriptLog:         env("OBA_TRANSCRIPT_LOG", ""),
+		Backend:               backend,
+		ScriptPath:            env("OBA_SCRIPT", ""),
+		DeepSeekBaseURL:       env("OBA_DEEPSEEK_BASE_URL", ""),
 		// Chinese by default: this serves people navigating Chinese public
 		// services, and the surrounding prompt being written in English is an
 		// artefact of the code, not a signal about who is reading the answer.
@@ -269,6 +291,15 @@ func (c Config) Validate() error {
 	}
 	if c.MaxToolCalls < 1 {
 		errs = append(errs, errors.New("OBA_MAX_TOOL_CALLS must be at least 1"))
+	}
+	// Negative is refused rather than clamped: 0 already means "no ceiling", so
+	// a negative value is somebody's typo, and silently reading it as unlimited
+	// would turn a fat-fingered minus sign into an uncapped model bill.
+	if c.AccountDailyTokens < 0 {
+		errs = append(errs, errors.New("OBA_ACCOUNT_DAILY_TOKENS cannot be negative; use 0 for no per-account ceiling"))
+	}
+	if c.DeploymentDailyTokens < 0 {
+		errs = append(errs, errors.New("OBA_DEPLOYMENT_DAILY_TOKENS cannot be negative; use 0 for no deployment ceiling"))
 	}
 	valid := false
 	for _, l := range ReplyLanguages {

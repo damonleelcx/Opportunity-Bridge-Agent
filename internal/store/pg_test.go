@@ -187,6 +187,31 @@ func TestIDSequenceDoesNotRestart(t *testing.T) {
 	}
 }
 
+// The spending counters survive a restart, on BOTH sides — the account's total
+// (a field inside accounts.doc) and the deployment's (the `deployment_spend` key
+// in meta). Neither needed DDL, which is exactly why this fence matters: a field
+// that is never written to the database still reads back correctly from memory,
+// so nothing else here would notice. What it would cost in production is a
+// daily ceiling that silently resets on every pod roll.
+// See docs/bugfix/2026-09-01-per-account-and-deployment-spend-caps.md
+func TestSpendCountersSurviveARestart(t *testing.T) {
+	st := freshPG(t)
+	if _, err := st.CreateAccount("spender", "hash"); err != nil {
+		t.Fatalf("create: %v", err)
+	}
+	st.AddSpend("spender", 1234)
+
+	st = reopen(t, st)
+
+	acct, deployment := st.SpentToday("spender")
+	if acct != 1234 {
+		t.Errorf("the account's spending came back as %d, want 1234: a restart hands out a fresh allowance", acct)
+	}
+	if deployment != 1234 {
+		t.Errorf("the deployment total came back as %d, want 1234: a pod roll resets the circuit breaker", deployment)
+	}
+}
+
 // Every migration is applied on every start, so applying them twice has to be
 // the same as applying them once. This is the fence on that claim.
 func TestOpeningTwiceAppliesTheSchemaTwiceWithoutFailing(t *testing.T) {

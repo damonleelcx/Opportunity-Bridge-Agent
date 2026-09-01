@@ -8,7 +8,28 @@ package store
 import (
 	"context"
 	"fmt"
+	"time"
 )
+
+// BackdateSpendForTest moves the DAY STAMP on the spending counters back,
+// leaving the counts alone.
+//
+// Tests need to cross a midnight boundary, and moving the process clock instead
+// would be testing Go's time package rather than the reset — which is a
+// comparison between a stored day and today's, and nothing else. Backdating the
+// stamp exercises exactly that comparison.
+//
+// Test-only for the obvious reason: production has no business rewriting when
+// somebody's spending happened.
+func (s *Store) BackdateSpendForTest(username string, days int) {
+	day := spendDayOf(time.Now().AddDate(0, 0, -days))
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if a, ok := s.s.Accounts[NormaliseUsername(username)]; ok {
+		a.SpendDay = day
+	}
+	s.s.Spend.Day = day
+}
 
 // TruncateAllForTest empties every table. It names them explicitly rather than
 // discovering them from the catalogue, so that a table added to the schema
