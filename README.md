@@ -110,11 +110,18 @@ ships with a check rather than a hope: `no_false_reassurance` fires on comfort
 that is not backed by a fact, and the remedy is always the same shape — *what is
 known, what is not, and who decides.*
 
-The avatar is a bridge that reads as a face: two lantern eyes above the deck, the
-arch beneath it doubling as the mouth. It has four moods, and the one that earns
-its place is **`serious`** — the arch flattens when a turn is blocked or refused,
-because an interface that keeps smiling while the agent says *"I stopped myself
-from sending that answer"* is doing in pixels what the persona forbids in words.
+The avatar is 阿桥 herself: white hair, a white-and-gold uniform, an amber halo
+above her head. One character sheet, two crops of it — the head
+(`web/static/mascot.png`) in every avatar slot from 32px up, and the full figure
+(`web/static/mascot-full.png`) once, in the landing page's *who 阿桥 is* section.
+
+The face does not change when a turn is blocked, and **nothing in the interface
+pretends it does.** That costs something real: an earlier hand-drawn mark had a
+`serious` mood that flattened its smile on a refusal, because an interface that
+keeps smiling while the agent says *"I stopped myself from sending that answer"*
+is doing in pixels what the persona forbids in words. A still illustration cannot
+do that, so the blocked turn says it in words instead — which rule stopped it,
+and that nothing was done.
 
 Full write-up: [docs/13-name-and-voice.md](docs/13-name-and-voice.md).
 
@@ -221,7 +228,7 @@ internal/agent ─── the loop: understand → plan → act → verify → re
 | `evals/` | 27 cases: success, edge, adversarial, routing |
 | `demo/` | the offline replay script |
 | `.env.example` | every variable, documented; `.env` itself is gitignored |
-| `web/static/avatar.js` | 阿桥's face — inline SVG, four moods |
+| `web/static/avatar.js` | 阿桥's face — one illustration, two crops (`mascot.png` head, `mascot-full.png` figure) |
 | `docs/` | one page per build step, mapped in [docs/README.md](docs/README.md) |
 | `deploy/` | Dockerfile inputs, k8s manifests, and the two idempotent scripts |
 | `data/service_directory.json` | 31 official public-employment destinations, each URL verified |

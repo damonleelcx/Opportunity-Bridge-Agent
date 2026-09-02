@@ -28,18 +28,26 @@ one to the model.
 
 **The illustration is served by this binary, not fetched from a bucket.** The
 mockup points its mascot slot at a generated PNG on somebody else's storage. The
-same character is committed here as `web/static/mascot.png`, so keeping the face
-costs nothing against the rule above — it is still one binary and still no
-external request but the one to the model.
+same character is committed here — `web/static/mascot.png` (head, 360×360) and
+`web/static/mascot-full.png` (full figure, 340×800) — so keeping the face costs
+nothing against the rule above: still one binary, still no external request but
+the one to the model.
 
-**There are two faces, and that is deliberate.** An illustration cannot change
-expression, and the mood that had to survive is `serious` — the one that stops
-the face smiling while the agent is refusing. So the illustrated 阿桥 greets, from
-the overview panel and from the sign-in screen, and the inline mark
-(`avatar.js`, four moods, no request) is what sits beside every message, in the
-sidebar and in the tab icon. **The face next to a refusal is the mark, and it is
-not smiling.** Swapping the illustration is still a file drop; swapping the mark
-would cost the moods, which is the part that is load-bearing.
+**There is one face, and two crops of it.** An earlier build had genuinely two:
+the illustration greeted from the overview panel and the sign-in screen, while an
+inline SVG mark — a bridge that read as a face — sat beside every message,
+because the mark could change expression and an illustration cannot. Two
+different drawings for one agent is having no face, so the mark is gone. What
+went with it is `serious`, the mood that stopped the face smiling during a
+refusal; the illustration keeps its calm expression through a blocked turn and
+**nothing in the interface claims otherwise**. The blocked turn says in words
+which rule stopped it and that nothing was done, which was always the
+load-bearing half of that signal. Full accounting in
+[13-name-and-voice.md](13-name-and-voice.md#what-was-lost-said-plainly).
+
+The head crop fills every avatar slot from 32px up. The full figure appears
+exactly once, in the landing page's `阿桥 是谁` section, which is the only place
+with room to show the whole character. Swapping either is a file drop.
 
 There is also one line of the mockup's copy that could not ship as written: the
 mascot says *"王师傅，别担心，我会一步步带你完成报名的！"* — which is exactly the
@@ -193,7 +201,7 @@ Seven sections, in the order somebody decides with:
 | 03 · four audiences | the four intents, in the reader's terms rather than the registry's |
 | 04 · the boundary | **it decides no eligibility and scores nobody**, as a table of rule → how it holds → which guard fires |
 | 05 · the interface | nine things the reader will actually see |
-| 06 · who 阿桥 is | the name, the voice, the four moods |
+| 06 · who 阿桥 is | the name, the voice, and the full figure — the one place on either document that shows the whole character |
 | 07 · honest limits | the invented corpus, the unwired `application_submit`, dialect-in-the-text-not-the-voice, the unconfigured live lookup |
 
 Section 07 is the one worth defending. A product whose persona ships a check

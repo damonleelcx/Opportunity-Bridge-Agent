@@ -297,7 +297,7 @@
       </div>
     </div>
 
-    <p class="note reveal" data-i18n="home.bound.note">被拦下的那一轮，界面会直说是哪条规则拦的，以及「什么都没做」。头像那张脸也会跟着把笑收起来。</p>
+    <p class="note reveal" data-i18n="home.bound.note">被拦下的那一轮，界面会直说是哪条规则拦的，以及「什么都没做」。这句话是用字写出来的——头像不会变脸，不用去表情上找。</p>
   </div>
 </section>
 
@@ -328,7 +328,11 @@
 <section class="section band">
   <div class="wrap voice">
     <div class="voice-art reveal">
-      <img src="/mascot.png" alt="" width="260" height="260">
+      <!-- The whole figure, not the head crop the avatar slots use: this is the
+           section that answers "who is 阿桥", and it is the one place on either
+           document with room to show her. Same character sheet as /mascot.png —
+           two crops, one face. See the header of avatar.js. -->
+      <img class="voice-figure" src="/mascot-full.png" alt="" width="340" height="800" decoding="async">
       <span class="voice-mark" id="voiceAvatar" aria-hidden="true"></span>
     </div>
     <div class="voice-text">
@@ -336,7 +340,7 @@
       <h2 class="reveal" data-i18n="home.voice.title">一个对谁都没有权力的名字</h2>
       <p class="reveal" data-i18n="home.voice.p1">桥，是这个产品自己的比喻。单字前面加「阿」，是叫熟人的叫法，不是叫官方的叫法——这就是设计上的决定：这套系统对谁都没有权力。它不判定资格，不给人打分，它说清楚谁说了算。叫「顾问」会宣称一种它没有的身份，而它面对的人，往往一听到官腔就想到自己办不完的手续。</p>
       <p class="reveal" data-i18n="home.voice.p2">语气跟着这个来：话短，冷静，从不安慰。不说「别担心」。不知道就直说一次。它把你当成一个能自己做事的人。也正因为温情最容易磨掉一句诚实的「不行」，这个人设配的是一道检查而不是一个愿望：说了没有事实撑着的宽心话，就会被拦下。</p>
-      <p class="reveal" data-i18n="home.voice.p3">头像是一座读起来像脸的桥：桥面上两盏灯是眼睛，下面的拱是嘴。四种表情，真正重要的是那张严肃的脸——被拦下或被拒绝的时候，拱会拉平。一个在说「我把那句话拦下来了」的时候还在笑的界面，正是这个人设在文字上禁止的事。</p>
+      <p class="reveal" data-i18n="home.voice.p3">她长这样：白发，白金配色的制服，头顶一圈琥珀色的光环。这张脸是固定的——被拦下的时候它不会换一副表情。一个在说「我把那句话拦下来了」的时候还在笑的界面，做的正是这个人设在文字上禁止的事；所以那一轮该讲清楚的，界面用字讲，不靠表情暗示。</p>
     </div>
   </div>
 </section>

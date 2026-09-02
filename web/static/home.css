@@ -560,15 +560,39 @@ li.is-unmet b { color: var(--ink-400); }
 @media (min-width: 900px) { .voice { grid-template-columns: 300px 1fr; } }
 
 .voice-art { position: relative; justify-self: center; }
-.voice-art img {
-  display: block; width: clamp(180px, 40vw, 260px); height: auto; border-radius: var(--r-lg);
+/* Scoped to .voice-figure, NOT to `.voice-art img`.
+ *
+ * Why, because the loose selector was a live bug: .voice-mark is a child of
+ * .voice-art, and once the avatar stopped being an inline <svg> and became an
+ * <img> (see avatar.js), `.voice-art img` started matching the 62px badge too.
+ * At specificity 0,1,1 it beat .oba-avatar's own `width: 100%` (0,1,0), so the
+ * badge's image was laid out 230px wide inside a 62px overflow:hidden box — a
+ * blown-up crop of one cheek. The rule below must never widen to `img` again.
+ * docs/bugfix/2026-09-02-the-voice-badge-was-sized-by-the-figure-rule.md
+ *
+ * The figure is the full character (/mascot-full.png, 340×800), not the square
+ * head the avatar slots use, so it is sized narrower than the 260px square that
+ * used to sit here. The 200px cap is set against the TEXT, not the column: the
+ * three paragraphs beside it run about 367px tall at desktop, and 200px wide
+ * puts the figure at 468px — close enough to read as one block rather than a
+ * column that keeps going after the words stop. It was 230px (538px tall) and
+ * overhung by 171px, which looked like a layout accident. It cannot simply match
+ * the text height: 367px tall is 156px wide, at which point the character is too
+ * small to be worth showing. Width-driven with height:auto rather than a fixed
+ * box — a full figure letterboxed into a square is a small figure with two empty
+ * bands. The 150px floor is what keeps her recognisable once the section stacks:
+ * at a 375px viewport that is 150×350, centred, and the badge stays inside the
+ * page — measured, not assumed. */
+.voice-art .voice-figure {
+  display: block; width: clamp(150px, 40vw, 200px); height: auto; border-radius: var(--r-lg);
   background: var(--surface-2); border: 1px solid var(--line); box-shadow: var(--glow);
 }
 .voice-mark {
   position: absolute; right: -10px; bottom: -10px; width: 62px; height: 62px;
   border-radius: 19px; overflow: hidden; box-shadow: var(--shadow);
 }
-.voice-mark svg { width: 100%; height: 100%; display: block; }
+/* svg is the historical shape, img is the current one; both fill the badge. */
+.voice-mark svg, .voice-mark img { width: 100%; height: 100%; display: block; }
 .voice-text > p:not(.s-label) { color: var(--ink-500); margin-top: 18px; max-width: 52em; }
 .voice-text h2 { margin-bottom: 4px; }
 

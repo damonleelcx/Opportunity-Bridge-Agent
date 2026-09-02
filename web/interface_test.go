@@ -1619,3 +1619,54 @@ func TestTheGateCanBeScrolledWhenItOutgrowsTheViewport(t *testing.T) {
 			"before it as the fallback: %s", rule)
 	}
 }
+
+// 阿桥 appears on the landing page twice, at two very different sizes, and the
+// rule that sizes the big one must not be able to reach the small one.
+//
+// The bug this holds: `.voice-mark` (the 62px badge) is a CHILD of `.voice-art`,
+// so `.voice-art img { width: clamp(…, 260px) }` matched the badge's image too.
+// It beat .oba-avatar's own `width: 100%` on specificity (0,1,1 against 0,1,0),
+// so the badge laid its image out 230px wide inside a 62px `overflow: hidden`
+// box — a blown-up crop of one cheek. It went unnoticed because the badge was an
+// inline <svg> when that rule was written and only became an <img> later.
+//
+// docs/bugfix/2026-09-02-the-voice-badge-was-sized-by-the-figure-rule.md
+func TestTheVoiceFigureRuleCannotReachTheBadge(t *testing.T) {
+	css := stripCSSComments(asset(t, "home.css"))
+
+	// Non-vacuous first: if the scoped rule is gone, the checks below would pass
+	// against a stylesheet that no longer sizes the figure at all.
+	if !strings.Contains(css, ".voice-art .voice-figure {") {
+		t.Fatalf("home.css has no `.voice-art .voice-figure` rule; this fence is " +
+			"reading the wrong file or the figure is no longer sized at all")
+	}
+
+	// A bare `img` descendant selector under .voice-art is the shape of the bug,
+	// whatever it declares.
+	loose := regexp.MustCompile(`\.voice-art\s+img\s*[,{]`)
+	if m := loose.FindString(css); m != "" {
+		t.Errorf("home.css selects %q. `.voice-art img` also matches the 62px "+
+			".voice-mark badge, which is a child of .voice-art — scope it to "+
+			".voice-figure instead", strings.TrimSpace(m))
+	}
+
+	// The badge has to be told to fill its box in a form that survives the
+	// avatar being an <img> rather than an <svg>.
+	if !strings.Contains(css, ".voice-mark img") {
+		t.Errorf("home.css sizes .voice-mark svg but not .voice-mark img. The " +
+			"avatar has been an <img> since avatar.js stopped drawing SVG")
+	}
+
+	// And the markup has to carry the class the scoped rule depends on, pointing
+	// at the full figure rather than the head crop every other slot uses.
+	home := asset(t, "index.html")
+	if !strings.Contains(home, `class="voice-figure"`) {
+		t.Errorf("index.html has no element with class=\"voice-figure\", so the " +
+			"scoped rule in home.css styles nothing")
+	}
+	if !strings.Contains(home, "/mascot-full.png") {
+		t.Errorf("index.html no longer references /mascot-full.png. The voice " +
+			"section is the one place the whole character is shown; if that is " +
+			"deliberate, this fence and docs/13-name-and-voice.md go with it")
+	}
+}
