@@ -2,13 +2,18 @@
  *
  * Shared by both documents, like tokens.css: the app draws it in the sidebar,
  * the sign-in card and beside every message; the landing page draws it in the
- * header, the sample conversation and the voice section. One file so the face
- * cannot theme differently depending on which page you are on.
+ * header, the sample conversation and as the small badge on the voice section.
+ * One file so the face cannot theme differently depending on which page you
+ * are on.
  *
- * It is an image now (see avatar.js). What is left here is the frame around it —
- * the tinted, rounded plate that lets a 357px illustration sit convincingly in a
- * 32px slot. The --av-* tokens in tokens.css are what makes that plate warm on
- * the gold theme and violet on the light one.
+ * It is an image now (see avatar.js) — the 360px head crop. What is left here
+ * is the frame around it: the tinted, rounded plate that lets that crop sit
+ * convincingly in a 32px slot. The --av-* tokens in tokens.css are what makes
+ * that plate warm on the gold theme and violet on the light one.
+ *
+ * The FULL figure (/mascot-full.png) is not styled here. It appears once, in
+ * the landing page's voice section, and is framed by .voice-art img in
+ * home.css — a card, not a plate. Nothing else may draw it.
  */
 
 .oba-avatar {
@@ -24,8 +29,12 @@
 }
 
 /* Larger slots get a squarer plate: the 30% radius reads as a circle at 32px
-   and as a lozenge at 260px, which is not the same shape. */
-.voice-art .oba-avatar, .mascot .oba-avatar { border-radius: 8%; padding: 0; }
+   and as a lozenge at 260px, which is not the same shape.
+   .voice-art is NOT in this list any more. It used to hold the face at 260px;
+   it now holds the full figure as a plain <img> (home.css) and the only
+   .oba-avatar left inside it is the 62px .voice-mark badge, which is a small
+   slot and wants the small-slot plate. */
+.mascot .oba-avatar { border-radius: 8%; padding: 0; }
 
 @media (prefers-reduced-motion: reduce) {
   .ocard, .btn, .icon-btn { transition: none; }

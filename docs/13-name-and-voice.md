@@ -99,28 +99,68 @@ boundary gets stated before anybody has asked anything.
 
 ## The face
 
-`web/static/avatar.js` — inline SVG, no asset, no request, themed from CSS
-variables.
+An illustration of 阿桥, committed to this repository and served by this binary —
+no bucket, no CDN, no request but the one to the model.
 
-The mark is **a bridge that reads as a face**: two lantern eyes above the deck,
-and the arch beneath the deck doubling as the mouth. That is real bridge
-geometry, which is why it survives being shrunk — a bridge at 96px, a face at
-24px. 24px is the size that actually matters, because the avatar sits beside
-every answer, not only in the header.
+She is a white-haired figure in a white-and-gold uniform under a floating amber
+halo. The halo is what does the work at small sizes: it is the one element of the
+silhouette still legible at 24px, and 24px is the size that actually matters,
+because the avatar sits beside every answer and not only in the header.
 
-Four moods:
+Two crops of one reference sheet, wired in `web/static/avatar.js`:
 
-| Mood | When | What changes |
+| File | Intrinsic | Where it is drawn |
+|---|---|---|
+| `web/static/mascot.png` | 360×360, head | every avatar slot — sidebar, sign-in card, tab icon, overview panel, beside every message |
+| `web/static/mascot-full.png` | 340×800, full figure | the landing page's voice section (`阿桥 是谁`), once |
+
+Two crops of one character are not two faces; two *drawings* would be. That
+distinction is the whole rule, and it is why the previous build's arrangement had
+to end — see below.
+
+The landing page draws both at once, the figure with the head crop as a badge
+pinned to its corner. That badge was rendering as a 4× zoom on one cheek for as
+long as the avatar has been an `<img>`; see
+[bugfix/2026-09-02-the-voice-badge-was-sized-by-the-figure-rule.md](bugfix/2026-09-02-the-voice-badge-was-sized-by-the-figure-rule.md).
+
+### What was lost, said plainly
+
+Until recently a second, hand-drawn mark shipped beside the illustration: a
+bridge that read as a face, inline SVG, themed from CSS variables. It existed
+because it could change expression and an illustration cannot. It had four moods:
+
+| Mood | When | What changed |
 |---|---|---|
 | `calm` | default | |
-| `thinking` | a turn is in flight | a traveller crosses the deck |
+| `thinking` | a turn is in flight | a traveller crossed the deck |
 | `listening` | voice input is open | two arcs at the right |
-| `serious` | the turn was blocked, refused, or stopped early | **the arch flattens** |
+| `serious` | the turn was blocked, refused, or stopped early | **the arch flattened** |
 
-`serious` is the one that earns its place. An interface that keeps smiling while
-the agent says *"I stopped myself from sending that answer"* is doing in pixels
-exactly what the persona forbids in words. The ink deliberately stays its normal
-colour there — greying the whole mark would read as *broken*, and it is not
-broken, it is being serious with you.
+Two drawings for one agent is having no face, so the mark went and the
+illustration stayed. **`serious` went with it, and nothing has replaced it.** An
+interface that keeps smiling while the agent says *"I stopped myself from sending
+that answer"* is doing in pixels exactly what the persona forbids in words — so
+this is a real cost, not a tidy-up.
 
-Reduced-motion is respected: the traveller stops mid-deck rather than looping.
+What makes it acceptable is that the face was the *second* signal. A blocked turn
+already says, in words, which rule stopped it and that nothing was done. Dropping
+a redundant shape cue is allowed under *colour never carries meaning alone*;
+dropping the words would not be.
+
+`thinking` is the one mood that still shows, and only in one place and only as
+motion: `.mascot.is-thinking .mascot-img` in `styles.css` bobs the overview
+panel's illustration while a turn is in flight, and stops under
+`prefers-reduced-motion`.
+
+⚠️ **No interface string may claim the face changes.** `home.bound.note` and
+`home.voice.p3` both claimed it — for as long as the mark had already been gone —
+and were corrected alongside the new art. `data-mood` is still written onto the
+element, so a future treatment has somewhere to hang.
+
+If someone wants the moods back: the reference sheet the crops come from does
+ship an eyes-closed smile and a finger-to-cheek thinking pose, so `thinking` and
+`listening` could be restored as two more crops behind `data-mood`. It ships **no
+serious expression**, which is the only one that was load-bearing. Restoring the
+easy two and not the hard one would make the face look expressive while still
+being unable to stop smiling at a refusal — which is worse than a face that
+plainly never moves.

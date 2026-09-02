@@ -69,10 +69,14 @@ function boot() {
   if (chat) chat.innerHTML = face;
   const icon = $("#favicon");
   if (icon) icon.href = faviconDataURI();
-  // The voice section shows the same face at full size rather than a second
-  // asset: one illustration, one agent.
-  const big = $("#voiceArt");
-  if (big) big.innerHTML = avatar("calm", "阿桥");
+  // The voice section draws the full figure (/mascot-full.png) straight from the
+  // markup, so it needs nothing from here and renders without JS. The head
+  // avatar still appears there as the small #voiceAvatar badge above.
+  //
+  // What was here: an injection into #voiceArt, an id that has never existed in
+  // either document, dating from when the voice section showed the head at
+  // 260px. Removed with that layout rather than left as a hook for an element
+  // nobody creates.
 
   paintIcons();
 
