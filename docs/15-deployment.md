@@ -67,7 +67,7 @@ shares the box.
 ## ⚠️ The endpoint is public, and sign-up is open
 
 Anyone with the URL can create an account and hold a conversation, and every
-turn spends DeepSeek tokens. This section used to end "say which and it is a
+turn spends Qwen tokens. This section used to end "say which and it is a
 short change", listing three options for closing an endpoint that had no
 authentication at all. All three questions have since been answered, and the
 answers are what is in place today:

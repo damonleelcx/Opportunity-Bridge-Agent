@@ -360,7 +360,7 @@ const STRINGS = {
     "home.end.lede": "用你自己的话说清处境就够了：在哪个城市，会点什么，卡在哪一步。",
     "home.end.note": "注册只需要用户名、密码和一个邮箱。邮箱是万一忘了密码时唯一能把账号找回来的办法。",
     "home.foot.licence": "Apache 2.0",
-    "home.foot.note": "运行在 DeepSeek 上，默认中文作答，全国可用。",
+    "home.foot.note": "运行在 Qwen 上，默认中文作答，全国可用。",
     "a11y.language": "语言",
   },
   en: {
@@ -693,7 +693,7 @@ const STRINGS = {
     "home.end.lede": "One sentence in your own words is enough: which city, what you can do, and where you are stuck.",
     "home.end.note": "Creating an account takes a username, a password and an email address. The address is the only way back in if you forget your password.",
     "home.foot.licence": "Apache 2.0",
-    "home.foot.note": "Running on DeepSeek, answering in Chinese by default, nationwide.",
+    "home.foot.note": "Running on Qwen, answering in Chinese by default, nationwide.",
     "a11y.language": "Language",
   },
 };

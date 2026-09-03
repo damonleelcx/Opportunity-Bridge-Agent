@@ -297,10 +297,8 @@ func buildClient(cfg config.Config) (llm.Client, error) {
 	switch cfg.Backend {
 	case config.BackendScripted:
 		return llm.LoadScript(cfg.ScriptPath)
-	case config.BackendDeepSeek:
-		return llm.NewDeepSeek(cfg.APIKey, cfg.DeepSeekBaseURL), nil
-	case config.BackendAnthropic:
-		return llm.NewAnthropic(cfg.APIKey), nil
+	case config.BackendQwen:
+		return llm.NewQwen(cfg.APIKey, cfg.QwenBaseURL), nil
 	default:
 		return nil, fmt.Errorf("BACKEND_UNSUPPORTED: %q; expected one of: %s",
 			cfg.Backend, strings.Join(config.BackendNames(), ", "))

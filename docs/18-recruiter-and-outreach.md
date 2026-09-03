@@ -310,7 +310,7 @@ Fenced by `TestCombinedResultNamesEachVendorIncludingTheRefusedOne`.
 
 ### End to end, on a real turn
 
-Verified 2026-08-31 against the running server (DeepSeek backend, both vendor keys
+Verified 2026-08-31 against the running server (DeepSeek backend — the provider at that date; both vendor keys
 live). One recruiter message — *"I am hiring CNC operators in China. Your pool
 looks tiny — how many people with CNC skills are actually out there?"* — routed to
 `talent_sourcing` by `only_option`, then in a single turn:
