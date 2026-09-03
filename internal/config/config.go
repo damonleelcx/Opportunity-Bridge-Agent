@@ -71,8 +71,13 @@ type Config struct {
 	ScriptPath string
 	APIKey     string
 
-	// DeepSeekBaseURL allows pointing at a proxy or a regional endpoint.
-	DeepSeekBaseURL string
+	// QwenBaseURL allows pointing at a proxy or a different regional endpoint.
+	//
+	// ‼️ Region is part of the CREDENTIAL, not a performance setting. Model
+	// Studio's Beijing and Singapore hosts have separate account namespaces, and
+	// a key from one is rejected by the other with a 401 that looks exactly like
+	// a revoked key. Move this and QWEN_API_KEY together or not at all.
+	QwenBaseURL string
 
 	// Live lookup. The directory ships enabled and needs nothing. Web search is
 	// what actually returns employers and courses nationwide, and it needs a
@@ -178,7 +183,7 @@ func Load() (Config, error) {
 		return Config{EnvFile: envResult}, err
 	}
 
-	backend := Backend(env("OBA_BACKEND", string(BackendAnthropic)))
+	backend := Backend(env("OBA_BACKEND", string(BackendQwen)))
 	spec, knownBackend := backend.spec()
 
 	// Model defaults follow the backend, so switching provider is one variable
@@ -210,7 +215,7 @@ func Load() (Config, error) {
 		TranscriptLog:         env("OBA_TRANSCRIPT_LOG", ""),
 		Backend:               backend,
 		ScriptPath:            env("OBA_SCRIPT", ""),
-		DeepSeekBaseURL:       env("OBA_DEEPSEEK_BASE_URL", ""),
+		QwenBaseURL:           env("OBA_QWEN_BASE_URL", ""),
 		// Chinese by default: this serves people navigating Chinese public
 		// services, and the surrounding prompt being written in English is an
 		// artefact of the code, not a signal about who is reading the answer.
@@ -327,7 +332,9 @@ func (c Config) Validate() error {
 		// Refused at startup rather than on the first person's question: this
 		// provider has no other credential source, so the failure is certain.
 		errs = append(errs, fmt.Errorf("OBA_BACKEND=%s requires %s to be set; "+
-			"create a key at platform.deepseek.com and export it", c.Backend, spec.KeyEnv))
+			"create a key in Model Studio at bailian.console.aliyun.com and export it. "+
+			"Note the key is REGIONAL: a Beijing key is rejected by the Singapore host",
+			c.Backend, spec.KeyEnv))
 	}
 	// Checked even when no key is set. A misspelled provider name with the key
 	// still to come is a deployment that would come up looking healthy and then

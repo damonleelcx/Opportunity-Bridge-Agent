@@ -163,9 +163,11 @@ button, select, textarea, input { font: inherit; color: inherit; }
 .bubble-user { background: var(--brand-fill); color: var(--brand-ink); box-shadow: var(--shadow-sm); }
 .bubble-greeting { background: var(--brand-soft); border-color: var(--brand-border); }
 
-/* Shown until the first text delta arrives. DeepSeek can think for a long time
+/* Shown until the first text delta arrives. Qwen can think for a long time
    before it says anything, and an empty bubble for thirty seconds reads as a
-   failure — which is exactly what it was reported as. */
+   failure — which is exactly what it was reported as. The reason survived the
+   provider change: thinking is enabled per turn, and reasoning_content streams
+   ahead of the first text delta, so the silent gap is still real. */
 .typing { display: inline-flex; gap: 5px; align-items: center; padding: 3px 0; }
 .typing i {
   width: 6px; height: 6px; border-radius: 50%; background: var(--ink-400);

@@ -4,19 +4,21 @@ import (
 	"fmt"
 	"sort"
 	"strings"
+
+	"github.com/damonleelcx/Opportunity-Bridge-Agent/internal/llm"
 )
 
 // Backend names the model provider this process talks to.
 type Backend string
 
 const (
-	// BackendAnthropic is the Claude API (or anything speaking its wire format
-	// at ANTHROPIC_BASE_URL, which includes DeepSeek's Anthropic-compatible
-	// endpoint - see docs/12-deepseek.md for what that route does not carry).
-	BackendAnthropic Backend = "anthropic"
-	// BackendDeepSeek is DeepSeek's own chat completions API.
-	BackendDeepSeek Backend = "deepseek"
-	// BackendScripted replays a fixed script. Tests and offline demos only.
+	// BackendQwen is Alibaba Cloud Model Studio's (DashScope) OpenAI-compatible
+	// endpoint, which serves the Qwen family. This is the default and the only
+	// live provider this build ships with.
+	BackendQwen Backend = "qwen"
+	// BackendScripted replays a fixed script. Tests and offline demos only - it
+	// is a fixture, not a provider, which is why it needs no key and prices
+	// nothing.
 	BackendScripted Backend = "scripted"
 )
 
@@ -42,23 +44,16 @@ type backendSpec struct {
 }
 
 var backends = map[Backend]backendSpec{
-	BackendAnthropic: {
-		DefaultAgent:      "claude-opus-5",
-		DefaultClassifier: "claude-haiku-4-5",
-		Prefix:            "claude-",
-		Known:             []string{"claude-opus-5", "claude-sonnet-5", "claude-haiku-4-5", "claude-opus-4-8"},
-		// The SDK also resolves an OAuth profile from `ant auth login`, so an
-		// empty environment variable is not proof of no credential.
-		RequiresKey: false,
-		KeyEnv:      "ANTHROPIC_API_KEY",
-	},
-	BackendDeepSeek: {
-		DefaultAgent:      "deepseek-v4-pro",
-		DefaultClassifier: "deepseek-v4-flash",
-		Prefix:            "deepseek-",
-		Known:             []string{"deepseek-v4-pro", "deepseek-v4-flash", "deepseek-v4-flash-vision-exp"},
-		RequiresKey:       true,
-		KeyEnv:            "DEEPSEEK_API_KEY",
+	BackendQwen: {
+		DefaultAgent:      llm.QwenAgentModel,
+		DefaultClassifier: llm.QwenClassifierModel,
+		Prefix:            "qwen",
+		Known:             llm.QwenKnownModels,
+		// There is no OAuth or ambient-credential path here: an empty
+		// QWEN_API_KEY means there is no credential, so startup can say so
+		// rather than letting the first person's question discover it.
+		RequiresKey: true,
+		KeyEnv:      "QWEN_API_KEY",
 	},
 	BackendScripted: {
 		DefaultAgent:      "scripted",
@@ -83,8 +78,46 @@ func BackendNames() []string {
 	return out
 }
 
-// checkModelBelongs reports an error when a model id clearly belongs to a
-// different provider, and a warning string when it is merely unrecognised.
+// retiredBackendModels are model ids that used to be valid here, from backends
+// this build no longer ships.
+//
+// # Why this table exists, and why it is an ERROR rather than a warning
+//
+// Until 2026-09-03 this application shipped Anthropic and DeepSeek backends. A
+// deployment upgrading in place keeps its .env, and that .env very likely still
+// says OBA_AGENT_MODEL=claude-opus-5 or deepseek-v4-pro. Those ids are now
+// pointed at Model Studio, and the two of them fail in OPPOSITE ways:
+//
+//   - claude-opus-5 returns a clean 404. Loud, and easy to diagnose.
+//   - deepseek-v4-pro returns HTTP 200 AND A REAL ANSWER - verified against the
+//     live service on 2026-09-03. Model Studio is a multi-vendor marketplace and
+//     genuinely hosts DeepSeek, so the call succeeds, bills at a rate this build
+//     has no price for, and answers from a model nobody selected in the new
+//     configuration.
+//
+// The second is the failure this whole table was written to prevent: the process
+// keeps working while quietly doing something other than what was configured.
+// Refused at startup, because a person who upgraded and did nothing else has not
+// chosen that - they simply have not read the release note yet.
+//
+// 🚫 This is not a general "foreign model" check. Model Studio legitimately
+// serves ZHIPU/, stepfun/ and deepseek- ids, and someone may deliberately want
+// one. Only ids that were OUR OWN defaults are refused, because only those can
+// be present by pure inertia. Delete this table once no deployment carries a
+// pre-2026-09 .env.
+var retiredBackendModels = map[string]string{
+	"claude-opus-5":                "anthropic",
+	"claude-sonnet-5":              "anthropic",
+	"claude-haiku-4-5":             "anthropic",
+	"claude-opus-4-8":              "anthropic",
+	"deepseek-v4-pro":              "deepseek",
+	"deepseek-v4-flash":            "deepseek",
+	"deepseek-v4-flash-vision-exp": "deepseek",
+}
+
+// checkModelBelongs reports an error when a model id is a leftover from a
+// backend this build has removed, and a warning string when it is merely
+// unrecognised.
 func checkModelBelongs(b Backend, field, model string) (warn string, err error) {
 	if model == "" {
 		return "", nil
@@ -93,15 +126,12 @@ func checkModelBelongs(b Backend, field, model string) (warn string, err error) 
 	if !ok {
 		return "", nil
 	}
-	for other, otherSpec := range backends {
-		if other == b || otherSpec.Prefix == "" {
-			continue
-		}
-		if strings.HasPrefix(model, otherSpec.Prefix) {
-			return "", fmt.Errorf("%s=%q is a model for the %s backend, but OBA_BACKEND=%s. "+
-				"Either set OBA_BACKEND=%s, or set %s to one of: %s",
-				field, model, other, b, other, field, strings.Join(spec.Known, ", "))
-		}
+	if from, retired := retiredBackendModels[model]; retired {
+		return "", fmt.Errorf("%s=%q is a model from the %s backend, which this build no longer "+
+			"supports. It was not simply removed: %s still answers on OBA_BACKEND=%s, billed at a "+
+			"rate this build has no price for, so leaving it set would keep working while answering "+
+			"from a model you did not choose. Set %s to one of: %s",
+			field, model, from, model, b, field, strings.Join(spec.Known, ", "))
 	}
 	if len(spec.Known) == 0 {
 		return "", nil

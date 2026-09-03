@@ -4,8 +4,8 @@
 
 | Job | Model | Why |
 |---|---|---|
-| Agent loop | `claude-opus-5` | Multi-step tool use over consequential material. The cost of a wrong benefits answer — a wasted trip, a missed deadline, a filing refused — is far above the cost of the tokens. |
-| Intent routing | `claude-haiku-4-5` | One classification into four buckets, on the latency path of every turn. |
+| Agent loop | `qwen3.8-max` | Multi-step tool use over consequential material. The cost of a wrong benefits answer — a wasted trip, a missed deadline, a filing refused — is far above the cost of the tokens. |
+| Intent routing | `qwen3.8-flash` | One classification into four buckets, on the latency path of every turn, at roughly a fourteenth of the agent model's rate. |
 
 Both are `OBA_AGENT_MODEL` / `OBA_CLASSIFIER_MODEL`, and neither is read anywhere
 except `internal/config`.
@@ -16,15 +16,21 @@ except `internal/config`.
 
 | Backend | Agent | Router |
 |---|---|---|
-| `anthropic` (default) | `claude-opus-5` | `claude-haiku-4-5` |
-| `deepseek` | `deepseek-v4-pro` | `deepseek-v4-flash` |
+| `qwen` (default) | `qwen3.8-max` | `qwen3.8-flash` |
 | `scripted` | replays a script; tests and offline demos only | |
 
+`qwen` is the only live provider. `scripted` is a fixture, not a provider: it
+needs no key and reaches no network.
+
 Because the model ids follow the backend, switching provider is one variable
-rather than three that must be kept in step — and a model id from the *wrong*
-provider is refused at startup rather than silently remapped. Details, and the
-two wire-shape differences that fail silently, are in
-[12-deepseek.md](12-deepseek.md).
+rather than three that must be kept in step. Details, and the wire-shape
+differences that fail silently, are in [12-qwen.md](12-qwen.md).
+
+> **Upgrading from the Anthropic or DeepSeek backends?** Delete any
+> `OBA_AGENT_MODEL` / `OBA_CLASSIFIER_MODEL` left in your `.env`. Startup refuses
+> the retired ids deliberately — Model Studio is a multi-vendor marketplace and
+> answers `deepseek-v4-pro` with a **200**, so a leftover value would keep the
+> service looking healthy while billing for a model nobody selected.
 
 **Effort** defaults to `high` and is set per intent. **Adaptive thinking** is on,
 with `display: "summarized"` — the API default is `omitted`, which in a chat
@@ -54,9 +60,10 @@ never varies independently. See [13-name-and-voice.md](13-name-and-voice.md).
 
 `TestRequestCarriesCacheBreakpointsEffortAndTools` asserts, against a server
 speaking the real wire format, that exactly two breakpoints go out and that the
-volatile layer is not inside the cached prefix. On DeepSeek there is no
-`cache_control` directive at all, so the flags are not sent and the *order* does
-the work instead — `TestDeepSeekRequestShape` asserts that too.
+volatile layer is not inside the cached prefix. On Qwen there is no
+`cache_control` directive at all — its context cache is automatic and keyed on
+the prefix — so the flags are not sent and the *order* does the work instead;
+`TestQwenRequestShape` asserts that too.
 
 Layer 2 is *rendered from the intent registry*, not written twice. The prompt and
 the enforcement code therefore cannot disagree: change `CannotDo` and both the

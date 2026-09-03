@@ -73,7 +73,7 @@ classic way a suite starts passing for the wrong reason.
 | File | Holds |
 |---|---|
 | `internal/intent/registry_test.go` | every allowed tool and named verifier exists; role boundaries; the unrouted state can call nothing |
-| `internal/llm/anthropic_test.go` | the real SDK against a server speaking the real wire format: cache breakpoints, effort, adaptive thinking, `additionalProperties`, error translation, retry hiding partial output |
+| `internal/llm/qwen_test.go` | the real client against a server speaking Model Studio's wire format: layer concatenation, explicit `enable_thinking`, the clamped thinking budget, `role:"tool"` mapping, tool-call id survival across fragments, the nested cache field, error translation |
 | `internal/tools/tools_test.go` | validation messages, argument hashing, per-role consent, k-anonymity suppression, no verdict from `criteria_explain`, no closure without evidence |
 | `internal/guardrail/guardrail_test.go` | each guard, both directions, with its own fixture |
 | `internal/agent/agent_test.go` | the approval gate both ways, allowlist refusals, budgets, trace completeness, memory not replaying tool calls, rollout gate |

@@ -32,7 +32,7 @@ Two pages sit outside the twenty steps:
 
 | | |
 |---|---|
-| [12-deepseek.md](12-deepseek.md) | The second model provider, and what changes at the boundary |
+| [12-qwen.md](12-qwen.md) | The model provider, the regional-key trap, and what changes at the boundary |
 | [13-name-and-voice.md](13-name-and-voice.md) | 阿桥 — the name, the persona, the guard that keeps it honest, the avatar |
 | [17-read-aloud.md](17-read-aloud.md) | Reading answers aloud: the browser voice that always works, the optional vendor voice, and what the free tier costs in privacy |
 | [16-live-lookup.md](16-live-lookup.md) | Looking things up outside the corpus: the provider seam, the verified directory, and the key-gated live search |

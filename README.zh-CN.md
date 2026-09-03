@@ -16,7 +16,7 @@ CDN，以及吉祥物那句「王师傅，别担心……」——那正是人�
 每一项在代码树里都有落点，也都有测试守着 ——
 [docs/README.md](docs/README.md) 把每个建设步骤对应到具体文件。
 
-**线上：[jobs.heros-agent.space](https://jobs.heros-agent.space)** —— 跑在 DeepSeek 上，
+**线上：[jobs.heros-agent.space](https://jobs.heros-agent.space)** —— 跑在 Qwen 上，
 中文作答，全国可用。见 [docs/15-deployment.md](docs/15-deployment.md)（⚠️ 公网可访问且
 未鉴权，暴露的是 token 账单，不是数据）。
 
@@ -28,8 +28,7 @@ CDN，以及吉祥物那句「王师傅，别担心……」——那正是人�
 ```bash
 make demo          # 离线跑，不需要 API Key：http://localhost:8787
 make env           # 从 .env.example 生成 .env，然后填 Key
-make run           # 接 Claude API
-make run-deepseek  # 接 DeepSeek
+make run           # 接 Qwen API
 make check         # gofmt、vet、全部测试，含评测套件
 ```
 
@@ -151,21 +150,27 @@ make demo                 # 回放一段固定对话；无需 API Key，无需�
 
 ```bash
 make env          # 复制 .env.example，权限设为 600
-# 编辑 .env：OBA_BACKEND=deepseek，DEEPSEEK_API_KEY=sk-...
-make run-deepseek
+# 编辑 .env：QWEN_API_KEY=sk-...
+make run
 ```
 
 也可以直接用环境变量——环境变量永远优先于文件：
 
 ```bash
-ANTHROPIC_API_KEY=sk-ant-...  make run           # Claude
-DEEPSEEK_API_KEY=sk-...       make run-deepseek  # DeepSeek
+QWEN_API_KEY=sk-...  make run
 ```
 
-两个供应商驱动的是同一个 Agent——路由、工具、护栏、校验器、预算和审批闸门，都不知道
-这一轮是谁回答的。模型 ID 跟随 `OBA_BACKEND` 自动切换；如果模型 ID 属于另一个供应商，
-启动时直接拒绝，而不是被悄悄映射成对方的默认模型。映射关系，以及两处「不报错但会静
-默变差」的报文差异，见 [docs/12-deepseek.md](docs/12-deepseek.md)。
+供应商藏在 `internal/llm.Client` 后面——路由、工具、护栏、校验器、预算和审批闸门，
+都不知道这一轮是谁回答的。模型 ID 跟随 `OBA_BACKEND` 自动切换。
+
+⚠️ **从旧版（Anthropic / DeepSeek 后端）升级上来的部署**：请把 `.env` 里残留的
+`OBA_AGENT_MODEL` / `OBA_CLASSIFIER_MODEL` 删掉。启动时会**故意拒绝**这些退役的模型
+ID——因为百炼（Model Studio）是一个多厂商市场，`deepseek-v4-pro` 在上面**真的会返回
+200 并正常作答**。留着旧值的后果不是报错，而是服务看起来一切正常，却在为一个没人选过
+的模型付费。
+
+映射关系、Key 的「区域陷阱」，以及几处「不报错但会静默变差」的报文差异，见
+[docs/12-qwen.md](docs/12-qwen.md)。
 
 进去之后值得试的四件事：
 
@@ -187,7 +192,7 @@ internal/httpapi ── 只做传输，本身不含业务逻辑
 internal/agent ─── 循环：理解 → 计划 → 执行 → 校验 → 回应
      ├── internal/intent ──── 登记表：五类受众的完整定义
      ├── internal/prompt ──── 三层：宪章 | 意图 | 上下文（两个缓存断点）
-     ├── internal/llm ─────── 模型边界（Anthropic · DeepSeek · 测试用脚本回放）
+     ├── internal/llm ─────── 模型边界（Qwen · 测试用脚本回放）
      ├── internal/tools ───── 14 个工具；参数校验、权限、授权、审批
      ├── internal/retrieval ─ BM25 + 硬性元数据过滤，可解释
      ├── internal/guardrail ─ 入口护栏 + 各意图声明的校验器
@@ -231,7 +236,7 @@ Go 1.25+（postgres 驱动要求）。单个二进制，界面已内嵌。Linux 
 | `EVIDENCE_REQUIRED` | 仅凭口头汇报不能把任务标记为完成 |
 | `OPPORTUNITY_NOT_FOUND` | 编号不在语料库里——先检索，不要猜 |
 | `MODEL_AUTH_FAILED` / `MODEL_RATE_LIMITED` / `MODEL_UNAVAILABLE` | 均附修复办法 |
-| `MODEL_BILLING` | DeepSeek 余额不足——这是永久性失败，不会重试 |
+| `MODEL_BILLING` | 阿里云账户余额或免费额度用尽——这是永久性失败，不会重试 |
 | `SCRIPT_EXHAUSTED` | 脚本后端拒绝即兴发挥 |
 | `LOCALE_INVALID` | 不支持的回答语言 |
 | `ENV_FILE_INVALID` | `.env` 里某一行有问题，会指出行号 |

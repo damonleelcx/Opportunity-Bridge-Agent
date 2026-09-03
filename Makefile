@@ -33,13 +33,9 @@ build: ## Build both binaries into ./bin
 	go build -o $(BIN)/obaeval ./cmd/obaeval
 
 .PHONY: run
-run: ## Run against the real Claude API (needs ANTHROPIC_API_KEY or `ant auth login`)
-	OBA_ADDR=$(ADDR) OBA_CORPUS_DIR=$(CORPUS) OBA_STATE_PATH=$(STATE) go run ./cmd/obagent
-
-.PHONY: run-deepseek
-run-deepseek: ## Run against DeepSeek (needs DEEPSEEK_API_KEY); model ids follow the backend
+run: ## Run against the real Qwen API (needs QWEN_API_KEY); model ids follow the backend
 	OBA_ADDR=$(ADDR) OBA_CORPUS_DIR=$(CORPUS) OBA_STATE_PATH=$(STATE) \
-	  OBA_BACKEND=deepseek go run ./cmd/obagent
+	  OBA_BACKEND=qwen go run ./cmd/obagent
 
 .PHONY: demo
 demo: ## Run offline against the scripted backend - no API key, no network

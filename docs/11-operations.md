@@ -9,12 +9,12 @@ being exported:
 
 ```bash
 cp .env.example .env && chmod 600 .env    # then fill in the key
-make run-deepseek
+make run
 ```
 
 Three rules:
 
-- **A real environment variable always wins.** `DEEPSEEK_API_KEY=other make run-deepseek`
+- **A real environment variable always wins.** `QWEN_API_KEY=other make run`
   still overrides the file. Without that rule a stale `.env` silently defeats
   every attempt to run against something else.
 - **A missing file is not an error.** Most deployments export real variables and
@@ -40,8 +40,8 @@ process believes.
 | Variable | Default | |
 |---|---|---|
 | `OBA_ADDR` | `:8787` | |
-| `OBA_AGENT_MODEL` | `claude-opus-5` | |
-| `OBA_CLASSIFIER_MODEL` | `claude-haiku-4-5` | |
+| `OBA_AGENT_MODEL` | `qwen3.8-max` | retired Anthropic/DeepSeek ids are refused at startup |
+| `OBA_CLASSIFIER_MODEL` | `qwen3.8-flash` | |
 | `OBA_EFFORT` | `high` | clamped per intent |
 | `OBA_REPLY_LANGUAGE` | `zh-CN` | `zh-CN`, `en`, or `match` (mirror the person). A session overrides it |
 | `OBA_ENV_FILE` | `.env` | where to look for the file above |
@@ -55,13 +55,12 @@ process believes.
 | `OBA_CORPUS_DIR` | `data` | |
 | `OBA_STATE_PATH` | *(memory only)* | |
 | `OBA_TRANSCRIPT_LOG` | — | JSON-lines mirror of the trace |
-| `OBA_BACKEND` | `anthropic` | `anthropic`, `deepseek`, or `scripted` (needs `OBA_SCRIPT`) |
-| `ANTHROPIC_API_KEY` | — | an OAuth profile from `ant auth login` also works |
-| `DEEPSEEK_API_KEY` | — | required when `OBA_BACKEND=deepseek`; there is no other credential source, so it is refused at startup |
-| `OBA_DEEPSEEK_BASE_URL` | `https://api.deepseek.com` | for a proxy or a regional endpoint |
+| `OBA_BACKEND` | `qwen` | `qwen`, or `scripted` (needs `OBA_SCRIPT`) |
+| `QWEN_API_KEY` | — | required; there is no other credential source, so it is refused at startup. **Regional** — see below |
+| `OBA_QWEN_BASE_URL` | `https://dashscope.aliyuncs.com/compatible-mode/v1` | Beijing. Singapore is `https://dashscope-intl.aliyuncs.com/compatible-mode/v1`, and it needs a key issued in *that* region: a mismatched key 401s exactly like a revoked one |
 
 Model ids default from `OBA_BACKEND` and are checked against it at startup — see
-[12-deepseek.md](12-deepseek.md).
+[12-qwen.md](12-qwen.md).
 
 ## Fail fast, but only on what makes it dishonest
 

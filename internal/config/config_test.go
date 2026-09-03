@@ -9,6 +9,7 @@ import (
 	"testing"
 
 	"github.com/damonleelcx/Opportunity-Bridge-Agent/internal/config"
+	"github.com/damonleelcx/Opportunity-Bridge-Agent/internal/llm"
 )
 
 // Switching provider without changing the model ids is the obvious mistake, and
@@ -17,13 +18,13 @@ import (
 // nobody chose. These tests hold the startup refusal that prevents that.
 
 func TestBackendDefaultsFollowTheBackend(t *testing.T) {
-	t.Setenv("OBA_BACKEND", "deepseek")
-	t.Setenv("DEEPSEEK_API_KEY", "ds-test")
+	t.Setenv("OBA_BACKEND", "qwen")
+	t.Setenv("QWEN_API_KEY", "qw-test")
 	cfg, err := config.Load()
 	if err != nil {
 		t.Fatalf("load: %v", err)
 	}
-	if cfg.AgentModel != "deepseek-v4-pro" || cfg.ClassifierModel != "deepseek-v4-flash" {
+	if cfg.AgentModel != llm.QwenAgentModel || cfg.ClassifierModel != llm.QwenClassifierModel {
 		t.Errorf("models did not follow the backend: agent=%q classifier=%q",
 			cfg.AgentModel, cfg.ClassifierModel)
 	}
@@ -32,16 +33,18 @@ func TestBackendDefaultsFollowTheBackend(t *testing.T) {
 	}
 }
 
-func TestCrossProviderModelIsRefusedAtStartup(t *testing.T) {
-	t.Setenv("OBA_BACKEND", "deepseek")
-	t.Setenv("DEEPSEEK_API_KEY", "ds-test")
+// TestRetiredProviderModelIsRefusedAtStartup: the message has to say what to
+// change, not merely that something is wrong. Somebody meets this immediately
+// after an upgrade, having changed nothing themselves.
+func TestRetiredProviderModelIsRefusedAtStartup(t *testing.T) {
+	t.Setenv("OBA_BACKEND", "qwen")
+	t.Setenv("QWEN_API_KEY", "qw-test")
 	t.Setenv("OBA_AGENT_MODEL", "claude-opus-5")
 	_, err := config.Load()
 	if err == nil {
-		t.Fatal("a Claude model on the DeepSeek backend was accepted")
+		t.Fatal("a Claude model on the Qwen backend was accepted")
 	}
-	// The message has to say what to change, not just that something is wrong.
-	for _, want := range []string{"claude-opus-5", "anthropic backend", "OBA_BACKEND=deepseek", "deepseek-v4-pro"} {
+	for _, want := range []string{"claude-opus-5", "anthropic", "OBA_AGENT_MODEL", llm.QwenAgentModel} {
 		if !strings.Contains(err.Error(), want) {
 			t.Errorf("error is missing %q:\n%s", want, err)
 		}
@@ -49,11 +52,11 @@ func TestCrossProviderModelIsRefusedAtStartup(t *testing.T) {
 }
 
 func TestUnknownModelWarnsButProceeds(t *testing.T) {
-	// A proxy or a model released after this build is legitimate. It is logged,
-	// not blocked.
-	t.Setenv("OBA_BACKEND", "deepseek")
-	t.Setenv("DEEPSEEK_API_KEY", "ds-test")
-	t.Setenv("OBA_AGENT_MODEL", "deepseek-v5-something")
+	// A proxy, a marketplace id, or a model released after this build is
+	// legitimate. It is logged, not blocked.
+	t.Setenv("OBA_BACKEND", "qwen")
+	t.Setenv("QWEN_API_KEY", "qw-test")
+	t.Setenv("OBA_AGENT_MODEL", "qwen4.0-something")
 	cfg, err := config.Load()
 	if err != nil {
 		t.Fatalf("an unrecognised id of the right family was blocked: %v", err)
@@ -63,22 +66,28 @@ func TestUnknownModelWarnsButProceeds(t *testing.T) {
 	}
 }
 
-func TestDeepSeekRequiresItsKey(t *testing.T) {
-	t.Setenv("OBA_BACKEND", "deepseek")
-	t.Setenv("DEEPSEEK_API_KEY", "")
+// TestQwenRequiresItsKey. Unlike the Anthropic backend this replaced, there is no
+// OAuth or ambient-credential path here, so an empty variable IS proof of no
+// credential and the failure is certain. Refused at startup rather than on the
+// first person's question.
+func TestQwenRequiresItsKey(t *testing.T) {
+	t.Setenv("OBA_BACKEND", "qwen")
+	t.Setenv("QWEN_API_KEY", "")
 	_, err := config.Load()
-	if err == nil || !strings.Contains(err.Error(), "DEEPSEEK_API_KEY") {
-		t.Fatalf("a missing DeepSeek key was not refused at startup: %v", err)
+	if err == nil || !strings.Contains(err.Error(), "QWEN_API_KEY") {
+		t.Fatalf("a missing Qwen key was not refused at startup: %v", err)
 	}
 }
 
-func TestAnthropicDoesNotRequireAnEnvKey(t *testing.T) {
-	// The SDK also resolves an OAuth profile, so an empty variable is not proof
-	// of no credential; refusing here would break a legitimate setup.
-	t.Setenv("OBA_BACKEND", "anthropic")
-	t.Setenv("ANTHROPIC_API_KEY", "")
-	if _, err := config.Load(); err != nil {
-		t.Fatalf("anthropic with no env key was refused: %v", err)
+// TestKeyErrorNamesTheRegionalTrap: a Beijing key 401s on the Singapore host
+// exactly as a revoked key does, so the startup message is the one place a
+// reader can be warned before they go looking for a key that is already fine.
+func TestKeyErrorNamesTheRegionalTrap(t *testing.T) {
+	t.Setenv("OBA_BACKEND", "qwen")
+	t.Setenv("QWEN_API_KEY", "")
+	_, err := config.Load()
+	if err == nil || !strings.Contains(err.Error(), "REGIONAL") {
+		t.Fatalf("the missing-key error does not mention that the key is regional: %v", err)
 	}
 }
 
@@ -88,7 +97,7 @@ func TestUnknownBackendNamesTheAlternatives(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected a refusal")
 	}
-	for _, want := range []string{"anthropic", "deepseek", "scripted"} {
+	for _, want := range []string{"qwen", "scripted"} {
 		if !strings.Contains(err.Error(), want) {
 			t.Errorf("the error does not list %q as an option:\n%s", want, err)
 		}
@@ -226,23 +235,83 @@ func TestConfigReadsTheKeyFromTheFile(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, ".env")
 	if err := os.WriteFile(path,
-		[]byte("OBA_BACKEND=deepseek\nDEEPSEEK_API_KEY=sk-from-dotenv\n"), 0o600); err != nil {
+		[]byte("OBA_BACKEND=qwen\nQWEN_API_KEY=sk-from-dotenv\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	t.Setenv("OBA_ENV_FILE", path)
 	os.Unsetenv("OBA_BACKEND")
-	os.Unsetenv("DEEPSEEK_API_KEY")
+	os.Unsetenv("QWEN_API_KEY")
 
 	cfg, err := config.Load()
 	if err != nil {
 		t.Fatalf("load: %v", err)
 	}
-	if cfg.Backend != config.BackendDeepSeek || cfg.APIKey != "sk-from-dotenv" {
+	if cfg.Backend != config.BackendQwen || cfg.APIKey != "sk-from-dotenv" {
 		t.Errorf("the file did not reach the config: backend=%q key set=%v",
 			cfg.Backend, cfg.APIKey != "")
 	}
-	if cfg.AgentModel != "deepseek-v4-pro" {
+	if cfg.AgentModel != llm.QwenAgentModel {
 		t.Errorf("model defaults did not follow the backend chosen in the file: %q", cfg.AgentModel)
+	}
+}
+
+// TestDefaultBackendIsQwen pins the default provider. It is a one-line check over
+// a decision that is otherwise invisible: nothing else in the tree states which
+// provider a deployment with an empty .env will actually call.
+func TestDefaultBackendIsQwen(t *testing.T) {
+	os.Unsetenv("OBA_BACKEND")
+	t.Setenv("QWEN_API_KEY", "sk-test")
+	cfg, err := config.Load()
+	if err != nil {
+		t.Fatalf("load: %v", err)
+	}
+	if cfg.Backend != config.BackendQwen {
+		t.Errorf("default backend = %q, want qwen", cfg.Backend)
+	}
+	if cfg.AgentModel != llm.QwenAgentModel || cfg.ClassifierModel != llm.QwenClassifierModel {
+		t.Errorf("default models = %q / %q, want %q / %q",
+			cfg.AgentModel, cfg.ClassifierModel, llm.QwenAgentModel, llm.QwenClassifierModel)
+	}
+}
+
+// TestRetiredModelIdsAreRefused is the upgrade fence.
+//
+// A deployment upgrading in place keeps its .env, which very likely still names
+// a model from the Anthropic or DeepSeek backends this build removed. The
+// DeepSeek ids are the dangerous ones: Model Studio is a multi-vendor
+// marketplace and genuinely answers `deepseek-v4-pro` with HTTP 200, so without
+// this check the process comes up healthy and bills for a model nobody chose in
+// the new configuration.
+func TestRetiredModelIdsAreRefused(t *testing.T) {
+	for _, model := range []string{"claude-opus-5", "deepseek-v4-pro", "deepseek-v4-flash"} {
+		t.Setenv("QWEN_API_KEY", "sk-test")
+		t.Setenv("OBA_BACKEND", "qwen")
+		t.Setenv("OBA_AGENT_MODEL", model)
+		_, err := config.Load()
+		if err == nil {
+			t.Errorf("OBA_AGENT_MODEL=%s was accepted; a leftover id from a removed backend must "+
+				"not come up looking healthy", model)
+			continue
+		}
+		if !strings.Contains(err.Error(), model) {
+			t.Errorf("the error for %s does not name the model: %v", model, err)
+		}
+	}
+}
+
+// TestMarketplaceModelIdsAreAllowed: only OUR OWN retired defaults are refused.
+// Model Studio serves third-party ids too, and someone may deliberately want one,
+// so an unrecognised id is a warning rather than a refusal.
+func TestMarketplaceModelIdsAreAllowed(t *testing.T) {
+	t.Setenv("QWEN_API_KEY", "sk-test")
+	t.Setenv("OBA_BACKEND", "qwen")
+	t.Setenv("OBA_AGENT_MODEL", "ZHIPU/GLM-5.3-Flash")
+	cfg, err := config.Load()
+	if err != nil {
+		t.Fatalf("a third-party marketplace id was refused outright: %v", err)
+	}
+	if len(cfg.Warnings) == 0 {
+		t.Error("an unrecognised model id produced no warning at all")
 	}
 }
 

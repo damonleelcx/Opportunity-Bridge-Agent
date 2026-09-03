@@ -75,10 +75,8 @@ func run(args []string, jsonOut string, live bool, timeout time.Duration) error 
 		// Routing is measured against whichever provider this deployment
 		// actually uses, so the number means something for this deployment.
 		switch cfg.Backend {
-		case config.BackendDeepSeek:
-			runner.LiveClient = llm.NewDeepSeek(cfg.APIKey, cfg.DeepSeekBaseURL)
-		case config.BackendAnthropic:
-			runner.LiveClient = llm.NewAnthropic(cfg.APIKey)
+		case config.BackendQwen:
+			runner.LiveClient = llm.NewQwen(cfg.APIKey, cfg.QwenBaseURL)
 		default:
 			return fmt.Errorf("EVAL_LIVE_UNSUPPORTED: -live needs a real backend, but OBA_BACKEND=%s", cfg.Backend)
 		}

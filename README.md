@@ -19,7 +19,7 @@ those has a place in the tree and a test that holds it there —
 [docs/README.md](docs/README.md) maps each build step to the code.
 
 **Live: [jobs.heros-agent.space](https://jobs.heros-agent.space)** — running on
-DeepSeek, answering in Chinese, nationwide.
+Qwen, answering in Chinese, nationwide.
 See [docs/15-deployment.md](docs/15-deployment.md) (⚠️ public and
 unauthenticated; the exposure is a token bill, not data).
 
@@ -32,8 +32,7 @@ followed a link arrived at an unlabelled password box; the write-up is in
 ```bash
 make demo          # offline, no API key: http://localhost:8787
 make env           # create .env from .env.example, then fill in your key
-make run           # against the Claude API
-make run-deepseek  # against DeepSeek
+make run           # against the Qwen API
 make check         # gofmt, vet, every test, and the evaluation suite
 ```
 
@@ -173,23 +172,27 @@ Then, with credentials — either in `.env`:
 
 ```bash
 make env          # copies .env.example, chmod 600
-# edit .env: OBA_BACKEND=deepseek, DEEPSEEK_API_KEY=sk-...
-make run-deepseek
+# edit .env: QWEN_API_KEY=sk-...
+make run
 ```
 
 or exported, which always wins over the file:
 
 ```bash
-ANTHROPIC_API_KEY=sk-ant-...  make run           # Claude
-DEEPSEEK_API_KEY=sk-...       make run-deepseek  # DeepSeek
+QWEN_API_KEY=sk-...  make run
 ```
 
-Both providers drive the same agent — routing, tools, guardrails, verifiers,
-budgets and the approval gate never learn which one answered. Model ids follow
-`OBA_BACKEND`, and a model id from the wrong provider is refused at startup
-rather than silently remapped onto that provider's default.
-[docs/12-deepseek.md](docs/12-deepseek.md) covers the mapping and the two wire
-shapes that otherwise fail silently.
+The provider sits behind `internal/llm.Client`, so routing, tools, guardrails,
+verifiers, budgets and the approval gate never learn who answered. Model ids
+follow `OBA_BACKEND`.
+
+⚠️ **Upgrading from a build that used Anthropic or DeepSeek?** Delete any
+`OBA_AGENT_MODEL` / `OBA_CLASSIFIER_MODEL` left in your `.env`. Startup refuses
+the retired ids on purpose: Model Studio is a multi-vendor marketplace and
+answers `deepseek-v4-pro` with a **200**, so a leftover value would keep the
+service looking healthy while billing for a model nobody selected.
+[docs/12-qwen.md](docs/12-qwen.md) covers the mapping, the regional-key trap, and
+the wire shapes that otherwise fail silently.
 
 Things worth doing in the interface:
 
@@ -212,7 +215,7 @@ internal/httpapi ── transport only; owns no logic
 internal/agent ─── the loop: understand → plan → act → verify → respond
      ├── internal/intent ──── the registry: four audiences, fully specified
      ├── internal/prompt ──── 3 layers: charter | intent | context (2 cache breakpoints)
-     ├── internal/llm ─────── model boundary (Anthropic · DeepSeek · scripted)
+     ├── internal/llm ─────── model boundary (Qwen · scripted)
      ├── internal/tools ───── 14 tools; validation, permissions, consent, approval
      ├── internal/retrieval ─ BM25 + hard metadata filters, explainable
      ├── internal/guardrail ─ input guards + the verifiers each intent names
@@ -262,7 +265,7 @@ Every failure carries a code, what it means for the person, and what to do next.
 | `EVIDENCE_REQUIRED` | a task cannot be closed on a report alone |
 | `OPPORTUNITY_NOT_FOUND` | the id is not in the corpus — search first, do not guess |
 | `MODEL_AUTH_FAILED` / `MODEL_RATE_LIMITED` / `MODEL_UNAVAILABLE` | with the remedy attached |
-| `MODEL_BILLING` | DeepSeek balance exhausted — permanent, so it is never retried |
+| `MODEL_BILLING` | Alibaba Cloud balance or free quota exhausted — permanent, so it is never retried |
 | `SCRIPT_EXHAUSTED` | the scripted backend refusing to improvise |
 | `LOCALE_INVALID` | an answer language the service does not offer |
 | `ENV_FILE_INVALID` | a bad line in `.env`, named by line number |
