@@ -23,6 +23,17 @@ data:
   # it is actually running without anyone having to know the default table.
   OBA_AGENT_MODEL: "qwen3.8-max"
   OBA_CLASSIFIER_MODEL: "qwen3.8-flash"
+  # 🔴 MOVES WITH `QWEN_API_KEY` IN THE opportunity-bridge-model SECRET, NEVER ALONE. The credential
+  # is issued against this one host. Model Studio's Beijing endpoint — which is what an empty value
+  # here selects, via llm.DefaultQwenBaseURL — refuses this key with a 401 whose body is identical to
+  # the one a revoked key earns, so changing either of the two on its own takes the agent off the air
+  # while /api/health keeps answering: the startup probe checks that a key is PRESENT, not that it
+  # works. Both change in the same rollout.
+  #
+  # This host is a prepaid token plan rather than pay-as-you-go Model Studio, so "plan exhausted" is a
+  # failure mode distinct from "key invalid", and it serves a SMALLER model catalogue: the two ids
+  # above are on it, but qwen-plus / qwen-max / the -vl and -omni families are not.
+  OBA_QWEN_BASE_URL: "https://token-plan.cn-beijing.maas.aliyuncs.com/compatible-mode/v1"
   # Budgets. Lower than the local defaults on purpose: this endpoint is public,
   # and every iteration is somebody's tokens.
   OBA_MAX_ITERATIONS: "6"
