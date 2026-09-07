@@ -57,7 +57,7 @@ process believes.
 | `OBA_TRANSCRIPT_LOG` | — | JSON-lines mirror of the trace |
 | `OBA_BACKEND` | `qwen` | `qwen`, or `scripted` (needs `OBA_SCRIPT`) |
 | `QWEN_API_KEY` | — | required; there is no other credential source, so it is refused at startup. **Regional** — see below |
-| `OBA_QWEN_BASE_URL` | `https://dashscope.aliyuncs.com/compatible-mode/v1` | Beijing. Singapore is `https://dashscope-intl.aliyuncs.com/compatible-mode/v1`, and it needs a key issued in *that* region: a mismatched key 401s exactly like a revoked one |
+| `OBA_QWEN_BASE_URL` | `https://dashscope.aliyuncs.com/compatible-mode/v1` | The default is Model Studio Beijing; **this deployment overrides it** to the prepaid token plan at `token-plan.cn-beijing.maas.aliyuncs.com`. The key is issued against ONE host and a mismatch 401s exactly like a revoked one, so this and `QWEN_API_KEY` move together — see [12-qwen.md](12-qwen.md) |
 
 Model ids default from `OBA_BACKEND` and are checked against it at startup — see
 [12-qwen.md](12-qwen.md).

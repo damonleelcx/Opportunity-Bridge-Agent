@@ -27,18 +27,33 @@ file.
 
 Model Studio has two hosts, and they do **not** share an account namespace:
 
-| Region | Base URL |
+| Host | Base URL |
 |---|---|
-| Beijing (default) | `https://dashscope.aliyuncs.com/compatible-mode/v1` |
-| Singapore | `https://dashscope-intl.aliyuncs.com/compatible-mode/v1` |
+| Model Studio, Beijing (default) | `https://dashscope.aliyuncs.com/compatible-mode/v1` |
+| Model Studio, Singapore | `https://dashscope-intl.aliyuncs.com/compatible-mode/v1` |
+| **Token plan, Beijing** — what this deployment runs | `https://token-plan.cn-beijing.maas.aliyuncs.com/compatible-mode/v1` |
+
+The third one is **not a region**. It is a different billing product — a prepaid
+token package rather than pay-as-you-go — so "which region?" is the wrong
+question to ask when a key stops working. Two consequences that the region
+framing does not cover:
+
+- **"Plan exhausted" is a failure mode that does not exist on Model Studio.** It
+  is not an auth failure and will not look like one.
+- **It serves a smaller catalogue.** Both ids this service uses are on it, but
+  `qwen-plus`, `qwen-max`, `qwen-vl-max`, `qwen3-asr-*` and `qwen3-omni-*` are
+  not — they return `404 model_not_found` at call time, not at startup.
 
 A key issued in one region is rejected by the other with a **401 that is
 indistinguishable from a revoked key** — verified against the live service on
 2026-09-03, where a working Beijing key returned `invalid_api_key` on the
 Singapore host.
 
-So region is part of the *credential*, not a latency preference:
-`OBA_QWEN_BASE_URL` and `QWEN_API_KEY` move together or not at all. The
+So the **host** is part of the *credential*, not a latency preference:
+`OBA_QWEN_BASE_URL` and `QWEN_API_KEY` move together or not at all. Confirmed
+again on 2026-09-05 in the other direction — a token-plan key returns
+`invalid_api_key` on both Model Studio hosts, and the Model Studio key returns
+it on the token-plan host. The
 `MODEL_AUTH_FAILED` message says so, because without the hint the obvious next
 move is to reissue a key that already works.
 
