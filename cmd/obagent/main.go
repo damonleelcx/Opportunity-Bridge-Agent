@@ -27,6 +27,7 @@ import (
 	"github.com/damonleelcx/Opportunity-Bridge-Agent/internal/config"
 	"github.com/damonleelcx/Opportunity-Bridge-Agent/internal/corpus"
 	"github.com/damonleelcx/Opportunity-Bridge-Agent/internal/httpapi"
+	"github.com/damonleelcx/Opportunity-Bridge-Agent/internal/leadgraph"
 	"github.com/damonleelcx/Opportunity-Bridge-Agent/internal/livesource"
 	"github.com/damonleelcx/Opportunity-Bridge-Agent/internal/llm"
 	"github.com/damonleelcx/Opportunity-Bridge-Agent/internal/mailer"
@@ -90,10 +91,31 @@ func run(addrOverride string, log *slog.Logger) error {
 	if err != nil {
 		return err
 	}
+	// 猎源图谱 shares this deployment's database and keeps its own tables. One
+	// product, one process, one database - the separation that matters is the
+	// import graph, not the schema, and a test asserts that one.
+	//
+	// Without a database there is no graph. It is NOT run in memory as a
+	// fallback: that would look like a working feature and lose a recruiter's
+	// whole book on the first restart. The tools say so when asked.
+	var graph *leadgraph.Store
+	if cfg.DatabaseURL != "" {
+		gctx, gcancel := context.WithTimeout(context.Background(), 30*time.Second)
+		graph, err = leadgraph.NewWithPostgres(gctx, cfg.DatabaseURL, log)
+		gcancel()
+		if err != nil {
+			return fmt.Errorf("GRAPH_UNAVAILABLE: %w", err)
+		}
+		defer graph.Close()
+	} else {
+		log.Warn("no database configured: 猎源图谱 is unavailable this run",
+			"code", "GRAPH_DISABLED")
+	}
+
 	ag := &agent.Agent{
 		Cfg: cfg, LLM: client, Store: st, Corpus: c,
 		Index: retrieval.NewIndex(c), Tools: toolsRegistry(), Live: live,
-		Talent: buildTalentSource(cfg, log),
+		Talent: buildTalentSource(cfg, log), Graph: graph,
 	}
 	webFS, err := fs.Sub(web.Files, "static")
 	if err != nil {

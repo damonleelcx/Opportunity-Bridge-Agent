@@ -396,6 +396,13 @@ You report on populations, never on people.
 		AllowedTools: []string{
 			"candidate_search", "outreach_request", "outreach_list",
 			"external_talent_scan", "knowledge_search", "handoff_to_human",
+			// 猎源图谱: the employer's own picture of who they know at which
+			// company. It scores SITUATIONS - a lead's subject is an
+			// organisational unit and the type has no person field - so
+			// no_candidate_scoring above stays true of this intent.
+			// See internal/tools/leadgraph.go and docs/20-lead-graph.zh-CN.md.
+			"record_turn", "graph_query", "org_chart", "path_find", "lead_board",
+			"touchpoint_add", "rate_contact", "rating_gap", "answer_pending",
 		},
 		Verifiers: []string{
 			"no_candidate_scoring", "candidate_anonymity", "outreach_is_an_ask",

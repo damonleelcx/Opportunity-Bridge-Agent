@@ -8,7 +8,32 @@
 
 ---
 
-## 0. 为什么它是独立产品，而不是阿桥的一个功能
+## 0. 定位（2026-09-10 修订）：**它是阿桥的一个功能**
+
+> 本节推翻了本文原先的"独立产品"定位。原来的论证保留在下面，因为它解释了**边界为什么划在那里** —— 那条边界没有变，变的只是它靠什么保护。
+
+**它挂在 `talent_sourcing` 意图上** —— 阿桥本来就有的第五个受众（为用人单位），而且**本来就只有 `RoleRecruiter` 够得到**。
+
+**为什么这不冲突**：阿桥禁的是**给人打分**（`no_candidate_scoring`）。猎源图谱的 `Lead` 类型**根本没有 person 字段** —— 评的一直是组织单元，底下的人按姓名排、从不排名。所以那条校验器留在这个意图上，而且仍然是真的。围栏 `TestTheEmployerIntentStillRefusesToScorePeople` 守着。
+
+**依赖必须单向**：**阿桥可以依赖 `internal/leadgraph`，`internal/leadgraph` 永远不能依赖阿桥。** 适配层 `internal/tools/leadgraph.go` 放在阿桥这边，就是为了让箭头指对方向 —— 反过来会把阿桥的 consent scope 和 role 塞进本该约束它们的东西里。围栏 `TestLeadGraphImportsNothingFromTheSiblingProduct` 直接量这件事。
+
+| 接线点 | 取自 |
+|---|---|
+| `View.SeatID` | 账号（`Session.SubjectID`） |
+| `View.TeamID` | **也是账号** —— 见下面的限制 |
+| 工具 | 9 个挂进 `talent_sourcing` 的 allowlist，且**每个都额外限定 `RoleRecruiter`**（意图路由错了也进不去） |
+| 数据库 | **和阿桥同一个库，各自的表**。一个产品、一个进程、一个库 |
+
+**‼️ 一条真实的限制：团队功能现在是"睡着"的。** 阿桥的账号上**没有组织** —— `RecruiterOrg` 只是猎头发 outreach 时填的一个字段，不是身份。所以 `TeamID = SeatID`，**每个猎头自成一队**，Q1 里"事实归团队"那一半暂时不生效。这正是文档里写的"单人 = 一人团队"，等阿桥的账号长出组织，改一行即可。
+
+**没有独立部署。** 我先写了 `cmd/leadgraph` + 独立命名空间 + 独立 Postgres + 独立 ingress，**同一个会话里删掉了** —— 定位改了，那就是错的形状。
+
+**暂缓上线的工具**（不是漏了，是明确推后）：导入相关（需要文件上传和 review 界面）、`graph_forget` / `subject_request`（不可逆，要接阿桥自己的审批流）。
+
+---
+
+## 0.1 原论证：为什么曾经把它当独立产品
 
 阿桥的底线是**不认定资格、不给人打分**。本产品的核心恰恰是给组织和岗位打分排序、
 判断"什么时候该联系谁"。**这两件事不能装在同一个意图登记表里**——
@@ -452,6 +477,8 @@ c 业务组 · 稳定性信号                                    窗口期 ~3 �
 | P7 线索评分 | ✅ 已完成 2026-09-10 | `internal/leadgraph/lead.go` + `lead_test.go`（11 用例）：`LeadBoard` / `Signal` / `Lead.Score()` |
 | 批量导入 | ✅ 已完成 2026-09-10 | `importer.go` + `importer_test.go`（14 用例）：`PlanImport` / `ApplyImport`。格式要求见 §10.2 |
 | 导入 review + agent 接线 | ✅ 已完成 2026-09-10 | `import_review_test.go`（11 用例）：暂存 / `ImportSummary` / `CommitImport` / `RatingGap`，以及 4 个新工具 |
+| PG 持久化 + 身份 + 健康信号 | ✅ 已完成 2026-09-10 | `pg.go` / `persist.go` / `seat.go`，20 个写入点由源码围栏点名；真库测试 `make test-leadgraph-pg` |
+| **并入阿桥 `talent_sourcing`** | ✅ 已完成 2026-09-10 | `internal/tools/leadgraph.go`：9 个工具、仅 `RoleRecruiter`、schema 翻译保持封闭 |
 | 联系方式 | ✅ 已完成 2026-09-10（拍板：存） | `contact_test.go`（10 用例）：团队事实 / 只增不改 / 删除留痕 / 敏感词闸门 / 导出计数 |
 | 导入出错的修复回路 | ✅ 已完成 2026-09-10 | `import_repair_test.go`（12 用例）：读不懂**暂存不拒收** + `import_remap`（改列 / 翻译取值 / 补格 / 排除行） |
 | P8 图谱可视化 | ✅ 已完成 2026-09-10 | `internal/leadgraph/{snapshot,webui}.go` + `web/{graph.html.tmpl,graph.css,graph.js}` + `webui_test.go`（11 用例） |
