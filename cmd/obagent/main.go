@@ -163,9 +163,21 @@ func run(addrOverride string, log *slog.Logger) error {
 		graph, err = leadgraph.NewWithPostgres(gctx, cfg.DatabaseURL, log)
 		gcancel()
 		if err != nil {
-			return fmt.Errorf("GRAPH_UNAVAILABLE: %w", err)
+			// LOUD, AND NOT FATAL. 猎源图谱 is a capability of one intent that
+			// one role reaches. Refusing to start over it would let a
+			// headhunting feature take down a public-service assistant - the
+			// main path brought down by a branch off it, which is the exact
+			// shape this project's architecture rules forbid.
+			//
+			// The tools already answer GRAPH_UNAVAILABLE with a remedy, so a
+			// recruiter is told what is wrong instead of getting silence, and
+			// every resident's conversation is unaffected.
+			log.Error("猎源图谱 could not open; the agent is starting WITHOUT it",
+				"code", "GRAPH_UNAVAILABLE", "error", err)
+			graph = nil
+		} else {
+			defer graph.Close()
 		}
-		defer graph.Close()
 	} else {
 		log.Warn("no database configured: 猎源图谱 is unavailable this run",
 			"code", "GRAPH_DISABLED")

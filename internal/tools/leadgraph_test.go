@@ -315,3 +315,35 @@ func TestTheUploadRouteAndTheToolsAgreeOnTheTeam(t *testing.T) {
 		t.Fatalf("the route and the tools disagree about the team: route sees %d records", len(got))
 	}
 }
+
+// The agent must survive the graph being unavailable.
+//
+// 猎源图谱 is a capability of ONE intent that ONE role reaches. An unreachable
+// graph database must not stop a resident asking about a training place - a
+// main path brought down by a branch off it. The server logs and starts
+// without it; these are the tools' half of that: they answer with a remedy
+// rather than silence, and nothing else in the turn is affected.
+func TestAnUnavailableGraphDoesNotBreakTheRestOfTheTurn(t *testing.T) {
+	reg := tools.Default()
+	env := tools.Env{Session: &store.Session{SubjectID: "acct_1"}} // Graph is nil
+
+	for _, n := range tools.LeadGraphToolNames() {
+		tool, _ := reg.Get(n)
+		_, err := tool.Run(context.Background(), env, map[string]any{})
+		if err == nil {
+			t.Errorf("%s reported success with no graph", n)
+			continue
+		}
+		if !strings.Contains(err.Error(), "GRAPH_UNAVAILABLE") {
+			t.Errorf("%s failed obscurely: %v", n, err)
+		}
+		if !strings.Contains(err.Error(), "Set the graph database") {
+			t.Errorf("%s says what is wrong but not what to do: %v", n, err)
+		}
+	}
+
+	// And a tool that has nothing to do with the graph still works.
+	if _, ok := reg.Get("knowledge_search"); !ok {
+		t.Fatal("the rest of the action surface went with it")
+	}
+}
