@@ -54,6 +54,23 @@ func (pageData) WindowDays() int { return int(LeadWindow.Hours() / 24) }
 func Handler(s *Store, resolve func(*http.Request) (View, bool)) http.Handler {
 	mux := http.NewServeMux()
 
+	// Health is readable from outside and needs no credential: a liveness probe
+	// cannot hold one, and a health signal only in the logs is a health signal
+	// nobody reads. It says whether writes are still being KEPT - a process that
+	// answers requests while silently failing to persist is the failure worth
+	// catching, and it looks perfectly healthy from a port check.
+	mux.HandleFunc("/healthz", func(w http.ResponseWriter, r *http.Request) {
+		status, code := "ok", http.StatusOK
+		if s.Degraded() {
+			status, code = "degraded", http.StatusServiceUnavailable
+		}
+		w.Header().Set("Content-Type", "application/json; charset=utf-8")
+		w.WriteHeader(code)
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"status": status, "writes_persisted": !s.Degraded(),
+		})
+	})
+
 	mux.HandleFunc("/graph.css", func(w http.ResponseWriter, r *http.Request) {
 		serveAsset(w, "web/graph.css", "text/css; charset=utf-8")
 	})

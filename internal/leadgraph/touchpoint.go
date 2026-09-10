@@ -151,8 +151,14 @@ func (s *Store) AddTouchpoint(v View, actor Actor, in Touchpoint) (Touchpoint, e
 		s.byKey[key] = t.ID
 		out = &t
 	}
+	if err := s.putTouch(out); err != nil {
+		return Touchpoint{}, err
+	}
 	if strings.TrimSpace(note) != "" {
 		s.setNote(v, out.ID, note, now)
+		if err := s.putAnnotation(s.annotation(v, out.ID)); err != nil {
+			return Touchpoint{}, err
+		}
 	}
 	return s.projectTouch(v, *out), nil
 }

@@ -90,11 +90,13 @@ func (s *Store) record(v View, d Document, produced []string) Observation {
 		cur := s.obs[id]
 		cur.At = d.FetchedAt
 		cur.Produced = mergeStrings(cur.Produced, produced)
+		_ = s.putObs(cur)
 		return *cur
 	}
 	o.ID = s.nextID("ob")
 	s.obs[o.ID] = &o
 	s.byKey[key] = o.ID
+	_ = s.putObs(&o)
 	return o
 }
 
@@ -270,6 +272,7 @@ func (s *Store) RaiseAlert(v View, eventID string, at time.Time) (Alert, bool) {
 	a.ID = s.nextID("al")
 	s.alerts[a.ID] = &a
 	s.byKey[key] = a.ID
+	_ = s.putAlert(&a)
 	return a, true
 }
 
@@ -340,6 +343,7 @@ func (s *Store) AckAlert(v View, id string) bool {
 		return false
 	}
 	a.Ack = true
+	_ = s.putAlert(a)
 	return true
 }
 

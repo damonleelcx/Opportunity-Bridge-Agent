@@ -38,6 +38,15 @@ type Store struct {
 	alerts map[string]*Alert
 	// audit records the actions a regulator or a customer would ask about.
 	auditLog []AuditEntry
+	// seats are who may use this graph, and seatByToken is the lookup on every
+	// request. See seat.go.
+	seats       map[string]*Seat
+	seatByToken map[string]*Seat
+	// pg is where this survives a restart. Nil means memory only, which is a
+	// real mode - the tests run in it - not a stub.
+	pg *pgBackend
+	// degraded means the database stopped accepting writes. See persist.go.
+	degraded bool
 	// imports are files staged for review. In memory only, and deliberately NOT
 	// in `pending`: a review is a screen somebody is looking at, a pending item
 	// is a question saved for later. See importer.go.
@@ -54,17 +63,19 @@ type Store struct {
 
 func New(log *slog.Logger) *Store {
 	return &Store{
-		log:     log,
-		nodes:   map[string]*Node{},
-		edges:   map[string]*Edge{},
-		notes:   map[string]map[string]*Annotation{},
-		pending: map[string]*PendingItem{},
-		touches: map[string]*Touchpoint{},
-		obs:     map[string]*Observation{},
-		alerts:  map[string]*Alert{},
-		imports: map[string]*ImportSession{},
-		byKey:   map[string]string{},
-		now:     func() time.Time { return time.Now().UTC() },
+		log:         log,
+		nodes:       map[string]*Node{},
+		edges:       map[string]*Edge{},
+		notes:       map[string]map[string]*Annotation{},
+		pending:     map[string]*PendingItem{},
+		touches:     map[string]*Touchpoint{},
+		obs:         map[string]*Observation{},
+		alerts:      map[string]*Alert{},
+		imports:     map[string]*ImportSession{},
+		seats:       map[string]*Seat{},
+		seatByToken: map[string]*Seat{},
+		byKey:       map[string]string{},
+		now:         func() time.Time { return time.Now().UTC() },
 	}
 }
 
@@ -186,6 +197,9 @@ func (s *Store) UpsertNode(v View, actor Actor, in Node) (Node, error) {
 			cur.UpdatedAt = now
 		}
 		normaliseNode(cur)
+		if err := s.putNode(cur); err != nil {
+			return Node{}, err
+		}
 		out = cur
 	} else {
 		n := in
@@ -198,11 +212,17 @@ func (s *Store) UpsertNode(v View, actor Actor, in Node) (Node, error) {
 		normaliseNode(&n)
 		s.nodes[n.ID] = &n
 		s.byKey[key] = n.ID
+		if err := s.putNode(&n); err != nil {
+			return Node{}, err
+		}
 		out = &n
 	}
 
 	if strings.TrimSpace(note) != "" {
 		s.setNote(v, out.ID, note, now)
+		if err := s.putAnnotation(s.annotation(v, out.ID)); err != nil {
+			return Node{}, err
+		}
 	}
 	return s.project(v, *out), nil
 }
@@ -262,6 +282,9 @@ func (s *Store) UpsertEdge(v View, actor Actor, in Edge) (Edge, error) {
 		if len(changes) > 0 {
 			cur.UpdatedAt = now
 		}
+		if err := s.putEdge(cur); err != nil {
+			return Edge{}, err
+		}
 		out = cur
 	} else {
 		e := in
@@ -271,6 +294,9 @@ func (s *Store) UpsertEdge(v View, actor Actor, in Edge) (Edge, error) {
 		e.Intel = mergeIntel(nil, in.Intel)
 		s.edges[e.ID] = &e
 		s.byKey[key] = e.ID
+		if err := s.putEdge(&e); err != nil {
+			return Edge{}, err
+		}
 		out = &e
 	}
 
@@ -283,6 +309,9 @@ func (s *Store) UpsertEdge(v View, actor Actor, in Edge) (Edge, error) {
 			a.Note = note
 		}
 		a.UpdatedAt = now
+		if err := s.putAnnotation(a); err != nil {
+			return Edge{}, err
+		}
 	}
 	return s.projectEdge(v, *out), nil
 }
@@ -321,7 +350,7 @@ func (s *Store) Annotate(v View, actor Actor, targetID string, strength int, not
 		a.Note = note
 	}
 	a.UpdatedAt = s.now()
-	return nil
+	return s.putAnnotation(a)
 }
 
 // annotation returns this seat's overlay for a target, creating it if needed.
@@ -389,7 +418,7 @@ func (s *Store) CloseEdge(v View, edgeID string, at time.Time, because Intel) er
 		At: s.now(), Field: "valid_until", From: from, To: at.Format(time.RFC3339), By: ActorUser, Why: because,
 	})
 	e.UpdatedAt = s.now()
-	return nil
+	return s.putEdge(e)
 }
 
 // mergeNodeFields folds incoming values into an existing node.
@@ -633,6 +662,8 @@ func (s *Store) Forget(v View, nodeID string) int {
 		delete(s.byKey, edgeKey(*e))
 		delete(s.edges, id)
 		s.dropAnnotations(id)
+		_ = s.deleteRecord("lead_edges", "id = $1", id)
+		_ = s.deleteRecord("lead_annotations", "target_id = $1", id)
 		gone++
 	}
 	for id, t := range s.touches {
@@ -642,11 +673,15 @@ func (s *Store) Forget(v View, nodeID string) int {
 		delete(s.byKey, touchKey(*t))
 		delete(s.touches, id)
 		s.dropAnnotations(id)
+		_ = s.deleteRecord("lead_touchpoints", "id = $1", id)
+		_ = s.deleteRecord("lead_annotations", "target_id = $1", id)
 		gone++
 	}
 	delete(s.byKey, naturalKey(*n))
 	delete(s.nodes, nodeID)
 	s.dropAnnotations(nodeID)
+	_ = s.deleteRecord("lead_nodes", "id = $1", nodeID)
+	_ = s.deleteRecord("lead_annotations", "target_id = $1", nodeID)
 	return gone + 1
 }
 
@@ -666,6 +701,8 @@ func (s *Store) ForgetSeat(seatID string) int {
 	defer s.mu.Unlock()
 	n := len(s.notes[seatID])
 	delete(s.notes, seatID)
+	_ = s.deleteRecord("lead_annotations", "seat_id = $1", seatID)
+	_ = s.deleteRecord("lead_pending", "seat_id = $1", seatID)
 	// Their unanswered questions go too. Nobody else heard the conversation
 	// that raised them, so nobody else can answer them - leaving them queued
 	// would be a backlog that can only ever grow.
@@ -699,6 +736,10 @@ func (s *Store) ForgetTeam(teamID string) int {
 			s.dropAnnotations(id)
 			gone++
 		}
+	}
+	for _, table := range []string{"lead_edges", "lead_nodes", "lead_annotations",
+		"lead_touchpoints", "lead_observations", "lead_alerts", "lead_pending"} {
+		_ = s.deleteRecord(table, "team_id = $1", teamID)
 	}
 	return gone
 }
@@ -772,5 +813,5 @@ func (s *Store) RemoveContact(v View, actor Actor, nodeID string, kind ContactKi
 		At: now, Field: "contact:" + string(kind), From: gone.Value, By: actor, Why: because,
 	})
 	n.UpdatedAt = now
-	return nil
+	return s.putNode(n)
 }

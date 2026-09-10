@@ -515,3 +515,29 @@ func stripSQLComments(s string) string {
 	}
 	return strings.Join(out, "\n")
 }
+
+// Every table this package writes carries the record as a document.
+//
+// The generic upsert writes `doc` for all of them, and three of the nine tables
+// shipped without that column - invisible until a real database refused the
+// insert. A static check costs nothing and would have said so at review time.
+func TestEveryTableHasADocumentColumn(t *testing.T) {
+	body, err := leadgraph.SchemaFS.ReadFile("schema/0001_lead_graph.sql")
+	if err != nil {
+		t.Fatalf("read schema: %v", err)
+	}
+	blocks := strings.Split(string(body), "CREATE TABLE IF NOT EXISTS ")
+	if len(blocks) < 5 {
+		t.Fatalf("only %d tables found - this check is not reading the schema", len(blocks)-1)
+	}
+	for _, b := range blocks[1:] {
+		name := strings.Fields(b)[0]
+		def := b
+		if i := strings.Index(b, ");"); i >= 0 {
+			def = b[:i]
+		}
+		if !strings.Contains(def, "doc") || !strings.Contains(def, "JSONB") {
+			t.Errorf("%s has no doc JSONB column; the generic writer cannot write it", name)
+		}
+	}
+}

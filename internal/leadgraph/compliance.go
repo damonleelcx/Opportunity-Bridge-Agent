@@ -44,10 +44,15 @@ func (s *Store) audit(v View, action string, detail map[string]string, at time.T
 	if at.IsZero() {
 		at = s.now()
 	}
-	s.auditLog = append(s.auditLog, AuditEntry{
+	e := AuditEntry{
 		ID: s.nextID("au"), TeamID: v.TeamID, SeatID: v.SeatID,
 		Action: action, At: at, Detail: detail,
-	})
+	}
+	s.auditLog = append(s.auditLog, e)
+	// An audit entry that did not persist is worse than none: it is a record
+	// somebody will later rely on and find missing, at exactly the moment it
+	// mattered.
+	_ = s.putAudit(e)
 }
 
 // AuditTrail returns a team's entries, oldest first.
@@ -263,6 +268,7 @@ func (s *Store) ForgetSubject(m SubjectMatch, at time.Time) []SubjectDeletion {
 			}
 			delete(s.byKey, observationKey(*o))
 			delete(s.obs, id)
+			_ = s.deleteRecord("lead_observations", "id = $1", id)
 			d.Observations++
 		}
 		for id, a := range s.alerts {
@@ -278,6 +284,9 @@ func (s *Store) ForgetSubject(m SubjectMatch, at time.Time) []SubjectDeletion {
 			a.People = kept
 			if len(a.People) == 0 && strings.TrimSpace(a.EventLabel) == "" {
 				delete(s.alerts, id)
+				_ = s.deleteRecord("lead_alerts", "id = $1", id)
+			} else {
+				_ = s.putAlert(a)
 			}
 		}
 		s.mu.Unlock()
