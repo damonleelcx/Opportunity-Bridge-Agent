@@ -316,6 +316,45 @@ func TestTheAppShellLinksToAGraphURLThisServerActuallyServes(t *testing.T) {
 	}
 }
 
+// The interface embeds the graph screen in the conversation. That iframe's URL
+// has to be one this server serves — and the src is read out of the shipped
+// app.js, so the link and the route cannot drift apart.
+func TestTheConversationEmbedsAGraphURLThisServerActuallyServes(t *testing.T) {
+	src, err := web.Files.ReadFile("static/app.js")
+	if err != nil {
+		t.Fatalf("read app.js: %v", err)
+	}
+	re := regexp.MustCompile(`src="/app/sessions/\$\{esc\(state\.session\.id\)\}(/graph/\?embed=1)&theme=`)
+	m := re.FindSubmatch(src)
+	if m == nil {
+		t.Fatal("nothing in app.js embeds the graph: the conversation cannot show the picture")
+	}
+
+	ts, graph, _ := graphServer(t)
+	c := signedIn(t, ts, "oma-recruiter")
+	ses, seat := recruiterSession(t, c, ts, domain.RoleRecruiter)
+	seedPerson(t, graph, seat, "A司", "王五", "组长")
+
+	res, err := c.Get(ts.URL + "/app/sessions/" + ses + string(m[1]))
+	if err != nil {
+		t.Fatalf("get: %v", err)
+	}
+	defer res.Body.Close()
+	b, _ := io.ReadAll(res.Body)
+	if res.StatusCode != http.StatusOK {
+		t.Fatalf("the conversation embeds a URL this server does not serve: %d %s", res.StatusCode, b)
+	}
+	// It must be the embed, not the whole page, or the card holds a page inside
+	// a page — and it must still carry the data the picture is drawn from.
+	body := string(b)
+	if strings.Contains(body, `class="wrap"`) {
+		t.Error("the embedded URL served the full page, chrome and all")
+	}
+	if !strings.Contains(body, "王五") || !strings.Contains(body, `id="graph"`) {
+		t.Error("the embedded URL served something that cannot be drawn")
+	}
+}
+
 func mustAsset(t *testing.T, name string) []byte {
 	t.Helper()
 	b, err := web.Files.ReadFile("static/" + name)

@@ -11,6 +11,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"regexp"
 	"strings"
 	"testing"
@@ -361,5 +362,285 @@ func TestDerivedLinesAreDistinguishableFromRecordedOnes(t *testing.T) {
 	}
 	if recorded == 0 || derived == 0 {
 		t.Fatalf("want both kinds present to compare, got %d recorded / %d derived", recorded, derived)
+	}
+}
+
+// Embed mode is the SAME picture with the page's own chrome removed.
+//
+// 阿桥 renders this page inside a card in the conversation. What must survive is
+// everything the picture needs; what must go is what the card already supplies.
+//
+// #panel is asserted explicitly and is the reason this test exists: graph.js
+// returns early when it is missing, so dropping it along with the rest of the
+// chrome would have left the embed with no picture at all — and an empty <svg>
+// looks exactly like an empty graph, so nothing would have reported it.
+func TestTheEmbeddedViewIsTheSamePictureWithoutThePageChrome(t *testing.T) {
+	s := seeded(t)
+	full := serve(t, s, amy, "/").Body.String()
+	embed := serve(t, s, amy, "/?embed=1").Body.String()
+
+	// What the picture needs.
+	for _, want := range []string{`id="stage"`, `id="graph"`, `id="panel"`, `id="data"`, "graph.js"} {
+		if !strings.Contains(embed, want) {
+			t.Errorf("the embed is missing %s, which the picture cannot be drawn without", want)
+		}
+	}
+	// The same data, not a second reading of it.
+	if !strings.Contains(embed, "王五") {
+		t.Error("the embed carries different data from the page")
+	}
+	// What the card already supplies.
+	if strings.Contains(embed, "<h1>") {
+		t.Error("the embed still carries the page title")
+	}
+	if strings.Contains(embed, `class="wrap"`) {
+		t.Error("the embed still carries the text roster the card above it just listed")
+	}
+	// And the full page is untouched by any of this.
+	for _, want := range []string{"<h1>", `class="wrap"`, `id="panel"`} {
+		if !strings.Contains(full, want) {
+			t.Errorf("embed mode removed %s from the ordinary page too", want)
+		}
+	}
+}
+
+// Anything other than embed=1 is the ordinary page. A mode that turned on for
+// any truthy-looking value would strip the roster from a URL somebody typed.
+func TestOnlyEmbedEqualsOneTurnsTheChromeOff(t *testing.T) {
+	s := seeded(t)
+	for _, q := range []string{"/", "/?embed=0", "/?embed=true", "/?embed=", "/?other=1"} {
+		if !strings.Contains(serve(t, s, amy, q).Body.String(), `class="wrap"`) {
+			t.Errorf("%s dropped the page chrome", q)
+		}
+	}
+}
+
+// The page carries the reader's theme, and only the three states it knows.
+//
+// It used to carry only a prefers-color-scheme query, which made it ALWAYS
+// follow the OS. Embedded inside 阿桥 — whose default is light and whose
+// "follow the OS" is an explicit choice — that put a dark picture inside a
+// light page for every reader on a dark machine who had not changed anything.
+func TestTheGraphPageCarriesTheThemeItWasAskedFor(t *testing.T) {
+	s := seeded(t)
+	for q, want := range map[string]string{
+		"/":                     `data-theme="system"`, // opened on its own: what it always did
+		"/?theme=light":         `data-theme="light"`,
+		"/?theme=dark":          `data-theme="dark"`,
+		"/?theme=system":        `data-theme="system"`,
+		"/?theme=purple":        `data-theme="system"`, // not a state; not reflected
+		`/?theme="><script>x</`: `data-theme="system"`,
+	} {
+		body := serve(t, s, amy, q).Body.String()
+		if !strings.Contains(body, want) {
+			t.Errorf("%s: expected %s", q, want)
+		}
+	}
+	// The allowlist is the point: nothing a caller sends reaches the attribute.
+	if body := serve(t, s, amy, `/?theme="><script>x</`).Body.String(); strings.Contains(body, "<script>x<") {
+		t.Error("the theme parameter reached the page unfiltered")
+	}
+}
+
+// Every token has a value in all three theme states.
+//
+// The palette is defined three times — once bare for light, once behind the OS
+// query for "system", once for an explicit dark. A token defined in only one of
+// them renders as nothing in the others, which on this page means an invisible
+// node or a line that is not there.
+func TestTheGraphPageDefinesEveryTokenInEveryThemeState(t *testing.T) {
+	css, err := leadgraph.WebAsset("graph.css")
+	if err != nil {
+		t.Fatalf("read graph.css: %v", err)
+	}
+	block := func(selector string) map[string]bool {
+		i := strings.Index(css, selector)
+		if i < 0 {
+			t.Fatalf("no %s block in graph.css", selector)
+		}
+		rest := css[i+len(selector):]
+		end := strings.Index(rest, "}")
+		if end < 0 {
+			t.Fatalf("%s block is unterminated", selector)
+		}
+		out := map[string]bool{}
+		for _, m := range regexp.MustCompile(`--[\w-]+\s*:`).FindAllString(rest[:end], -1) {
+			out[strings.TrimSuffix(strings.TrimSpace(m), ":")] = true
+		}
+		return out
+	}
+	light := block(":root{")
+	if len(light) < 15 {
+		t.Fatalf("only %d tokens in the light palette; the fence is not reading the file", len(light))
+	}
+	// Fonts are not re-declared per theme; only colours flip.
+	colour := func(k string) bool { return !strings.HasPrefix(k, "--f-") }
+	for _, sel := range []string{`:root[data-theme="system"]{`, `:root[data-theme="dark"]{`} {
+		dark := block(sel)
+		for k := range light {
+			if colour(k) && !dark[k] {
+				t.Errorf("%s has no value for %s — it renders as nothing in that theme", sel, k)
+			}
+		}
+	}
+}
+
+// The picture must not print a raw enum at a reader.
+//
+// The detail panel showed "person" and "hearsay" on an otherwise Chinese page —
+// found by clicking a node, not by reading anything. The same three
+// corroboration words already appear in the page's markup and in 阿桥's result
+// cards; a third surface with a fourth vocabulary is how a 名词字典 stops being
+// one. See docs/20-lead-graph.zh-CN.md §3.
+//
+// The expected values are read OUT OF leadgraph.go rather than listed here, so
+// a kind added in Go turns this red instead of quietly reaching a reader
+// untranslated.
+func TestThePictureTranslatesEveryEnumItShows(t *testing.T) {
+	src, err := os.ReadFile("leadgraph.go")
+	if err != nil {
+		t.Fatalf("read leadgraph.go: %v", err)
+	}
+	js, err := leadgraph.WebAsset("graph.js")
+	if err != nil {
+		t.Fatalf("read graph.js: %v", err)
+	}
+	for _, tc := range []struct{ goType, jsTable string }{
+		{"NodeKind", "KIND"},
+		{"Corroboration", "CORR"},
+		{"ContactKind", "CONTACT"},
+	} {
+		decl := regexp.MustCompile(tc.goType + `\s+=\s+"([a-z_]+)"`)
+		values := decl.FindAllStringSubmatch(string(src), -1)
+		if len(values) < 3 {
+			t.Fatalf("found only %d %s values in leadgraph.go; the fence is not reading the source",
+				len(values), tc.goType)
+		}
+		table := jsObject(t, js, tc.jsTable)
+		for _, m := range values {
+			if !table[m[1]] {
+				t.Errorf("graph.js has no word for %s %q — the reader is shown the enum",
+					tc.goType, m[1])
+			}
+		}
+	}
+	// The field names in the 待确认 row are an enum too, and they come from
+	// store.go's `unconfirmable` table — read from there for the same reason.
+	store, err := os.ReadFile("store.go")
+	if err != nil {
+		t.Fatalf("read store.go: %v", err)
+	}
+	i := strings.Index(string(store), "var unconfirmable = map[NodeKind][]string{")
+	if i < 0 {
+		t.Fatal("the unconfirmable table is gone; the fence is reading the wrong thing")
+	}
+	rest := string(store)[i:]
+	fields := regexp.MustCompile(`"([a-z_]+)"`).FindAllStringSubmatch(rest[:strings.Index(rest, "\n}")], -1)
+	if len(fields) < 3 {
+		t.Fatalf("found only %d unconfirmable fields; the fence is not reading the table", len(fields))
+	}
+	field := jsObject(t, js, "FIELD")
+	for _, m := range fields {
+		if !field[m[1]] {
+			t.Errorf("graph.js has no word for the unconfirmed field %q — "+
+				"the panel shows a Go field name to a reader", m[1])
+		}
+	}
+
+	// And the raw fields must not reach a row directly, which is how it broke.
+	for _, raw := range []string{
+		`row("类别", d.kind)`, `row("证实", d.corroboration)`,
+		`row("待确认", d.unconfirmed.join(`,
+	} {
+		if strings.Contains(js, raw) {
+			t.Errorf("the detail panel prints a raw enum: %s", raw)
+		}
+	}
+}
+
+// jsObject reads the keys of a `var NAME = { a: "…", b: "…" };` literal.
+func jsObject(t *testing.T, src, name string) map[string]bool {
+	t.Helper()
+	i := strings.Index(src, "var "+name+" = {")
+	if i < 0 {
+		t.Fatalf("graph.js has no %s table", name)
+	}
+	rest := src[i:]
+	end := strings.Index(rest, "}")
+	if end < 0 {
+		t.Fatalf("%s table is unterminated", name)
+	}
+	out := map[string]bool{}
+	for _, m := range regexp.MustCompile(`(\w+)\s*:`).FindAllStringSubmatch(rest[:end], -1) {
+		out[m[1]] = true
+	}
+	return out
+}
+
+// The embed has to fit the box it is given, and the box is an iframe.
+//
+// The first version sized the two halves with percentages. Percentage heights
+// need an ancestor with a resolved height and <body> had none, so they did
+// nothing: the svg kept its 60vh/22rem, the document grew to 619px inside a
+// 340px frame, and the 详情 panel sat below the fold — reachable only by
+// scrolling inside a card nobody would think to scroll. Nothing failed; it just
+// was not there.
+//
+// Source-level, because Go cannot lay out CSS. It guards the height MODEL: a
+// resolved height on the root, and a flex column that divides it.
+func TestTheEmbedFitsTheFrameItIsGiven(t *testing.T) {
+	css, err := leadgraph.WebAsset("graph.css")
+	if err != nil {
+		t.Fatalf("read graph.css: %v", err)
+	}
+	// Comments are stripped FIRST — for the second time in this session. The
+	// note above these rules quotes the very percentage it warns against, so a
+	// fence reading the raw file finds the bug it is supposed to forbid sitting
+	// in its own explanation. A fence that can be satisfied, or failed, by
+	// prose is not measuring anything.
+	css = stripCSSComments(css)
+	// From the FIRST embed selector, not from "body.embed": the rule that gives
+	// the root its height names html.embed-root first, so slicing at body.embed
+	// cut the very selector this fence has to see.
+	i := strings.Index(css, "html.embed-root")
+	if j := strings.Index(css, "body.embed"); i < 0 || (j >= 0 && j < i) {
+		i = j
+	}
+	if i < 0 {
+		t.Fatal("graph.css has no embed rules; this fence no longer guards anything")
+	}
+	embed := css[i:]
+	for _, want := range []struct{ rule, why string }{
+		{"height: 100%", "nothing gives the embed a resolved height, so any height inside it is measured against auto"},
+		{"html.embed-root", "the ROOT has no height, so height:100% on body resolves against auto and does nothing"},
+		{"display: flex", "the two halves are not laid out as a column, so they cannot divide the frame"},
+		{"flex: 1 1 auto", "the picture does not take the space left over"},
+		{"min-height: 0", "a flex child defaults to its content's height and will overflow the frame"},
+	} {
+		if !strings.Contains(embed, want.rule) {
+			t.Errorf("embed CSS has no %q — %s", want.rule, want.why)
+		}
+	}
+	// Percentages on an auto-height ancestor are the bug, by name.
+	if strings.Contains(embed, "#stage { height: 74%") || strings.Contains(embed, "#stage{height:74%") {
+		t.Error("the picture is sized with a percentage of an auto-height body again")
+	}
+}
+
+// stripCSSComments removes /* … */ so a fence reads rules, not notes.
+func stripCSSComments(src string) string {
+	var b strings.Builder
+	for {
+		i := strings.Index(src, "/*")
+		if i < 0 {
+			b.WriteString(src)
+			return b.String()
+		}
+		b.WriteString(src[:i])
+		j := strings.Index(src[i:], "*/")
+		if j < 0 {
+			return b.String()
+		}
+		src = src[i+j+2:]
 	}
 }

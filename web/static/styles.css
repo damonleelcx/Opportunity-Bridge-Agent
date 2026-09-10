@@ -159,6 +159,11 @@ button, select, textarea, input { font: inherit; color: inherit; }
 .gcard .gsig { color: var(--ink-500); font-size: .92em; }
 .gcard .empty { margin: 4px 0 0; color: var(--ink-400); }
 .gcard-foot { margin-top: 12px; }
+/* The embedded graph screen. A fixed height because the picture is a viewport
+   into something that has no natural height — it is a force layout, not a
+   document — and a card that grows with the data would push the conversation
+   off the screen the moment somebody imported a contact list. */
+.gstage { width: 100%; height: 340px; border: 1px solid var(--line); border-radius: var(--r-xs); display: block; }
 .chip {
   display: inline-block; padding: 1px 7px; border-radius: 999px; margin-left: 4px;
   font-size: .72em; line-height: 1.7; border: 1px solid var(--line);

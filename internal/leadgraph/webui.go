@@ -37,7 +37,18 @@ var graphTemplate = template.Must(template.ParseFS(webFiles, "web/graph.html.tmp
 // reads, so the picture and the list cannot come from different reads.
 type pageData struct {
 	Snapshot
-	JSON template.JS
+	// Embed drops the page's own chrome so the picture can sit inside another
+	// surface — 阿桥's conversation renders this same page in a card. It is a
+	// display mode of ONE page rather than a second page, because two drawings
+	// of the same graph is two drawings that can disagree.
+	Embed bool
+	// Theme is stamped on <html>. "system" - the default and what a page opened
+	// on its own gets - means follow the OS, which is all this page used to do.
+	// The host passes its OWN resolved choice when it embeds the page, because
+	// a reader who picked light and got a dark picture inside a light page has
+	// been shown two products.
+	Theme string
+	JSON  template.JS
 	// Leads are rendered into the HTML and are deliberately NOT in JSON: the
 	// board belongs on the product's own screen, and nowhere a machine can take
 	// a copy of it. See lead.go, constraint 3.
@@ -104,7 +115,11 @@ func Handler(s *Store, resolve func(*http.Request) (View, bool)) http.Handler {
 		// The script tag holds JSON, not JavaScript: it is read with
 		// JSON.parse rather than executed, so a label containing a quote is a
 		// label, not a way into the page.
-		page := pageData{Snapshot: snap, JSON: template.JS(raw), Leads: s.LeadBoard(v, snap.At)}
+		page := pageData{
+			Snapshot: snap, JSON: template.JS(raw), Leads: s.LeadBoard(v, snap.At),
+			Embed: r.URL.Query().Get("embed") == "1",
+			Theme: themeParam(r.URL.Query().Get("theme")),
+		}
 		if err := graphTemplate.Execute(w, page); err != nil {
 			// Headers are already out; the reader gets a truncated page rather
 			// than a wrong one. Nothing to recover, and nothing to hide.
@@ -112,6 +127,18 @@ func Handler(s *Store, resolve func(*http.Request) (View, bool)) http.Handler {
 		}
 	})
 	return mux
+}
+
+// themeParam accepts only the three states and answers "system" for anything
+// else. An allowlist rather than a sanitiser: the value is stamped into an
+// attribute, and the set of legal answers is three words long, so there is no
+// reason for anything else to reach the page.
+func themeParam(v string) string {
+	switch v {
+	case "light", "dark", "system":
+		return v
+	}
+	return "system"
 }
 
 func serveAsset(w http.ResponseWriter, name, ctype string) {

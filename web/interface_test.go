@@ -1924,3 +1924,34 @@ func stripLineComments(src string) string {
 	}
 	return b.String()
 }
+
+// The picture is appended once per turn, not once per tool call.
+//
+// A turn that calls four graph tools would otherwise embed the same graph four
+// times — four iframes, four layouts, one conversation pushed off the screen.
+// The rule is turn-scoped state rather than a list of which tools deserve it,
+// because a list is a register and registers rot towards showing nothing.
+func TestTheGraphPictureIsShownOncePerTurn(t *testing.T) {
+	src := stripLineComments(asset(t, "app.js"))
+	start := strings.Index(src, "function renderToolResult(")
+	if start < 0 {
+		t.Fatal("renderToolResult is gone; this fence no longer guards anything")
+	}
+	body := src[start:]
+	if end := strings.Index(body, "\n}\n"); end > 0 {
+		body = body[:end]
+	}
+	if !strings.Contains(body, "graphPictureCard()") {
+		t.Fatal("the conversation never embeds the picture")
+	}
+	// BOTH halves. Checking for the name alone let the assignment be deleted
+	// while the `!turn.graphShown` test stayed — a guard that is read and never
+	// set is false forever, which is the bug, and the fence stayed green.
+	if !strings.Contains(body, "!turn.graphShown") {
+		t.Error("the picture is embedded without checking whether this turn already showed it")
+	}
+	if !strings.Contains(body, "turn.graphShown = true") {
+		t.Error("nothing ever marks the picture as shown, so the guard is false forever — " +
+			"a turn that calls four graph tools would render four graphs")
+	}
+}

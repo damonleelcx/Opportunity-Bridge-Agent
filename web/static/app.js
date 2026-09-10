@@ -643,7 +643,41 @@ function renderToolResult(turn, ev) {
   if (!card) return;
   show(turn.results);
   turn.results.append(card);
+  // The picture, once per turn, after the first card that came from the graph.
+  //
+  // ONE RULE, NOT A LIST: if this turn touched 猎源图谱 at all, the reader gets
+  // to see it. A list of "which tools deserve the picture" is a register, and
+  // registers rot in the direction of showing nothing.
+  if (card.classList.contains("gcard") && !turn.graphShown) {
+    turn.graphShown = true;
+    const pic = graphPictureCard();
+    if (pic) turn.results.append(pic);
+  }
   scroll();
+}
+
+// graphPictureCard embeds the graph screen itself.
+//
+// WHY AN IFRAME AND NOT A SECOND DRAWING
+//
+//   The force graph is 200 lines of layout, hit-testing and zoom that already
+//   exist, are already fenced, and already ship in the binary. Drawing it a
+//   second time here would be two implementations of one picture, and the
+//   second one starts disagreeing with the first the day either changes. The
+//   embed is the SAME page in the same session, minus its own chrome.
+//
+// It follows the reader's theme because graph.css is written against
+// prefers-color-scheme, the same as this page.
+function graphPictureCard() {
+  if (state.session?.role !== "recruiter" || !state.session?.id) return null;
+  return el(`<article class="ocard gcard">
+    <div class="ocard-body">
+      <div class="ocard-top"><h3 class="ocard-title">${esc(t("graph.picture"))}</h3></div>
+      <iframe class="gstage" title="${esc(t("graph.picture"))}" loading="lazy"
+        src="/app/sessions/${esc(state.session.id)}/graph/?embed=1&theme=${esc(themeChoice())}"></iframe>
+      ${graphLinkRow()}
+    </div>
+  </article>`);
 }
 
 function cardFor(tool, r) {
@@ -1897,6 +1931,25 @@ function applyTheme(choice) {
   localStorage.setItem("oba.theme", value);
   const sel = $("#theme");
   if (sel) sel.value = value;
+  // The embedded graph is a separate document and cannot see this stamp, so it
+  // is told. Reloading it costs the force layout its current arrangement,
+  // which is the right trade: switching theme is rare, and a picture left in
+  // the other theme is the thing that looks broken.
+  for (const f of document.querySelectorAll("iframe.gstage")) {
+    const url = new URL(f.src, location.origin);
+    if (url.searchParams.get("theme") !== value) {
+      url.searchParams.set("theme", value);
+      f.src = url.toString();
+    }
+  }
+}
+
+// themeChoice is what the reader has actually chosen, which is what the
+// embedded graph must be told. It is read from storage rather than from the
+// <html> stamp so the two cannot answer differently.
+function themeChoice() {
+  const v = localStorage.getItem("oba.theme");
+  return ["system", "light", "dark"].includes(v) ? v : DEFAULT_THEME;
 }
 
 function status(text, cls) {

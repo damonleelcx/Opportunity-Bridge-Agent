@@ -21,6 +21,7 @@ const STRINGS = {
     // must match the graph page word for word: the same fact seen in the
     // conversation and on the page cannot use two different words for itself.
     "graph.open": "打开完整图谱",
+    "graph.picture": "关系图谱",
     "graph.receipt": "已记下",
     "graph.created": "新建",
     "graph.updated": "更新",
@@ -432,6 +433,7 @@ const STRINGS = {
     "ctl.tech": "Show system detail",
     "ctl.graph": "Lead graph",
     "graph.open": "Open the full graph",
+    "graph.picture": "Relationship graph",
     "graph.receipt": "Recorded",
     "graph.created": "new",
     "graph.updated": "updated",
