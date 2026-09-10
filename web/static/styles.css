@@ -138,6 +138,13 @@ button, select, textarea, input { font: inherit; color: inherit; }
 }
 .icon-btn:hover { background: var(--surface-2); color: var(--ink-700); }
 .icon-btn[aria-pressed="true"] { background: var(--brand-soft); border-color: var(--brand-border); color: var(--brand); }
+/* Same trap as the gate's controls (see the note beside .gate[hidden] further
+   down): the display above beats the UA stylesheet's [hidden] rule, so without
+   this `el.hidden = true` leaves the control on screen. 猎源图谱's entry is
+   toggled that way and was visible to every role until this line existed.
+   See docs/bugfix/2026-09-10-the-graph-screen-had-no-url.md
+   Fence: TestEveryHiddenToggledControlCanActuallyBeHidden */
+.icon-btn[hidden] { display: none; }
 
 /* ── transcript ────────────────────────────────────────────────────────── */
 .transcript { flex: 1; overflow-y: auto; padding: 30px 24px 12px; min-height: 0; }

@@ -207,6 +207,17 @@
       <div class="head-actions">
         <span id="sampleFlag" class="flag" title="" data-i18n="banner.sampleShort">演示语料</span>
         <span id="liveFlag" class="flag flag-off" title="" hidden data-i18n="banner.liveOffShort">未接全国检索</span>
+        <!-- 猎源图谱. Hidden unless this conversation is in the employer role,
+             because that is the only role the server serves it to — a control
+             that is always visible and refuses half the people who press it is
+             worse than no control. It opens in a new tab on purpose: the screen
+             is something a recruiter reads BESIDE the conversation they are
+             still in the middle of. Its href is set in app.js, from the current
+             session id. -->
+        <a id="graphLink" class="icon-btn" href="#" target="_blank" rel="noopener"
+           data-i18n-title="ctl.graph" data-i18n-aria="ctl.graph" title="猎源图谱" hidden>
+          <span class="ico" data-icon="route"></span>
+        </a>
         <button id="techToggle" class="icon-btn" aria-pressed="false"
                 data-i18n-title="ctl.tech" title="显示系统运行详情">
           <span class="ico" data-icon="gear"></span>

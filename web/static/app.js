@@ -1233,10 +1233,27 @@ function reflectDeliverySettings(session) {
   state.syncingA11y = false;
 }
 
+// syncGraphLink points the 猎源图谱 control at the current conversation, and
+// hides it outside the employer role.
+//
+// WHY THE LINK CARRIES A SESSION ID FOR A SCREEN THAT IS NOT PER-SESSION
+//   The graph belongs to the seat, not to the conversation. But the ROLE lives
+//   on the session, and the server derives the seat from the same session — see
+//   Server.graphPage. One id in the URL is what keeps the screen and the tools
+//   reading the same book.
+function syncGraphLink() {
+  const el = $("#graphLink");
+  if (!el) return;
+  const on = state.session?.role === "recruiter";
+  el.hidden = !on;
+  el.href = on ? `/app/sessions/${state.session.id}/graph/` : "#";
+}
+
 async function renderOverview() {
   if (!state.session) return;
   const d = await api("GET", `/api/sessions/${state.session.id}`);
   state.session = d.session;
+  syncGraphLink();
 
   const open = (d.tasks || []).filter((x) => x.status !== "done" && x.status !== "cancelled");
   $("#taskCount").textContent = d.tasks?.length ? `${open.length}/${d.tasks.length}` : "";
