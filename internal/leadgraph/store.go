@@ -38,6 +38,10 @@ type Store struct {
 	alerts map[string]*Alert
 	// audit records the actions a regulator or a customer would ask about.
 	auditLog []AuditEntry
+	// imports are files staged for review. In memory only, and deliberately NOT
+	// in `pending`: a review is a screen somebody is looking at, a pending item
+	// is a question saved for later. See importer.go.
+	imports map[string]*ImportSession
 	// pending holds decisions parked until a person has room to make them. See
 	// turn.go: a turn asks at most one question, and everything else waits here
 	// rather than being applied or forgotten.
@@ -58,6 +62,7 @@ func New(log *slog.Logger) *Store {
 		touches: map[string]*Touchpoint{},
 		obs:     map[string]*Observation{},
 		alerts:  map[string]*Alert{},
+		imports: map[string]*ImportSession{},
 		byKey:   map[string]string{},
 		now:     func() time.Time { return time.Now().UTC() },
 	}

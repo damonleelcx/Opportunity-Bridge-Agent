@@ -220,7 +220,7 @@ footer{border-top:1px solid var(--line-2); background:var(--surface); margin-top
       <p class="deck">组织在变的时候，人才会动。别人拿到的是一份静态人才库；这个产品拿到的是<strong>你自己的关系网</strong>、<strong>组织正在发生的变化</strong>，以及<strong>你离目标还有几步</strong>。</p>
     </div>
     <div class="stamp">
-      <span class="state" style="background:var(--ok-soft);color:var(--ok);border-color:color-mix(in srgb,var(--ok) 30%,transparent)">P1–P9 + 批量导入 · 140 用例 · 88 道守卫演练过</span>
+      <span class="state" style="background:var(--ok-soft);color:var(--ok);border-color:color-mix(in srgb,var(--ok) 30%,transparent)">P1–P9 + 导入与 agent 接线 · 151 用例 · 95 道守卫演练过</span>
       <span>定位：<b>独立产品</b></span>
       <span>上游：<b>19-relationship-trail（已冻结）</b></span>
     </div>
@@ -962,6 +962,35 @@ footer{border-top:1px solid var(--line-2); background:var(--surface); margin-top
   <div class="why">
     <span class="tag">一个文件 = 一个来源</span>
     <p>同一份表里 200 行都说同一件事，证实等级<strong>仍然是「听说」</strong>。否则一份表格就能把自己抬成「多源印证」。</p>
+  </div>
+
+  <h4>Agent 在导入里做什么、不做什么 <span class="chip c-ok">已实现</span></h4>
+  <p><strong>它产不出文件</strong> —— 上传是用户的动作。所以形状是：用户上传 → 系统出计划 → <em>agent 讲解并陪着走</em> → 用户拍板 → 落库。</p>
+  <div class="tw"><table>
+    <thead><tr><th class="col-n">Agent 能做</th><th class="col-n">工具</th><th>风险</th></tr></thead>
+    <tbody>
+      <tr><td>把计划讲成人话</td><td><code>import_summary</code></td><td><span class="chip c-mute">只读</span></td></tr>
+      <tr><td>追问「这些人里你最熟的是哪几个」</td><td><code>rating_gap</code></td><td><span class="chip c-mute">只读</span></td></tr>
+      <tr><td>记下用户说的熟悉程度</td><td><code>rate_contact</code></td><td><span class="chip c-ok">写</span></td></tr>
+      <tr><td>落库</td><td><code>import_commit</code></td><td><span class="chip c-block">不可逆 · 需审批</span></td></tr>
+    </tbody>
+  </table></div>
+  <div class="why redline">
+    <span class="tag">为什么落库是「不可逆」级</span>
+    <p>转达<em>一条</em>合并决定是聊天；一次性转达<em>两百行</em>的决定是另一回事。它拿和删除同级的闸门 —— <strong>审批绑定的是这一次调用的全部参数，包括里面每一条决定</strong>。所以「同意导入这份表」<strong>不等于</strong>「同意把第 3 行并进王五」。</p>
+  </div>
+
+  <h4>导入的待办不进对话队列</h4>
+  <div class="why">
+    <span class="tag">两个不同的时刻，两套结构</span>
+    <p><code>RecordTurn</code> 一轮最多一个问题，是因为<strong>用户在干别的事</strong>。而导入是<strong>用户正盯着屏幕</strong>的时刻 —— 12 条决定应该在一个 review 屏上一次过。共用一条队列会两头不讨好：对话被 12 个它本来设计成永远不会问的问题淹掉，或者导入要聊 12 轮。</p>
+    <p><strong>暂存的计划只在内存里，没有新建表。</strong>一次 review 就几分钟；为了「进程重启」建表 + 迁移 + 生命周期，换来的补救是「重新传一次文件」。等 review 变成长流程再持久化，现在不。</p>
+  </div>
+
+  <div class="why redline">
+    <span class="tag">‼️ 导入之后必须有人问那一句</span>
+    <p>导入 200 个人、一条熟悉程度都没标 → <strong>图是满的，<code>path_find</code> 仍然返回 <code>NoSeeds</code></strong>。这个包里没有任何别的东西会去问，所以 <code>RatingGap</code> 就是干这个的：报出已标 / 未标，外加<strong>最多 10 个</strong>名字（10 个是人会回答的清单，200 个是人会关掉的清单）。</p>
+    <p><strong>名字按姓名排序，不按任何别的东西排。</strong>那个看起来很贴心的排法——「谁连着的边最多、谁能打开最多路径」——<em>就是换了顶帽子的给人排名</em>，而且用户比图更清楚自己跟谁熟。</p>
   </div>
 
   <div class="why redline">

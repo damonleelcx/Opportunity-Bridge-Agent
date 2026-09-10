@@ -450,10 +450,11 @@ c 业务组 · 稳定性信号                                    窗口期 ~3 �
 | P6 公开源与后台路径二 | ✅ 已完成 2026-09-10 | `internal/leadgraph/{source,observe}.go`：`FetchFrom` / `ExtractSignals` / `HiringGap` / `RaiseAlert` / `StaleScan` / `RunDaily` |
 | P9 合规模块 | ✅ 已完成 2026-09-10（与 P6 并行） | `internal/leadgraph/{sensitive,compliance}.go`：敏感字段闸门 / 来源台账 / `Provenance` / `SubjectRecords` / `ForgetSubject` / `Export` + 审计 |
 | P7 线索评分 | ✅ 已完成 2026-09-10 | `internal/leadgraph/lead.go` + `lead_test.go`（11 用例）：`LeadBoard` / `Signal` / `Lead.Score()` |
-| 批量导入 | ✅ 已完成 2026-09-10 | `internal/leadgraph/importer.go` + `importer_test.go`（14 用例）：`PlanImport` / `ApplyImport`。格式要求见 §10.2 |
+| 批量导入 | ✅ 已完成 2026-09-10 | `importer.go` + `importer_test.go`（14 用例）：`PlanImport` / `ApplyImport`。格式要求见 §10.2 |
+| 导入 review + agent 接线 | ✅ 已完成 2026-09-10 | `import_review_test.go`（11 用例）：暂存 / `ImportSummary` / `CommitImport` / `RatingGap`，以及 4 个新工具 |
 | P8 图谱可视化 | ✅ 已完成 2026-09-10 | `internal/leadgraph/{snapshot,webui}.go` + `web/{graph.html.tmpl,graph.css,graph.js}` + `webui_test.go`（11 用例） |
 
-**变异演练结果**（逐条删掉守卫，确认对应用例会红。**140 条用例，88 道守卫全部证过**；P5 与 P7 各抓到两道**真空围栏**、P8 与 P7 走查各抓到两个**真 bug**、收尾时又抓到一个**静默产生重复记录**的缺陷，均已修）：
+**变异演练结果**（逐条删掉守卫，确认对应用例会红。**151 条用例，95 道守卫全部证过**；P5 与 P7 各抓到两道**真空围栏**、P8 与 P7 走查各抓到两个**真 bug**、收尾时又抓到一个**静默产生重复记录**的缺陷，均已修）：
 
 | 删掉的守卫 | 变红的用例 |
 |---|---|
@@ -794,6 +795,34 @@ P6 要知道"上次这个源说了什么"才能发现某个组不再招人；P9 
 ### 一个文件 = 一个来源
 
 同一份表里 200 行都说同一件事，证实等级**仍然是"听说"**。否则一份表格就能把自己抬成"多源印证"。（实现上：`TurnRef` 记的是文件，行号在 `Excerpt` 里。）
+
+### Agent 在导入里做什么、不做什么
+
+**它产不出文件** —— 上传是用户的动作。所以形状是：**用户上传 → 系统出计划 → agent 讲解并陪着走 → 用户拍板 → 落库**。
+
+| Agent 能做 | 工具 | 风险 |
+|---|---|---|
+| 把计划讲成人话（怎么读的、用了哪些列、忽略了哪些、会新建多少、哪些还要你定、跳过了哪几行为什么） | `import_summary` | 只读 |
+| 追问"这些人里你最熟的是哪几个" | `rating_gap` | 只读 |
+| 记下用户说的熟悉程度 | `rate_contact` | 写 |
+| 落库 | `import_commit` | **不可逆 · 需审批** |
+
+**为什么落库是"不可逆"级**：转达一条合并决定是聊天；一次性转达两百行的决定是另一回事。它拿和删除同级的闸门 —— **审批绑定的是这一次调用的全部参数，包括里面每一条决定**。所以"同意导入这份表"**不等于**"同意把第 3 行并进王五"，围栏 `TestTheApprovalCoversTheDecisionsNotJustTheFile` 守着这条。
+
+### 导入的待办**不进**对话队列
+
+`RecordTurn` 一轮最多一个问题，是因为**用户在干别的事**。而导入是**用户正盯着屏幕**的时刻 —— 12 条决定应该在一个 review 屏上一次过。
+
+两个共用一条队列会两头不讨好：对话被 12 个它本来设计成永远不会问的问题淹掉，或者导入要聊 12 轮。所以是**两套结构**，围栏 `TestImportDecisionsStayOutOfTheConversationQueue` 断言导入之后对话队列仍然是 0、下一轮对话也不会被打断。
+
+**暂存的计划只在内存里**，没有新建表。一次 review 就几分钟；为了"进程重启"这种情况建表 + 迁移 + 生命周期，换来的补救是"重新传一次文件"（几秒）。等 review 变成长流程再持久化，现在不。
+
+### ‼️ 导入之后必须有人问那一句
+
+导入 200 个人、一条熟悉程度都没标 → **图是满的，`path_find` 仍然返回 `NoSeeds`**。这个包里**没有任何别的东西会去问**，所以 `RatingGap` 就是干这个的：
+
+- 报出"已标 X 人 / 未标 Y 人"，外加**最多 10 个**名字（10 个是人会回答的清单，200 个是人会关掉的清单）
+- **名字按姓名排序，不按任何别的东西排。** 那个看起来很贴心的排法——"谁连着的边最多、谁能打开最多路径"——**就是换了顶帽子的给人排名**，而且用户比图更清楚自己跟谁熟
 
 ### ‼️ 已知缺口：联系方式没有进来，需要你拍板
 

@@ -109,6 +109,9 @@ type ImportPlan struct {
 	// land in this seat's own overlay and nowhere else.
 	Strengths map[int]int    `json:"strengths,omitempty"`
 	Notes     map[int]string `json:"notes,omitempty"`
+	// RowOf maps a proposal back to the line it came from, so a question can be
+	// asked as "第 42 行的王总" and the user can look at their own file.
+	RowOf map[int]int `json:"row_of,omitempty"`
 }
 
 // Counts summarises the plan for the confirmation screen. Computed from the
@@ -280,6 +283,7 @@ func (s *Store) PlanImport(v View, fileName string, raw []byte) (ImportPlan, err
 		Delimiter: t.delimiter, Rows: len(t.rows),
 		Mapping: map[string]string{}, Unmapped: unmapped,
 		Skipped: []SkippedRow{}, Strengths: map[int]int{}, Notes: map[int]string{},
+		RowOf: map[int]int{},
 	}
 	for c, i := range cols {
 		plan.Mapping[string(c)] = t.header[i]
@@ -293,6 +297,7 @@ func (s *Store) PlanImport(v View, fileName string, raw []byte) (ImportPlan, err
 	var candidates []Node
 	var strengths []int
 	var notes []string
+	var lines []int
 	for n, row := range t.rows {
 		lineNo := n + 2 // header is line 1
 		label := cell(row, cols[ColLabel], true)
@@ -343,6 +348,7 @@ func (s *Store) PlanImport(v View, fileName string, raw []byte) (ImportPlan, err
 			Kind: IntelImported, TurnRef: fileRef,
 			Excerpt: fmt.Sprintf("%s 第 %d 行：%s", fileName, lineNo, strings.Join(compact(row), " / ")),
 		}}
+		lines = append(lines, lineNo)
 		notes = append(notes, c.Note)
 		c.Note = "" // travels beside the proposal; see ImportPlan.Notes
 		candidates = append(candidates, c)
@@ -372,6 +378,9 @@ func (s *Store) PlanImport(v View, fileName string, raw []byte) (ImportPlan, err
 		}
 		if i < len(notes) && notes[i] != "" {
 			plan.Notes[i] = notes[i]
+		}
+		if i < len(lines) {
+			plan.RowOf[i] = lines[i]
 		}
 	}
 	return plan, nil
@@ -465,4 +474,224 @@ func (s *Store) ApplyImport(v View, plan ImportPlan, res map[int]Resolution, at 
 		"needs_you": itoa(len(out.Pending)), "skipped": itoa(len(plan.Skipped)),
 	}, at)
 	return out, nil
+}
+
+// ---- staging: the review that is NOT the conversation queue ----
+//
+// WHY IMPORT DECISIONS DO NOT GO INTO s.pending
+//
+//	The conversation queue exists because the user is in the middle of doing
+//	something else, which is why a turn asks at most one question. An import is
+//	the opposite situation: they uploaded a file and are looking at the screen.
+//	Twelve merge decisions belong on one review screen, answered together.
+//
+//	Putting them in the same queue would break both: the conversation gets
+//	buried under twelve questions it was designed never to ask, or the import
+//	takes twelve turns. Separate structures, because they are separate moments.
+//
+// WHY THE STAGED PLAN IS IN MEMORY AND NOT A TABLE
+//
+//	A review lasts minutes. Persisting it would be a new table, new migrations
+//	and a new lifecycle to get wrong, to buy a restart-mid-review case whose
+//	honest remedy - upload the file again - costs the user seconds. If reviews
+//	ever become long-running, that is the moment to persist, not before.
+
+// ImportSession is one file staged for review.
+type ImportSession struct {
+	ID       string     `json:"id"`
+	TeamID   string     `json:"team_id"`
+	SeatID   string     `json:"seat_id"`
+	Plan     ImportPlan `json:"plan"`
+	StagedAt time.Time  `json:"staged_at"`
+}
+
+// ImportDecision is one row a person has to settle, with the line it came from
+// so they can look at their own file while deciding.
+type ImportDecision struct {
+	Index     int              `json:"index"`
+	Row       int              `json:"row"`
+	Label     string           `json:"label"`
+	Org       string           `json:"org,omitempty"`
+	Decision  Decision         `json:"decision"`
+	Question  string           `json:"question"`
+	Options   []MergeCandidate `json:"options,omitempty"`
+	Conflicts []FieldConflict  `json:"conflicts,omitempty"`
+}
+
+// ImportSummary is the plan in the shape somebody can be told about it.
+type ImportSummary struct {
+	ID        string            `json:"id"`
+	File      string            `json:"file"`
+	Rows      int               `json:"rows"`
+	Encoding  string            `json:"encoding"`
+	Delimiter string            `json:"delimiter"`
+	Mapping   map[string]string `json:"mapping"`
+	// Unmapped columns are here because a column of phone numbers that silently
+	// vanished is the difference between an import and a partial one nobody was
+	// told about.
+	Unmapped  []string         `json:"unmapped"`
+	Counts    map[string]int   `json:"counts"`
+	Decisions []ImportDecision `json:"decisions"`
+	// SkippedRows groups line numbers by reason, so the answer is "第 7、19、23
+	// 行没有姓名" rather than a count the user cannot act on.
+	SkippedRows map[string][]int `json:"skipped_rows"`
+	// RowsWithoutStrength is why path_find will still be empty afterwards.
+	RowsWithoutStrength int `json:"rows_without_strength"`
+}
+
+// StageImport reads a file and holds the plan for review. Writes nothing to the
+// graph.
+func (s *Store) StageImport(v View, fileName string, raw []byte) (ImportSession, error) {
+	plan, err := s.PlanImport(v, fileName, raw)
+	if err != nil {
+		return ImportSession{}, err
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	sess := ImportSession{
+		ID: s.nextID("im"), TeamID: v.TeamID, SeatID: v.SeatID,
+		Plan: plan, StagedAt: s.now(),
+	}
+	s.imports[sess.ID] = &sess
+	return sess, nil
+}
+
+// stagedFor returns a session, or the seat's most recent one when id is empty -
+// "what did that file do" almost always means the one just uploaded.
+func (s *Store) stagedFor(v View, id string) (*ImportSession, bool) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	if id != "" {
+		sess, ok := s.imports[id]
+		if !ok || sess.TeamID != v.TeamID || sess.SeatID != v.SeatID {
+			return nil, false
+		}
+		return sess, true
+	}
+	var newest *ImportSession
+	for _, sess := range s.imports {
+		if sess.TeamID != v.TeamID || sess.SeatID != v.SeatID {
+			continue
+		}
+		if newest == nil || sess.StagedAt.After(newest.StagedAt) ||
+			(sess.StagedAt.Equal(newest.StagedAt) && sess.ID > newest.ID) {
+			newest = sess
+		}
+	}
+	return newest, newest != nil
+}
+
+// ImportSummary describes a staged plan.
+func (s *Store) ImportSummary(v View, id string) (ImportSummary, bool) {
+	sess, ok := s.stagedFor(v, id)
+	if !ok {
+		return ImportSummary{}, false
+	}
+	p := sess.Plan
+	sum := ImportSummary{
+		ID: sess.ID, File: p.File, Rows: p.Rows, Encoding: p.Encoding, Delimiter: p.Delimiter,
+		Mapping: p.Mapping, Unmapped: p.Unmapped, Counts: p.Counts(),
+		Decisions: []ImportDecision{}, SkippedRows: map[string][]int{},
+	}
+	for i, prop := range p.Proposals {
+		if prop.Decision == DecideCreate || prop.Decision == DecideUpdate {
+			if _, rated := p.Strengths[i]; !rated {
+				sum.RowsWithoutStrength++
+			}
+			continue
+		}
+		sum.Decisions = append(sum.Decisions, ImportDecision{
+			Index: i, Row: p.RowOf[i], Label: prop.Candidate.Label, Org: prop.Candidate.Org,
+			Decision: prop.Decision, Question: prop.Question,
+			Options: prop.Merges, Conflicts: prop.Conflicts,
+		})
+		if _, rated := p.Strengths[i]; !rated {
+			sum.RowsWithoutStrength++
+		}
+	}
+	for _, sk := range p.Skipped {
+		sum.SkippedRows[sk.Reason] = append(sum.SkippedRows[sk.Reason], sk.Row)
+	}
+	for _, rows := range sum.SkippedRows {
+		sort.Ints(rows)
+	}
+	return sum, true
+}
+
+// CommitImport applies a staged plan and drops the session.
+func (s *Store) CommitImport(v View, id string, res map[int]Resolution, at time.Time) (ImportResult, error) {
+	sess, ok := s.stagedFor(v, id)
+	if !ok {
+		return ImportResult{}, ErrNotFound
+	}
+	out, err := s.ApplyImport(v, sess.Plan, res, at)
+	if err != nil {
+		return out, err
+	}
+	s.mu.Lock()
+	delete(s.imports, sess.ID)
+	s.mu.Unlock()
+	return out, nil
+}
+
+// DiscardImport throws a staged plan away. A separate call from committing,
+// for the same reason declining to decide is separate from deciding.
+func (s *Store) DiscardImport(v View, id string) bool {
+	sess, ok := s.stagedFor(v, id)
+	if !ok {
+		return false
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	delete(s.imports, sess.ID)
+	return true
+}
+
+// ---- the follow-up that makes an import worth anything ----
+
+// RatingGap is what stands between an import and a working path_find.
+//
+// After importing two hundred people with no strengths recorded, the graph is
+// full and PathsTo still returns NoSeeds. Nothing else in this package will
+// ever ask, so this is the thing that has to.
+type RatingGap struct {
+	Unrated int `json:"unrated"`
+	Rated   int `json:"rated"`
+	// Ask is a slice of the unrated people, IN NAME ORDER and capped.
+	//
+	// Deliberately not ordered by anything else. The obvious "helpful" ordering
+	// - who sits on the most edges, who would unlock the most routes - is a
+	// ranking of people wearing a different hat, and the user knows who they
+	// are close to far better than a graph does.
+	Ask []ChartPerson `json:"ask"`
+}
+
+// RatingAskCap is how many to put in front of somebody at once. Ten is a list a
+// person answers; two hundred is a list they close.
+const RatingAskCap = 10
+
+// RatingGap reports how much of the graph this seat has said anything about.
+func (s *Store) RatingGap(v View, limit int) RatingGap {
+	if limit <= 0 {
+		limit = RatingAskCap
+	}
+	rated := map[string]bool{}
+	for _, n := range s.Seeds(v) {
+		rated[n.ID] = true
+	}
+	out := RatingGap{Rated: len(rated), Ask: []ChartPerson{}}
+	for _, n := range s.Nodes(v, NodeFilter{Kind: KindPerson}) {
+		if rated[n.ID] {
+			continue
+		}
+		out.Unrated++
+		if len(out.Ask) < limit {
+			out.Ask = append(out.Ask, ChartPerson{
+				NodeID: n.ID, Label: n.Label, RoleTitle: n.RoleTitle,
+				Duty: n.Duty, Corroboration: n.Corroboration(), Unconfirmed: n.Unconfirmed,
+			})
+		}
+	}
+	sortPeople(out.Ask)
+	return out
 }

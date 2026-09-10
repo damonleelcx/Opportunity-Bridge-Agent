@@ -482,6 +482,72 @@ func Tools() *Registry {
 			},
 		},
 		Tool{
+			Name: "import_summary", Risk: RiskRead,
+			Description: "Describe a file the user uploaded and what importing it would do: how it was read, which columns were used, which were ignored, what will be created, what still needs their decision, and which rows were skipped and why. Writes nothing.",
+			Schema: Obj("which staged file", map[string]*Schema{
+				"import_id": Str("the staged import; omit for the most recent one"),
+			}),
+			Run: func(s *Store, v View, a map[string]any) (any, error) {
+				sum, ok := s.ImportSummary(v, argStr(a, "import_id"))
+				if !ok {
+					return nil, ErrNotFound
+				}
+				return sum, nil
+			},
+		},
+		Tool{
+			Name: "rating_gap", Risk: RiskRead,
+			Description: "How many people the user has said they know, how many they have not, and a few to ask about. Use it after an import: with no relationship strength recorded, path_find has nowhere to start and the graph is full but useless.",
+			Schema: Obj("how many to ask about", map[string]*Schema{
+				"limit": Int("how many names to put in front of them at once, 1-25", 1, 25),
+			}),
+			Run: func(s *Store, v View, a map[string]any) (any, error) {
+				return s.RatingGap(v, argInt(a, "limit")), nil
+			},
+		},
+		Tool{
+			Name: "rate_contact", Risk: RiskWrite,
+			Description: "Record how well the USER says they know somebody, 1 (barely) to 3 (well). Only ever relay what they told you - this number decides which introduction routes get offered, and a guess sends them down one that goes nowhere.",
+			Schema: Obj("the rating", map[string]*Schema{
+				"node_id":  Str("who"),
+				"strength": Int("1 barely, 2 somewhat, 3 well", 1, 3),
+				"note":     Str("their own words about this person, if they gave any; private to them"),
+			}, "node_id", "strength"),
+			Run: func(s *Store, v View, a map[string]any) (any, error) {
+				id := argStr(a, "node_id")
+				if err := s.Annotate(v, ActorUser, id, argInt(a, "strength"), argStr(a, "note")); err != nil {
+					return nil, err
+				}
+				n, _ := s.Node(v, id)
+				return n, nil
+			},
+		},
+		Tool{
+			// Irreversible on purpose. Relaying one merge decision is a
+			// conversation; relaying two hundred rows' worth in one call is a
+			// different act, and it gets the same gate as a deletion: a human
+			// approved THESE arguments, including every resolution in them.
+			Name: "import_commit", Risk: RiskIrreversible,
+			Description: "Apply a staged import once the user has decided the rows that needed deciding. Requires a human approval of these exact arguments, resolutions included.",
+			Schema: Obj("what to apply", map[string]*Schema{
+				"import_id": Str("the staged import; omit for the most recent one"),
+				"decisions": Arr("one entry per row that needed deciding", Obj("one decision", map[string]*Schema{
+					"index":         Int("the row's index in the plan", 0, 100000),
+					"choice":        Str("what they decided", string(ChooseCreateNew), string(ChooseMergeInto), string(ChooseAcceptChange), string(ChooseKeepCurrent)),
+					"merge_into_id": Str("required when the choice is merge_into"),
+				}, "index", "choice")),
+			}),
+			Run: func(s *Store, v View, a map[string]any) (any, error) {
+				res := map[int]Resolution{}
+				for _, m := range argMaps(a, "decisions") {
+					res[argInt(m, "index")] = Resolution{
+						Choice: Choice(argStr(m, "choice")), MergeIntoID: argStr(m, "merge_into_id"),
+					}
+				}
+				return s.CommitImport(v, argStr(a, "import_id"), res, time.Now().UTC())
+			},
+		},
+		Tool{
 			Name: "graph_forget", Risk: RiskIrreversible,
 			Description: "Permanently delete one record and everything that names it. Requires a human approval of these exact arguments.",
 			Schema: Obj("what to delete", map[string]*Schema{
