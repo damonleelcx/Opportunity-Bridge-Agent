@@ -29,6 +29,16 @@ type Account struct {
 	CreatedAt    time.Time `json:"created_at"`
 	LastSeenAt   time.Time `json:"last_seen_at,omitempty"`
 
+	// Org is the firm this account works for, and it is what makes a TEAM real
+	// in 猎源图谱: facts are shared across a team, private judgements are not.
+	//
+	// IT IS SET BY AN OPERATOR AND NEVER BY THE ACCOUNT ITSELF. A self-declared
+	// org is not an identity, it is a text field - type a competitor's name and
+	// you are inside their contact book. Empty means a team of one, which is
+	// the correct reading for a single consultant and the safe default for an
+	// account nobody has placed yet.
+	Org string `json:"org,omitempty"`
+
 	// Email is how somebody gets back in after forgetting a password, and it is
 	// the ONLY route back: this service holds no phone number and has no support
 	// desk that can identify a person. EmailVerified is what separates an address
@@ -231,4 +241,52 @@ func cloneAccount(a *Account) *Account {
 	c := *a
 	c.AlsoOwns = append([]string(nil), a.AlsoOwns...)
 	return &c
+}
+
+// AccountBySubject finds the account behind a session.
+//
+// Sessions carry a subject id, not a username, so every lookup that needs to
+// know WHO a session belongs to - rather than merely which records it touches -
+// comes through here.
+func (s *Store) AccountBySubject(subjectID string) (*Account, bool) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	for _, a := range s.s.Accounts {
+		if a.SubjectID == subjectID {
+			c := *a
+			return &c, true
+		}
+	}
+	return nil, false
+}
+
+// SetAccountOrg places an account in a firm, or removes it from one.
+//
+// An operator action on purpose: see Account.Org. Moving somebody between firms
+// does NOT move their private notes or their relationship strengths - those are
+// keyed by seat and follow the person - but it does change which facts they can
+// see, which is the whole point of a team.
+func (s *Store) SetAccountOrg(username, org string) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	a, ok := s.s.Accounts[strings.ToLower(strings.TrimSpace(username))]
+	if !ok {
+		return fmt.Errorf("ACCOUNT_UNKNOWN: no account named %q", username)
+	}
+	a.Org = strings.TrimSpace(org)
+	s.persist()
+	return nil
+}
+
+// AllAccounts lists every account, for operator commands. Sorted so two runs
+// print the same thing.
+func (s *Store) AllAccounts() []Account {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	out := make([]Account, 0, len(s.s.Accounts))
+	for _, a := range s.s.Accounts {
+		out = append(out, *a)
+	}
+	sort.Slice(out, func(i, j int) bool { return out[i].Username < out[j].Username })
+	return out
 }

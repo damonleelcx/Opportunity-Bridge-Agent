@@ -401,8 +401,13 @@ You report on populations, never on people.
 			// organisational unit and the type has no person field - so
 			// no_candidate_scoring above stays true of this intent.
 			// See internal/tools/leadgraph.go and docs/20-lead-graph.zh-CN.md.
-			"record_turn", "graph_query", "org_chart", "path_find", "lead_board",
-			"touchpoint_add", "rate_contact", "rating_gap", "answer_pending",
+			"record_turn", "graph_reconcile", "graph_query", "org_chart", "path_find",
+			"lead_board", "stale_scan", "touchpoint_add", "rate_contact", "rating_gap",
+			"answer_pending", "contact_remove",
+			"import_summary", "import_remap", "import_commit",
+			// Irreversible: gated by this product's approval flow, like
+			// application_submit and outreach_request.
+			"graph_forget", "subject_request",
 		},
 		Verifiers: []string{
 			"no_candidate_scoring", "candidate_anonymity", "outreach_is_an_ask",

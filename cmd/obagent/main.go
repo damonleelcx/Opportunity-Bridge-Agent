@@ -38,7 +38,66 @@ import (
 	"github.com/damonleelcx/Opportunity-Bridge-Agent/web"
 )
 
+// teamCmd places an account in a firm, which is what makes a TEAM real in
+// 猎源图谱: facts are shared across it, private judgements are not.
+//
+// An operator command rather than something an account can do to itself. A
+// self-declared org is not an identity - type a competitor's name and you are
+// inside their contact book - so the placement is made by whoever runs the
+// deployment and has some other reason to believe it.
+func teamCmd(log *slog.Logger, args []string) error {
+	fs := flag.NewFlagSet("team", flag.ContinueOnError)
+	account := fs.String("account", "", "username to place")
+	org := fs.String("org", "", "firm to place them in; empty removes them from one")
+	list := fs.Bool("list", false, "list accounts and their firms")
+	if err := fs.Parse(args); err != nil {
+		return err
+	}
+	cfg, err := config.Load()
+	if err != nil {
+		return err
+	}
+	st, err := openStore(cfg, log)
+	if err != nil {
+		return err
+	}
+	defer st.Close()
+
+	if *list {
+		for _, a := range st.AllAccounts() {
+			firm := a.Org
+			if firm == "" {
+				firm = "(team of one)"
+			}
+			fmt.Printf("%s\t%s\n", a.Username, firm)
+		}
+		return nil
+	}
+	if *account == "" {
+		return errors.New("ACCOUNT_REQUIRED: -account names the username to place")
+	}
+	if err := st.SetAccountOrg(*account, *org); err != nil {
+		return err
+	}
+	if *org == "" {
+		fmt.Printf("%s is now a team of one\n", *account)
+	} else {
+		fmt.Printf("%s is now in %s\n", *account, *org)
+	}
+	return nil
+}
+
 func main() {
+	// Operator subcommands come before the server's own flags: `obagent team`
+	// is an administrative act, not a way to start the service.
+	if len(os.Args) > 1 && os.Args[1] == "team" {
+		log := slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: slog.LevelWarn}))
+		if err := teamCmd(log, os.Args[2:]); err != nil {
+			fmt.Fprintln(os.Stderr, err)
+			os.Exit(1)
+		}
+		return
+	}
 	addr := flag.String("addr", "", "listen address (overrides OBA_ADDR)")
 	importState := flag.String("import-state", "",
 		"one-time migration: copy this JSON state file into OBA_DATABASE_URL and exit. "+

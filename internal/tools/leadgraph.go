@@ -4,9 +4,11 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strings"
 
 	"github.com/damonleelcx/Opportunity-Bridge-Agent/internal/domain"
 	"github.com/damonleelcx/Opportunity-Bridge-Agent/internal/leadgraph"
+	"github.com/damonleelcx/Opportunity-Bridge-Agent/internal/store"
 )
 
 // 猎源图谱 (Lead Graph) as a capability of this agent.
@@ -53,15 +55,26 @@ func LeadGraphToolNames() []string {
 // they are not wired to yet. Both are named in the PRD as deferred rather than
 // quietly missing.
 var leadGraphExposed = []string{
-	"record_turn",    // the agent maintains the graph as the recruiter talks
-	"graph_query",    //
-	"org_chart",      //
-	"path_find",      // the reason any of this is worth having
-	"lead_board",     //
-	"touchpoint_add", //
-	"rate_contact",   // without this path_find has nowhere to start
-	"rating_gap",     //
-	"answer_pending", //
+	"record_turn",     // the agent maintains the graph as the recruiter talks
+	"graph_reconcile", // judge without writing
+	"graph_query",     //
+	"org_chart",       //
+	"path_find",       // the reason any of this is worth having
+	"lead_board",      //
+	"stale_scan",      //
+	"touchpoint_add",  //
+	"rate_contact",    // without this path_find has nowhere to start
+	"rating_gap",      //
+	"answer_pending",  //
+	"contact_remove",  //
+	// Files arrive through POST /api/graph/imports, because the model cannot
+	// produce one. What it CAN do is read the plan, propose a correction the
+	// user confirms, and apply it - which is where an import actually fails.
+	"import_summary",  //
+	"import_remap",    //
+	"import_commit",   // irreversible
+	"graph_forget",    // irreversible
+	"subject_request", // irreversible
 }
 
 var errNoGraph = errors.New("GRAPH_UNAVAILABLE: this deployment has no lead graph configured. " +
@@ -73,12 +86,17 @@ var errNoGraph = errors.New("GRAPH_UNAVAILABLE: this deployment has no lead grap
 // strengths and "only the seat that was asked may answer" are all about one
 // person.
 //
-// TeamID is the account too, and that is a LIMITATION, not a design. This
-// product has no team concept - RecruiterOrg is a field somebody types into an
-// outreach request, not part of who they are - so every recruiter is a team of
-// one and the shared-facts half of Lead Graph is inert. That is the documented
-// single-user case ("单人 = 一人团队"), and it becomes a one-line change the day
-// accounts grow an organisation.
+// TeamID is the account's ORG - the firm it was placed in by an operator.
+//
+// Never a self-declared string. An org somebody types is not an identity, it is
+// a text field: type a competitor's name and you are inside their contact book.
+// So it lives on the account, an operator sets it (`obagent team`), and this
+// only reads it.
+//
+// An account with no org is a team of ONE, keyed by its own id. That is the
+// right reading for a single consultant and the safe default for an account
+// nobody has placed yet - it can see nothing but its own work, which is the
+// failure direction to prefer.
 func viewFor(env Env) (leadgraph.View, error) {
 	if env.Graph == nil {
 		return leadgraph.View{}, errNoGraph
@@ -87,7 +105,21 @@ func viewFor(env Env) (leadgraph.View, error) {
 		return leadgraph.View{}, errors.New("NO_SEAT: this request has no account to attribute the graph to")
 	}
 	id := env.Session.SubjectID
-	return leadgraph.View{TeamID: id, SeatID: id}, nil
+	return leadgraph.View{TeamID: GraphTeamFor(env.Store, id), SeatID: id}, nil
+}
+
+// GraphTeamFor is the ONE place the team rule lives.
+//
+// The upload route needs it too, and a second copy is how a route stages a file
+// into one book while the conversation imports it into another. Exported for
+// that reason and no other.
+func GraphTeamFor(st *store.Store, subjectID string) string {
+	if st != nil {
+		if acct, ok := st.AccountBySubject(subjectID); ok && acct.Org != "" {
+			return "org:" + strings.ToLower(acct.Org)
+		}
+	}
+	return subjectID
 }
 
 // translateSchema converts a Lead Graph schema into this package's.
@@ -148,7 +180,7 @@ func leadGraphTools() []Tool {
 			// An intent misroute must not hand a resident somebody's private
 			// contact book. The allowlist is the first gate; this is the second.
 			Roles: []domain.Role{domain.RoleRecruiter},
-			Run: func(name string) func(context.Context, Env, map[string]any) (Result, error) {
+			Run: func(name string, lt leadgraph.Tool) func(context.Context, Env, map[string]any) (Result, error) {
 				return func(_ context.Context, env Env, args map[string]any) (Result, error) {
 					v, err := viewFor(env)
 					if err != nil {
@@ -158,13 +190,22 @@ func leadGraphTools() []Tool {
 						return Result{}, errors.New("GRAPH_DEGRADED: the graph stopped saving writes. " +
 							"Nothing new can be recorded until the database is reachable again")
 					}
-					got, err := leadgraph.Tools().Call(env.Graph, v, name, args, nil)
+					// Lead Graph asks for its own approval on an irreversible
+					// call. Minting it HERE is safe and only here: Registry.Call
+					// has already stopped this call once, shown a human the
+					// exact arguments, and been given a decision on them. What
+					// is relayed is that decision, not a bypass of it.
+					var approvals []leadgraph.Approval
+					if lt.Risk == leadgraph.RiskIrreversible {
+						approvals = append(approvals, leadgraph.ApprovalFor(name, args))
+					}
+					got, err := leadgraph.Tools().Call(env.Graph, v, name, args, approvals)
 					if err != nil {
 						return Result{}, fmt.Errorf("%s: %w", name, err)
 					}
 					return Result{Content: got}, nil
 				}
-			}(lt.Name),
+			}(lt.Name, lt),
 		})
 	}
 	return out

@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"io/fs"
 	"log/slog"
 	"net/http"
@@ -19,8 +20,10 @@ import (
 	"github.com/damonleelcx/Opportunity-Bridge-Agent/internal/config"
 	"github.com/damonleelcx/Opportunity-Bridge-Agent/internal/domain"
 	"github.com/damonleelcx/Opportunity-Bridge-Agent/internal/intent"
+	"github.com/damonleelcx/Opportunity-Bridge-Agent/internal/leadgraph"
 	"github.com/damonleelcx/Opportunity-Bridge-Agent/internal/mailer"
 	"github.com/damonleelcx/Opportunity-Bridge-Agent/internal/store"
+	"github.com/damonleelcx/Opportunity-Bridge-Agent/internal/tools"
 	"github.com/damonleelcx/Opportunity-Bridge-Agent/internal/tts"
 )
 
@@ -60,6 +63,10 @@ func (s *Server) Routes() http.Handler {
 	mux.HandleFunc("DELETE /api/sessions/{id}/profile", s.forgetProfile)
 	mux.HandleFunc("POST /api/approvals/{id}", s.decideApproval)
 	mux.HandleFunc("POST /api/consent", s.setConsent)
+	// A file the model cannot produce. Staging is all this does: nothing is
+	// written to the graph until somebody has looked at the plan and confirmed
+	// it, which happens through the import tools in the conversation.
+	mux.HandleFunc("POST /api/sessions/{id}/graph/imports", s.stageGraphImport)
 	mux.HandleFunc("POST /api/tts", s.speak)
 	mux.HandleFunc("POST /api/auth/signup", s.signUp)
 	mux.HandleFunc("POST /api/auth/signin", s.signIn)
@@ -588,4 +595,75 @@ func roleStrings() []string {
 		out = append(out, string(r))
 	}
 	return out
+}
+
+// stageGraphImport takes a spreadsheet and stages it for review.
+//
+// WHY AN ENDPOINT AND NOT A TOOL
+//
+//	A model cannot produce a file. What it CAN do is read the resulting plan,
+//	say what was skipped and why, propose the correction the user confirms, and
+//	apply it - which is where an import actually fails. So the bytes arrive
+//	here, and the conversation does the rest.
+//
+// WHY IT ONLY STAGES
+//
+//	Nothing reaches the graph from this request. A 200 here means "I read your
+//	file", not "I imported it" - and the two being different is what lets a
+//	person see 12 rows that need deciding before any of them land.
+func (s *Server) stageGraphImport(w http.ResponseWriter, r *http.Request) {
+	ses, ok := s.ownedSession(w, r, r.PathValue("id"))
+	if !ok {
+		return
+	}
+	if s.Agent == nil || s.Agent.Graph == nil {
+		writeErr(w, http.StatusServiceUnavailable, "GRAPH_UNAVAILABLE",
+			"This deployment has no graph database configured, so a file cannot be staged.",
+			"Set OBA_DATABASE_URL on the server and restart.")
+		return
+	}
+	// Only the audience this capability belongs to. The tools are already
+	// recruiter-only; an upload route that was not would be the way in.
+	if ses.Role != domain.RoleRecruiter {
+		writeErr(w, http.StatusForbidden, "ROLE_NOT_PERMITTED",
+			"Importing a contact list is part of the employer workflow.",
+			"Start a session as the employer role and upload it there.")
+		return
+	}
+
+	// The cap is the same one the importer enforces, applied before the bytes
+	// are read rather than after: refusing a 200MB upload after buffering it is
+	// a memory limit nobody set.
+	r.Body = http.MaxBytesReader(w, r.Body, leadgraph.MaxImportBytes)
+	file, header, err := r.FormFile("file")
+	if err != nil {
+		writeErr(w, http.StatusBadRequest, "FILE_REQUIRED",
+			"No file arrived with this request.",
+			"Attach it as the form field `file`. CSV or TSV; a sheet exported from Excel is fine.")
+		return
+	}
+	defer file.Close()
+	raw, err := io.ReadAll(file)
+	if err != nil {
+		writeErr(w, http.StatusBadRequest, "FILE_UNREADABLE", err.Error(),
+			"The upload was cut short or is larger than the 8MB limit. Try again, or split the file.")
+		return
+	}
+
+	v := leadgraph.View{TeamID: s.graphTeam(ses.SubjectID), SeatID: ses.SubjectID}
+	sess, err := s.Agent.Graph.StageImport(v, header.Filename, raw)
+	if err != nil {
+		writeErr(w, http.StatusBadRequest, "IMPORT_UNREADABLE", err.Error(),
+			"The first row must be a header. Everything else - encoding, separators, column names - is worked out for you.")
+		return
+	}
+	sum, _ := s.Agent.Graph.ImportSummary(v, sess.ID)
+	writeJSON(w, map[string]any{"staged": true, "summary": sum})
+}
+
+// graphTeam defers to the one place the rule lives. A copy of it here is how a
+// route stages a file into one book while the conversation imports it into
+// another.
+func (s *Server) graphTeam(subjectID string) string {
+	return tools.GraphTeamFor(s.Store, subjectID)
 }

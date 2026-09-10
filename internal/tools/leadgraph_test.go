@@ -190,3 +190,128 @@ func TestAnAnonymousRequestGetsNoGraph(t *testing.T) {
 		t.Error("a request with no account read the graph")
 	}
 }
+
+// The team is the firm an OPERATOR placed the account in, never a string the
+// account chose. A self-declared org is not an identity: type a competitor's
+// name and you are inside their contact book.
+func TestTheTeamIsTheOperatorSetOrgNotSomethingTyped(t *testing.T) {
+	st := store.New(t.TempDir()+"/state.json", slog.New(slog.NewTextHandler(io.Discard, nil)))
+	graph := leadgraph.New(slog.New(slog.NewTextHandler(io.Discard, nil)))
+
+	mk := func(user string) string {
+		t.Helper()
+		a, err := st.CreateAccount(user, "hash")
+		if err != nil {
+			t.Fatalf("create %s: %v", user, err)
+		}
+		return a.SubjectID
+	}
+	amy, ben, mallory := mk("amy"), mk("ben"), mk("mallory")
+	for _, u := range []string{"amy", "ben"} {
+		if err := st.SetAccountOrg(u, "Acme猎头"); err != nil {
+			t.Fatalf("place %s: %v", u, err)
+		}
+	}
+
+	record := func(subject, label string) {
+		t.Helper()
+		tool, _ := tools.Default().Get("record_turn")
+		if _, err := tool.Run(context.Background(), tools.Env{
+			Graph: graph, Store: st, Session: &store.Session{SubjectID: subject},
+		}, map[string]any{
+			"turn_ref": "t1",
+			"candidates": []any{map[string]any{
+				"kind": "person", "label": label, "org": "A司",
+				"intel": []any{map[string]any{"kind": "user_said", "excerpt": "聊过"}},
+			}},
+		}); err != nil {
+			t.Fatalf("record as %s: %v", subject, err)
+		}
+	}
+	record(amy, "王五")
+	record(mallory, "李四") // not in the firm
+
+	read := func(subject string) []leadgraph.Node {
+		t.Helper()
+		tool, _ := tools.Default().Get("graph_query")
+		got, err := tool.Run(context.Background(), tools.Env{
+			Graph: graph, Store: st, Session: &store.Session{SubjectID: subject},
+		}, map[string]any{})
+		if err != nil {
+			t.Fatalf("query as %s: %v", subject, err)
+		}
+		ns, _ := got.Content.([]leadgraph.Node)
+		return ns
+	}
+
+	// A colleague in the same firm sees the fact - the team half is awake.
+	if got := read(ben); len(got) != 1 || got[0].Label != "王五" {
+		t.Fatalf("a teammate cannot see a team fact: %+v", got)
+	}
+	// Somebody outside it sees only their own.
+	got := read(mallory)
+	if len(got) != 1 || got[0].Label != "李四" {
+		t.Fatalf("an outsider saw the firm's book: %+v", got)
+	}
+	// An account with no firm is a team of one.
+	solo := mk("solo")
+	if len(read(solo)) != 0 {
+		t.Error("an unplaced account can read somebody else's graph")
+	}
+}
+
+// Every irreversible Lead Graph tool is gated by THIS product's approval flow,
+// the same one that stops application_submit.
+func TestTheIrreversibleGraphToolsAreGatedLikeEverythingElse(t *testing.T) {
+	reg := tools.Default()
+	want := map[string]bool{"import_commit": true, "graph_forget": true, "subject_request": true}
+	seen := 0
+	for _, n := range tools.LeadGraphToolNames() {
+		tool, _ := reg.Get(n)
+		if want[n] {
+			seen++
+			if tool.Risk != tools.RiskIrreversible {
+				t.Errorf("%s is %s: it would run without anybody seeing the arguments", n, tool.Risk)
+			}
+		}
+	}
+	if seen != len(want) {
+		t.Fatalf("only %d of the irreversible tools are exposed", seen)
+	}
+}
+
+// The upload route and the tools must agree about which team a session is in.
+// Disagreeing would stage a file into one graph and import it into another.
+func TestTheUploadRouteAndTheToolsAgreeOnTheTeam(t *testing.T) {
+	st := store.New(t.TempDir()+"/state.json", slog.New(slog.NewTextHandler(io.Discard, nil)))
+	a, err := st.CreateAccount("amy", "hash")
+	if err != nil {
+		t.Fatalf("create: %v", err)
+	}
+	if err := st.SetAccountOrg("amy", "Acme猎头"); err != nil {
+		t.Fatalf("place: %v", err)
+	}
+	graph := leadgraph.New(slog.New(slog.NewTextHandler(io.Discard, nil)))
+
+	// What the tools compute.
+	tool, _ := tools.Default().Get("record_turn")
+	if _, err := tool.Run(context.Background(), tools.Env{
+		Graph: graph, Store: st, Session: &store.Session{SubjectID: a.SubjectID},
+	}, map[string]any{
+		"turn_ref": "t1",
+		"candidates": []any{map[string]any{
+			"kind": "person", "label": "王五", "org": "A司",
+			"intel": []any{map[string]any{"kind": "user_said", "excerpt": "聊过"}},
+		}},
+	}); err != nil {
+		t.Fatalf("record: %v", err)
+	}
+	// What the upload route computes - through the SAME exported helper the
+	// route uses, not a copy of the rule spelled out here. Spelling it out was
+	// the first version, and a mutation of the route's own function left it
+	// perfectly green.
+	v := leadgraph.View{TeamID: tools.GraphTeamFor(st, a.SubjectID), SeatID: a.SubjectID}
+	if got := graph.Nodes(v, leadgraph.NodeFilter{}); len(got) != 1 {
+		t.Fatalf("the route and the tools disagree about the team: route sees %d records", len(got))
+	}
+}
