@@ -12,11 +12,14 @@ package web_test
 import (
 	"fmt"
 	"math"
+	"os"
 	"regexp"
 	"strings"
 	"testing"
 
 	"github.com/damonleelcx/Opportunity-Bridge-Agent/internal/domain"
+	"github.com/damonleelcx/Opportunity-Bridge-Agent/internal/leadgraph"
+	"github.com/damonleelcx/Opportunity-Bridge-Agent/internal/tools"
 	"github.com/damonleelcx/Opportunity-Bridge-Agent/web"
 )
 
@@ -1731,5 +1734,339 @@ func TestEveryHiddenToggledControlCanActuallyBeHidden(t *testing.T) {
 	}
 	if checked == 0 {
 		t.Fatal("no hidden-toggled control sets a display — this test would prove nothing")
+	}
+}
+
+// Every 猎源图谱 tool the model can call must have somewhere to show its answer.
+//
+// These tools shipped for a release with no case in cardFor at all: a recruiter
+// who asked 阿桥 to sort out what they knew got prose, while the structure it
+// had just built went into the collapsed system-detail drawer. The list comes
+// from tools.LeadGraphToolNames() rather than from a copy here, so adding a
+// tool on the Go side turns this red until the interface can present it.
+//
+// There is deliberately NO exceptions list. A tool whose result is not worth a
+// panel still gets a one-line acknowledgement, because an exceptions list is
+// how the silence comes back one tool at a time.
+func TestEveryLeadGraphToolIsPresentedInTheConversation(t *testing.T) {
+	src := asset(t, "app.js")
+	start := strings.Index(src, "function cardFor(")
+	if start < 0 {
+		t.Fatal("cardFor is gone; this fence no longer guards anything")
+	}
+	body := src[start:]
+	if end := strings.Index(body, "\n}\n"); end > 0 {
+		body = body[:end]
+	}
+	names := tools.LeadGraphToolNames()
+	if len(names) == 0 {
+		t.Fatal("no lead graph tools are exposed; this fence would prove nothing")
+	}
+	for _, name := range names {
+		if !strings.Contains(body, `case "`+name+`":`) {
+			t.Errorf("the model can call %q but the conversation has nowhere to show it — "+
+				"its result reaches the reader only through the system-detail drawer", name)
+		}
+	}
+}
+
+// Every question the graph can raise must have a sentence to raise it with.
+//
+// leadgraph sends an i18n KEY, on purpose: the wording of a question put to a
+// person does not belong compiled into a binary. The cost of that seam is that
+// a key with no string renders as the key. The constants are read from the Go
+// package, so adding a third question there turns this red.
+func TestEveryQuestionGoCanAskHasASentence(t *testing.T) {
+	table := stringsTable(t)
+	for _, key := range []string{leadgraph.QuestionMergeOrNew, leadgraph.QuestionChangedOrMistake} {
+		for lang, keys := range table {
+			if !keys[key] {
+				t.Errorf("the graph can ask %q and %s has no sentence for it — "+
+					"the reader would be shown the key", key, lang)
+			}
+		}
+	}
+}
+
+// Every string the interface names has to exist.
+//
+// The sibling fence compares the two languages against each other, which says
+// nothing about a key the code names and NEITHER language has: t() returns the
+// key itself when it misses, so the failure is a screen with "graph.removed 3"
+// printed on it rather than an error anybody would notice.
+//
+// WHY IT DOES NOT LOOK FOR t("…")
+//
+//	It did, at first, and that fence had a hole big enough to drive most of the
+//	猎源图谱 cards through: they name their key at the CALL SITE of a helper —
+//	gcard("graph.receipt", …) — and only the helper passes it to t(). Deleting
+//	graph.receipt from the table left the fence green.
+//
+//	So the rule is namespace-shaped instead: any dotted literal whose first
+//	segment is a namespace THE TABLE ITSELF USES is a key, wherever it appears.
+//	The namespace list is derived, not maintained, so a new family of strings is
+//	covered the moment the first one is added.
+func TestEveryStringTheInterfaceNamesExists(t *testing.T) {
+	table := stringsTable(t)
+	namespaces := map[string]bool{}
+	for key := range table["zh-CN"] {
+		if i := strings.Index(key, "."); i > 0 {
+			namespaces[key[:i]] = true
+		}
+	}
+	if len(namespaces) < 10 {
+		t.Fatalf("only %d namespaces derived; the fence is not reading the table", len(namespaces))
+	}
+	lit := regexp.MustCompile(`"([a-zA-Z][A-Za-z0-9]*\.[A-Za-z][\w.]*)"`)
+	named := 0
+	for _, file := range []string{"app.js", "home.js"} {
+		for _, m := range lit.FindAllStringSubmatch(asset(t, file), -1) {
+			key := m[1]
+			// A literal ending in a dot is a PREFIX the code completes at
+			// runtime (t("cand.status." + x)), not a key. Its completions are
+			// covered by the value-side fences.
+			if strings.HasSuffix(key, ".") {
+				continue
+			}
+			if !namespaces[key[:strings.Index(key, ".")]] {
+				continue
+			}
+			named++
+			for lang, keys := range table {
+				if !keys[key] {
+					t.Errorf("%s names %q and %s has no such string — the key itself "+
+						"would be printed on screen", file, key, lang)
+				}
+			}
+		}
+	}
+	if named < 100 {
+		t.Fatalf("only %d keys named; the fence is not reading the interface", named)
+	}
+}
+
+// stringsTable parses i18n.js into one key set per language.
+func stringsTable(t *testing.T) map[string]map[string]bool {
+	t.Helper()
+	src := asset(t, "i18n.js")
+	start := strings.Index(src, "const STRINGS = {")
+	if start < 0 {
+		t.Fatal("the STRINGS table is gone")
+	}
+	table := src[start:]
+	if end := strings.Index(table, "\n};"); end > 0 {
+		table = table[:end]
+	}
+	zh := strings.Index(table, `"zh-CN": {`)
+	en := strings.Index(table, "\n  en: {")
+	if zh < 0 || en < zh {
+		t.Fatalf("could not locate both language blocks (zh=%d en=%d)", zh, en)
+	}
+	key := regexp.MustCompile(`"([a-zA-Z][\w.]*)":`)
+	set := func(s string) map[string]bool {
+		out := map[string]bool{}
+		for _, m := range key.FindAllStringSubmatch(s, -1) {
+			out[m[1]] = true
+		}
+		return out
+	}
+	out := map[string]map[string]bool{"zh-CN": set(table[zh:en]), "en": set(table[en:])}
+	for lang, keys := range out {
+		if len(keys) < 50 {
+			t.Fatalf("%s parsed only %d keys; the fence is not reading the table", lang, len(keys))
+		}
+	}
+	return out
+}
+
+// The org-chart card's note must count the groups its own tree draws.
+//
+// units and units_mentioned are counted separately: a group that only ever
+// appeared inside somebody's unit path is drawn in the tree but is not a unit
+// node. A note built from `units` alone printed "0 组织单元" directly above a
+// list containing one, which is the same defect a walkthrough already found
+// once on the graph page itself ("你图上这个组还没有人" over three people).
+//
+// Source-level, because Go cannot run the card. It catches the count being
+// dropped, which is the way this fails, and it fails silently.
+func TestTheOrgChartCardCountsTheGroupsItDraws(t *testing.T) {
+	src := asset(t, "app.js")
+	start := strings.Index(src, "function chartCard(")
+	if start < 0 {
+		t.Fatal("chartCard is gone; this fence no longer guards anything")
+	}
+	body := src[start:]
+	if end := strings.Index(body, "\n}\n"); end > 0 {
+		body = body[:end]
+	}
+	// Comments are stripped FIRST. The first version of this fence matched the
+	// comment that explains why the count is there, so deleting the code and
+	// keeping the note left it green. A fence that can be satisfied by prose is
+	// not a fence.
+	code := stripLineComments(body)
+	if !strings.Contains(code, "presence") {
+		t.Fatal("chartCard no longer reads presence; the fence is watching the wrong function")
+	}
+	if !strings.Contains(code, "units_mentioned") {
+		t.Error("chartCard's note ignores units_mentioned, so it will print a group count " +
+			"lower than the number of groups drawn underneath it")
+	}
+}
+
+// stripLineComments removes // comments so a fence reads code, not prose.
+func stripLineComments(src string) string {
+	var b strings.Builder
+	for _, line := range strings.Split(src, "\n") {
+		if i := strings.Index(line, "//"); i >= 0 {
+			line = line[:i]
+		}
+		b.WriteString(line)
+		b.WriteByte('\n')
+	}
+	return b.String()
+}
+
+// The picture is appended once per turn, not once per tool call.
+//
+// A turn that calls four graph tools would otherwise embed the same graph four
+// times — four iframes, four layouts, one conversation pushed off the screen.
+// The rule is turn-scoped state rather than a list of which tools deserve it,
+// because a list is a register and registers rot towards showing nothing.
+func TestTheGraphPictureIsShownOncePerTurn(t *testing.T) {
+	src := stripLineComments(asset(t, "app.js"))
+	start := strings.Index(src, "function renderToolResult(")
+	if start < 0 {
+		t.Fatal("renderToolResult is gone; this fence no longer guards anything")
+	}
+	body := src[start:]
+	if end := strings.Index(body, "\n}\n"); end > 0 {
+		body = body[:end]
+	}
+	if !strings.Contains(body, "graphPictureCard()") {
+		t.Fatal("the conversation never embeds the picture")
+	}
+	// BOTH halves. Checking for the name alone let the assignment be deleted
+	// while the `!turn.graphShown` test stayed — a guard that is read and never
+	// set is false forever, which is the bug, and the fence stayed green.
+	if !strings.Contains(body, "!turn.graphShown") {
+		t.Error("the picture is embedded without checking whether this turn already showed it")
+	}
+	if !strings.Contains(body, "turn.graphShown = true") {
+		t.Error("nothing ever marks the picture as shown, so the guard is false forever — " +
+			"a turn that calls four graph tools would render four graphs")
+	}
+}
+
+// The import control belongs to the same audience as the route behind it.
+//
+// The upload route is recruiter-only and answers 403 to anybody else. A control
+// that is always visible and refuses half the people who press it is worse than
+// no control, so it is hidden with the same rule as 猎源图谱's own entry — and
+// hidden with the attribute, which on an .icon-btn needs the companion rule the
+// sibling fence guards.
+func TestTheImportControlIsRecruiterOnly(t *testing.T) {
+	html := asset(t, "app.html")
+	if !strings.Contains(html, `id="importBtn"`) || !strings.Contains(html, `id="importFile"`) {
+		t.Fatal("the import control is gone; this fence no longer guards anything")
+	}
+	// It ships hidden. A control that starts visible and is hidden by script is
+	// visible for as long as the script takes.
+	i := strings.Index(html, `id="importBtn"`)
+	tagEnd := strings.Index(html[i:], ">")
+	if tagEnd < 0 || !strings.Contains(html[i:i+tagEnd], "hidden") {
+		t.Error("the import control ships visible and is only hidden later")
+	}
+
+	src := stripLineComments(asset(t, "app.js"))
+	start := strings.Index(src, "function syncGraphLink(")
+	if start < 0 {
+		t.Fatal("syncGraphLink is gone; the fence is watching the wrong function")
+	}
+	body := src[start:]
+	if end := strings.Index(body, "\n}\n"); end > 0 {
+		body = body[:end]
+	}
+	if !strings.Contains(body, `#importBtn`) {
+		t.Error("nothing ties the import control to the role, so a resident sees a button " +
+			"whose route answers 403")
+	}
+	if !strings.Contains(body, `role === "recruiter"`) {
+		t.Error("the role rule is gone from the function that shows both controls")
+	}
+}
+
+// Every key the importer can put in an import plan's counts has a word.
+//
+// The card printed "needs_you 0 skipped 0" at a Chinese reader, because the
+// counts were translated through the 对账 namespace, which only has words for
+// create and update. The keys are read out of importer.go so a fifth one turns
+// this red instead of reaching a reader as a Go map key.
+func TestEveryImportCountHasAWord(t *testing.T) {
+	src, err := os.ReadFile("../internal/leadgraph/importer.go")
+	if err != nil {
+		t.Fatalf("read importer.go: %v", err)
+	}
+	i := strings.Index(string(src), `c := map[string]int{`)
+	if i < 0 {
+		t.Fatal("the counts map is gone; the fence is reading the wrong thing")
+	}
+	rest := string(src)[i:]
+	keys := regexp.MustCompile(`"([a-z_]+)":`).FindAllStringSubmatch(rest[:strings.Index(rest, "}")], -1)
+	if len(keys) < 3 {
+		t.Fatalf("found only %d count keys; the fence is not reading the map", len(keys))
+	}
+	table := stringsTable(t)
+	for _, m := range keys {
+		for lang, set := range table {
+			if !set["count."+m[1]] {
+				t.Errorf("the import plan can report %q and %s has no word for it — "+
+					"the reader is shown a Go map key", m[1], lang)
+			}
+		}
+	}
+
+	// And the card has to look the words up in THAT namespace. Checking only
+	// the table left the first version of this fence green while the card was
+	// still translating through 对账's namespace, which has words for two of
+	// the four keys — the exact bug, still on screen.
+	card := stripLineComments(asset(t, "app.js"))
+	start := strings.Index(card, "function importPlanCard(")
+	if start < 0 {
+		t.Fatal("importPlanCard is gone; the fence is watching the wrong function")
+	}
+	if end := strings.Index(card[start:], "\n}\n"); end > 0 {
+		card = card[start : start+end]
+	} else {
+		card = card[start:]
+	}
+	if !strings.Contains(card, `"count." + k`) {
+		t.Error("the import plan card does not translate its counts through the count namespace, " +
+			"so keys with no word there are printed raw")
+	}
+}
+
+// Every reason the importer can give for skipping a row has a word.
+//
+// The reasons are grouped by key on purpose — "第 7、19、23 行没有姓名" is
+// something a person can go and fix, and "跳过 3" is not — which only works if
+// the key is rendered as a sentence rather than as no_name.
+func TestEverySkipReasonHasAWord(t *testing.T) {
+	src, err := os.ReadFile("../internal/leadgraph/importer.go")
+	if err != nil {
+		t.Fatalf("read importer.go: %v", err)
+	}
+	decl := regexp.MustCompile(`Skip[A-Za-z]+\s+=\s+"([a-z_]+)"`)
+	reasons := decl.FindAllStringSubmatch(string(src), -1)
+	if len(reasons) < 2 {
+		t.Fatalf("found only %d skip reasons; the fence is not reading the source", len(reasons))
+	}
+	table := stringsTable(t)
+	for _, m := range reasons {
+		for lang, set := range table {
+			if !set["skip."+m[1]] {
+				t.Errorf("a row can be skipped for %q and %s has no sentence for it — "+
+					"the reader is shown a Go constant", m[1], lang)
+			}
+		}
 	}
 }

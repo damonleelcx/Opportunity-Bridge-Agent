@@ -1,12 +1,19 @@
 <!doctype html>
-<html lang="zh-CN">
+<html lang="zh-CN" data-theme="{{.Theme}}"{{if .Embed}} class="embed-root"{{end}}>
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>猎源图谱</title>
 <link rel="stylesheet" href="graph.css">
 </head>
-<body>
+<body{{if .Embed}} class="embed"{{end}}>
+{{/* Embed mode is the SAME page inside 阿桥's conversation: same markup, same
+     script, same data. What it drops is the chrome that a card supplies
+     already — the title, the counts, and the text roster, which the card the
+     picture sits under has just listed. It is not a second implementation of
+     the picture, because a second implementation is how two drawings of the
+     same graph start disagreeing. */}}
+{{if not .Embed}}
 <header>
   <h1>猎源图谱</h1>
   <div class="counts">
@@ -19,6 +26,7 @@
     {{if .Counts.Alerts}}<span class="chip alert">组织变动 {{.Counts.Alerts}}</span>{{end}}
   </div>
 </header>
+{{end}}
 
 <div id="stage">
   <div class="filters">
@@ -33,6 +41,7 @@
   <p class="hint">拖拽节点 · 滚轮缩放 · 点击查看 · 虚线圈 = 只被提过没有记录 · 虚线 = 未证实</p>
 </div>
 
+{{if not .Embed}}
 <div class="wrap">
   <main>
     {{if .Leads}}
@@ -52,7 +61,7 @@
             {{if eq (printf "%s" .Kind) "hiring_stopped"}}已有 {{.Days}} 天没看到这个组发新招聘
             {{else if eq (printf "%s" .Kind) "hiring_active"}}{{if .Days}}{{.Days}} 天前还在招人{{else}}今天还在招人{{end}}
             {{else}}{{.Because}}{{end}}
-            <span class="src">{{.Corroboration}}{{if .SourceURL}} · 有出处{{end}}</span></li>
+            <span class="src">{{template "corr" .Corroboration}}{{if .SourceURL}} · 有出处{{end}}</span></li>
           {{end}}
         </ul>
         {{if .People}}<p class="who">你图上认识：{{range $i, $p := .People}}{{if $i}}、{{end}}{{$p.Label}}{{end}}</p>{{end}}
@@ -65,7 +74,7 @@
     {{if .Alerts}}
     <ul class="alerts">
       {{range .Alerts}}
-      <li><strong>{{.Org}} · {{.EventLabel}}</strong>（{{.Corroboration}}）
+      <li><strong>{{.Org}} · {{.EventLabel}}</strong>（{{template "corr" .Corroboration}}）
         {{if .People}}—— 你图上在这个组的有：{{range $i, $p := .People}}{{if $i}}、{{end}}{{$p.Label}}{{end}}{{else}}—— 你图上这个组还没有人{{end}}
       </li>
       {{end}}
@@ -99,11 +108,22 @@
       {{end}}
     </div>
   </main>
-  <aside id="panel"><h2>详情</h2><p class="empty">点图上的节点查看。没有图也不影响：左边的清单是同一份数据。</p></aside>
+{{end}}
+  {{/* The panel stays in BOTH modes and outside the {{if}} above on purpose:
+       graph.js returns early when #panel is missing, so dropping it with the
+       rest of the chrome would leave the embed with no picture at all —
+       silently, because an empty <svg> looks exactly like an empty graph. */}}
+  <aside id="panel"><h2>详情</h2><p class="empty">点图上的节点查看。没有图也不影响：{{if .Embed}}上面那张卡片{{else}}左边的清单{{end}}是同一份数据。</p></aside>
+{{if not .Embed}}
 </div>
+{{end}}
 
 <script id="data" type="application/json">{{.JSON}}</script>
 <script>window.__LEAD_GRAPH__ = JSON.parse(document.getElementById("data").textContent);</script>
 <script src="graph.js"></script>
 </body>
 </html>
+{{/* 证实状态的中文。名词字典见 docs/20-lead-graph.zh-CN.md §3，对话里的结果卡片
+     (web/static/i18n.js 的 corr.*) 用的是同样三个词——同一件事不能因为在哪儿看它
+     而有两个叫法。这里曾经直接打印英文枚举 hearsay/corroborated/announced。 */}}
+{{define "corr"}}{{if eq (printf "%s" .) "hearsay"}}听说{{else if eq (printf "%s" .) "corroborated"}}多源印证{{else if eq (printf "%s" .) "announced"}}官方公布{{else}}{{.}}{{end}}{{end}}

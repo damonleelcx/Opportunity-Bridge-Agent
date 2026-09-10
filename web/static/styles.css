@@ -146,6 +146,33 @@ button, select, textarea, input { font: inherit; color: inherit; }
    Fence: TestEveryHiddenToggledControlCanActuallyBeHidden */
 .icon-btn[hidden] { display: none; }
 
+/* ── 猎源图谱 result cards ─────────────────────────────────────────────────
+   The graph screen has its own stylesheet, served from the leadgraph package
+   and scoped to that page. These are the same information seen inside the
+   conversation, so they take the CHAT's tokens rather than the graph page's —
+   one palette per surface. What must not differ is the words; those come from
+   i18n.js and match the page (see 名词字典, docs/20-lead-graph.zh-CN.md §3). */
+.gcard .glist { list-style: none; margin: 6px 0 0; padding: 0; display: flex; flex-direction: column; gap: 5px; }
+.gcard .glist .glist { margin-left: 14px; padding-left: 10px; border-left: 1px solid var(--line); }
+.gcard .gsub { margin-top: 10px; font-size: .75em; font-weight: 700; color: var(--ink-400); }
+.gcard .gdim { color: var(--ink-400); font-size: .9em; }
+.gcard .gsig { color: var(--ink-500); font-size: .92em; }
+.gcard .empty { margin: 4px 0 0; color: var(--ink-400); }
+.gcard-foot { margin-top: 12px; }
+/* The embedded graph screen. A fixed height because the picture is a viewport
+   into something that has no natural height — it is a force layout, not a
+   document — and a card that grows with the data would push the conversation
+   off the screen the moment somebody imported a contact list. */
+.gstage { width: 100%; height: 340px; border: 1px solid var(--line); border-radius: var(--r-xs); display: block; }
+.chip {
+  display: inline-block; padding: 1px 7px; border-radius: 999px; margin-left: 4px;
+  font-size: .72em; line-height: 1.7; border: 1px solid var(--line);
+  background: var(--surface-2); color: var(--ink-500); vertical-align: middle;
+}
+/* Warn, not stop: 待确认 is a state, not a failure. Colouring it like an error
+   would tell the reader that a fact nobody has confirmed yet is a mistake. */
+.chip-warn { background: var(--warn-soft); color: var(--warn); border-color: var(--warn-border); }
+
 /* ── transcript ────────────────────────────────────────────────────────── */
 .transcript { flex: 1; overflow-y: auto; padding: 30px 24px 12px; min-height: 0; }
 .transcript > * { max-width: 760px; margin: 0 auto 22px; }

@@ -464,12 +464,22 @@ func (s *Store) RunDaily(ctx context.Context, v View, srcs []Source, req FetchRe
 		rep.Observations = append(rep.Observations, s.record(v, d, producedFrom(d, rep.Applied, s, v)).ID)
 	}
 
-	for _, id := range rep.Applied {
-		n, ok := s.Node(v, id)
-		if !ok || n.Kind != KindEvent {
-			continue
-		}
-		if a, raised := s.RaiseAlert(v, id, now); raised {
+	// EVERY event in the team, not only the ones this pass just fetched.
+	//
+	// WHY A SWEEP AND NOT A REACTION TO WHAT WAS APPLIED
+	//
+	//	It used to iterate rep.Applied, which meant an alert existed only if a
+	//	scheduled fetch had produced the event. The event a recruiter TELLS the
+	//	agent about - "c业务组要并进b业务组", the whole reason this feature was
+	//	asked for - arrives through record_turn and was never in that list, so
+	//	it never raised anything. 离职提醒 was a pull: you had to go and look.
+	//
+	//	So the invariant is stated as a reconciliation instead of a reaction:
+	//	every event that should carry an alert carries one, checked on a pass
+	//	that is guaranteed to run. RaiseAlert is already at-most-once per event,
+	//	which is what makes re-running this free.
+	for _, n := range s.Nodes(v, NodeFilter{Kind: KindEvent}) {
+		if a, raised := s.RaiseAlert(v, n.ID, now); raised {
 			rep.Alerts = append(rep.Alerts, a.ID)
 		}
 	}

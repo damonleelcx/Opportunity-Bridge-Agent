@@ -13,8 +13,16 @@
   --f-body:"PingFang SC","Hiragino Sans GB","Microsoft YaHei",system-ui,sans-serif;
   --f-mono:ui-monospace,"SF Mono",Menlo,Consolas,monospace;
 }
+/* Three theme states, the same three 阿桥 has (web/static/tokens.css): light is
+   the default, dark is explicit, and "follow the OS" is something a reader opts
+   into. This page used to carry only the media query, which made it ALWAYS
+   follow the OS — so a reader who had chosen 浅色 in the conversation got a dark
+   graph embedded in a light page. The stamp arrives as the theme query
+   parameter; a page opened on its own is stamped "system", which is exactly
+   what it did before any of this existed.
+   Fence: TestTheGraphPageDefinesEveryTokenInEveryThemeState */
 @media (prefers-color-scheme:dark){
-  :root{
+  :root[data-theme="system"]{
     --paper:#0b1015; --surface:#131b22; --sunk:#0f161c;
     --ink:#dde5eb; --ink-2:#afbeca; --muted:#7e8e9c;
     --line:#233038; --line-2:#33434e;
@@ -24,6 +32,16 @@
     --ok:#71c097; --ok-soft:#12291f;
     --k-person:#63b2d1; --k-unit:#8ea2b3; --k-org:#a8c4d4; --k-event:#d5a552; --k-lead:#71c097;
   }
+}
+:root[data-theme="dark"]{
+    --paper:#0b1015; --surface:#131b22; --sunk:#0f161c;
+    --ink:#dde5eb; --ink-2:#afbeca; --muted:#7e8e9c;
+    --line:#233038; --line-2:#33434e;
+    --accent:#63b2d1; --accent-soft:#12303d;
+    --amber:#d5a552; --amber-soft:#312611;
+    --rust:#de8168; --rust-soft:#381d16;
+    --ok:#71c097; --ok-soft:#12291f;
+    --k-person:#63b2d1; --k-unit:#8ea2b3; --k-org:#a8c4d4; --k-event:#d5a552; --k-lead:#71c097;
 }
 *{box-sizing:border-box}
 body{margin:0;background:var(--paper);color:var(--ink);font-family:var(--f-body);line-height:1.7}
@@ -108,3 +126,26 @@ main{padding:1.2rem}
 .signals .bar{font-family:var(--f-mono);color:var(--accent)}
 .signals .src{font-family:var(--f-mono);font-size:.72rem;color:var(--muted)}
 .lead .who{margin:.45rem 0 0;font-size:.85rem;color:var(--ink-2)}
+
+/* ── embed ────────────────────────────────────────────────────────────────
+   The same page inside 阿桥's conversation (body.embed). The chrome is already
+   gone from the markup; what is left is to let the picture take the box it was
+   given, and to put the detail panel under it rather than beside it — a card is
+   narrower than a screen, and a side-by-side split at that width leaves neither
+   half usable. */
+/* Flex, not percentages. Percentage heights need an ancestor with a resolved
+   height, and body has none — so `#stage{height:74%}` did nothing, the svg kept
+   its 60vh/22rem from the rule above, the document grew to 619px inside a 340px
+   frame, and the 详情 panel sat below the fold where nobody would ever find it.
+   The frame's height is the height; the two children divide it. */
+html.embed-root, body.embed { height: 100%; margin: 0; }
+body.embed { display: flex; flex-direction: column; overflow: hidden; }
+body.embed #stage { flex: 1 1 auto; min-height: 0; border-radius: 0; border-bottom: 0; }
+body.embed #stage svg { height: 100%; min-height: 0; }
+/* The hint belongs to a page with room for it; in a card it costs a third of
+   the picture to say what a first drag teaches. */
+body.embed .hint { display: none; }
+body.embed #panel {
+  flex: 0 0 30%; overflow-y: auto; border-top: 1px solid var(--line); padding: 8px 12px;
+}
+body.embed #panel h2 { margin: 0 0 4px; }

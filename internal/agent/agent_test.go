@@ -14,6 +14,7 @@ import (
 	"github.com/damonleelcx/Opportunity-Bridge-Agent/internal/corpus"
 	"github.com/damonleelcx/Opportunity-Bridge-Agent/internal/domain"
 	"github.com/damonleelcx/Opportunity-Bridge-Agent/internal/intent"
+	"github.com/damonleelcx/Opportunity-Bridge-Agent/internal/leadgraph"
 	"github.com/damonleelcx/Opportunity-Bridge-Agent/internal/llm"
 	"github.com/damonleelcx/Opportunity-Bridge-Agent/internal/retrieval"
 	"github.com/damonleelcx/Opportunity-Bridge-Agent/internal/store"
@@ -489,5 +490,58 @@ func TestRoutingObjectNeverReachesTheReader(t *testing.T) {
 	}
 	if !blocked {
 		t.Errorf("nothing recorded why the draft was stopped; findings = %v", res.Findings)
+	}
+}
+
+// 猎源图谱's news goes to the recruiter whose book it is, and to nobody else.
+//
+// Observable rather than by reading the prompt: being told is what marks the
+// alert acknowledged, so an alert still unacknowledged after a turn is an alert
+// that turn was not told about.
+func TestOnlyRecruitersAreToldGraphNews(t *testing.T) {
+	seed := func(g *leadgraph.Store, v leadgraph.View) {
+		said := []leadgraph.Intel{{Kind: leadgraph.IntelUserSaid, TurnRef: "t1", Excerpt: "c组要并进b组"}}
+		if _, err := g.UpsertNode(v, leadgraph.ActorUser, leadgraph.Node{
+			Kind: leadgraph.KindEvent, Org: "A司", Label: "c业务组并入b业务组",
+			UnitPath: []string{"A司", "c业务组"}, Intel: said,
+		}); err != nil {
+			t.Fatalf("seed: %v", err)
+		}
+		if _, raised := g.RaiseAlert(v, g.Nodes(v, leadgraph.NodeFilter{Kind: leadgraph.KindEvent})[0].ID,
+			time.Now().UTC()); !raised {
+			t.Fatal("nothing to be told about; this test would prove nothing")
+		}
+	}
+
+	for _, tc := range []struct {
+		role    domain.Role
+		in      intent.ID
+		wantAck bool
+	}{
+		{domain.RoleRecruiter, intent.TalentSourcing, true},
+		{domain.RoleResident, intent.IndividualPathway, false},
+	} {
+		// Several identical turns: a verifier redraft costs one, and which
+		// branch the loop takes is not what this test is about.
+		h := newHarness(t, tc.role, llm.Script{Turns: []llm.ScriptedTurn{
+			{Text: "好的。"}, {Text: "好的。"}, {Text: "好的。"}, {Text: "好的。"},
+		}})
+		g := leadgraph.New(slog.New(slog.NewTextHandler(io.Discard, nil)))
+		h.ag.Graph = g
+		v := leadgraph.View{
+			TeamID: tools.GraphTeamFor(h.st, h.ses.SubjectID), SeatID: h.ses.SubjectID,
+		}
+		seed(g, v)
+
+		h.run(t, "帮我看看", tc.in)
+
+		unread := g.Alerts(v, false)
+		if gotAck := len(unread) == 0; gotAck != tc.wantAck {
+			if tc.wantAck {
+				t.Errorf("%s was not told about the reorganisation in their own book", tc.role)
+			} else {
+				t.Errorf("%s was told about a recruiter's graph", tc.role)
+			}
+		}
 	}
 }

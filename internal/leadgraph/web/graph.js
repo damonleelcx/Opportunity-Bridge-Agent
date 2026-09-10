@@ -148,20 +148,36 @@
 
   function esc(s) { var d = document.createElement("div"); d.textContent = s == null ? "" : s; return d.innerHTML; }
 
+  // 名词字典. The same words the page's own markup uses and the same words the
+  // conversation's result cards use (web/static/i18n.js). This panel used to
+  // print the raw enum — "person", "hearsay" — on an otherwise Chinese screen.
+  // See docs/20-lead-graph.zh-CN.md §3.
+  var KIND = { org: "公司", unit: "组织单元", person: "人", event: "组织变动", lead: "线索" };
+  var CORR = { hearsay: "听说", corroborated: "多源印证", announced: "官方公布" };
+  var CONTACT = { phone: "电话", email: "邮箱", wechat: "微信", other: "其他" };
+  // The names of the fields still worth chasing (store.go, unconfirmable).
+  var FIELD = { role_title: "职务", duty: "职责", org: "公司", occurred_at: "发生时间" };
+
+  // word falls back to the value itself, not to blank: a state this page has
+  // not been taught about is something the reader should see.
+  function word(table, v) { return v ? (table[v] || v) : ""; }
+
   function select(n) {
     nodeEls.forEach(function (el) { el.classList.remove("sel"); });
     nodeEls[nodes.indexOf(n)].classList.add("sel");
     var d = n.d, rows = "";
     function row(k, v) { if (v) rows += "<dt>" + esc(k) + "</dt><dd>" + esc(v) + "</dd>"; }
-    row("类别", d.kind);
+    row("类别", word(KIND, d.kind));
     row("公司", d.org);
     row("职务", d.role_title);
     row("职责", d.duty);
-    row("证实", d.corroboration);
-    if (d.unconfirmed && d.unconfirmed.length) row("待确认", d.unconfirmed.join("、"));
+    row("证实", word(CORR, d.corroboration));
+    if (d.unconfirmed && d.unconfirmed.length) {
+      row("待确认", d.unconfirmed.map(function (f) { return word(FIELD, f); }).join("、"));
+    }
     if (d.presence === "mentioned") row("状态", "只被提过，没有记录");
     if (d.contacts && d.contacts.length) {
-      row("联系方式", d.contacts.map(function (c) { return c.kind + " " + c.value; }).join("、"));
+      row("联系方式", d.contacts.map(function (c) { return word(CONTACT, c.kind) + " " + c.value; }).join("、"));
     }
     row("我的备注", d.note);
     var mine = data.links.filter(function (l) {

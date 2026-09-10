@@ -637,3 +637,59 @@ func TestTheDailyPassParksTheDecisionsItRaises(t *testing.T) {
 		t.Error("the answered question is still queued")
 	}
 }
+
+// The event a recruiter TELLS the agent about must raise an alert.
+//
+// This is the defect 离职提醒 was reported as: the pass only ever raised alerts
+// for events its own fetch had just created, and this deployment has no sources
+// configured, so nothing ever raised anything. The event that matters — the one
+// the user described when they asked for this feature, "A司c组并入b组" — arrives
+// through record_turn and was invisible to it.
+func TestTheDailyPassAlertsOnEventsTheConversationRecorded(t *testing.T) {
+	s := newStore(t)
+	ev := mustNode(t, s, amy, leadgraph.ActorUser, leadgraph.Node{
+		Kind: leadgraph.KindEvent, Org: "A司", Label: "c业务组并入b业务组",
+		UnitPath: []string{"A司", "c业务组"},
+		Intel:    []leadgraph.Intel{said("c组要并进b组")},
+	})
+	if got := s.Alerts(amy, true); len(got) != 0 {
+		t.Fatalf("an alert existed before any pass ran: %d", len(got))
+	}
+
+	rep, err := s.RunDaily(context.Background(), amy, nil, leadgraph.FetchRequest{},
+		time.Now().UTC(), 45*24*time.Hour)
+	if err != nil {
+		t.Fatalf("pass: %v", err)
+	}
+	if len(rep.Alerts) != 1 {
+		t.Fatalf("the pass raised %d alerts for an event it did not fetch itself", len(rep.Alerts))
+	}
+	got := s.Alerts(amy, false)
+	if len(got) != 1 || got[0].EventID != ev.ID {
+		t.Fatalf("the alert does not name the event: %+v", got)
+	}
+}
+
+// And running it again changes nothing. The pass is a reconciliation, so it has
+// to be safe to run on every schedule tick, on every restart, forever.
+func TestTheDailyPassIsIdempotent(t *testing.T) {
+	s := newStore(t)
+	mustNode(t, s, amy, leadgraph.ActorUser, leadgraph.Node{
+		Kind: leadgraph.KindEvent, Org: "A司", Label: "c业务组并入b业务组",
+		UnitPath: []string{"A司", "c业务组"},
+		Intel:    []leadgraph.Intel{said("c组要并进b组")},
+	})
+	now := time.Now().UTC()
+	for i := range 3 {
+		rep, err := s.RunDaily(context.Background(), amy, nil, leadgraph.FetchRequest{}, now, 45*24*time.Hour)
+		if err != nil {
+			t.Fatalf("pass %d: %v", i, err)
+		}
+		if want := 1; i > 0 && len(rep.Alerts) != 0 {
+			t.Errorf("pass %d raised %d alerts again (want %d only on the first)", i, len(rep.Alerts), want-1)
+		}
+	}
+	if got := s.Alerts(amy, true); len(got) != 1 {
+		t.Errorf("three passes left %d alerts for one event", len(got))
+	}
+}

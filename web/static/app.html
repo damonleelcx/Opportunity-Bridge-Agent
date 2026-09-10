@@ -247,6 +247,17 @@
         <textarea id="input" rows="1" data-i18n-ph="composer.placeholder"
           placeholder="说说你的情况"></textarea>
         <div class="input-actions">
+          <!-- 批量导入. Hidden outside the employer role, because the route
+               behind it is recruiter-only — a control that refuses half the
+               people who press it is worse than no control. The file never
+               reaches the model: it is staged on the server and what comes back
+               is a PLAN, which is what lands in the conversation.
+               See docs/20-lead-graph.zh-CN.md §10.2. -->
+          <input type="file" id="importFile" accept=".csv,.tsv,.txt,text/csv,text/plain" hidden>
+          <button type="button" id="importBtn" class="icon-btn" hidden
+                  data-i18n-title="ctl.import" data-i18n-aria="ctl.import" title="导入名单">
+            <span class="ico" data-icon="plus"></span>
+          </button>
           <button type="button" id="mic" class="icon-btn" data-i18n-title="a11y.voiceIn" title="语音输入">
             <span class="ico" data-icon="mic"></span>
           </button>

@@ -151,6 +151,19 @@ func (a *Agent) Run(ctx context.Context, in Input) (Result, error) {
 		rec.Warn(obs.GuardrailTripped, f.Code, f.Message, map[string]any{"guard": f.Guard})
 	}
 
+	// What 猎源图谱 has to tell this seat, read ONCE for the whole turn.
+	//
+	// Once, because reading it acknowledges it: computed inside the loop, the
+	// news would be in the first iteration's context and gone from the second's,
+	// so the model would see the system prompt change underneath it mid-turn.
+	//
+	// Recruiters only, and only where there is a graph: it is their book, and
+	// no other role can even reach the tools that write it.
+	var graphNews []string
+	if a.Graph != nil && ses.Role == domain.RoleRecruiter {
+		graphNews = tools.GraphNews(a.Store, a.Graph, ses.SubjectID, time.Now().UTC())
+	}
+
 	// ---- route
 	dec, err := intent.Route(ctx, a.LLM, a.Cfg.ClassifierModel, ses.Role, in.Intent, in.Message, intent.ID(ses.Intent))
 	if err != nil {
@@ -255,7 +268,7 @@ func (a *Agent) Run(ctx context.Context, in Input) (Result, error) {
 			Intent: in5, Session: ses, Profile: profile,
 			Consent:     a.Store.ConsentAll(ses.SubjectID),
 			Tasks:       a.Store.TasksFor(ses.SubjectID),
-			Corrections: corrections, Alerts: alerts,
+			Corrections: corrections, Alerts: alerts, GraphNews: graphNews,
 			Locale: replyLanguage(a.Cfg, ses), CitiesCovered: a.Corpus.Cities(),
 		})
 		req := llm.Request{

@@ -100,6 +100,7 @@ async function boot() {
   paintWho();
   buildRoleSelect();
   wire();
+  wireImport();
   // Validated against meta.roles rather than trusted: a role removed from
   // domain.Roles() between deploys would otherwise be posted to /api/sessions,
   // which rejects it, and the app would fail to boot on a stale preference.
@@ -643,7 +644,41 @@ function renderToolResult(turn, ev) {
   if (!card) return;
   show(turn.results);
   turn.results.append(card);
+  // The picture, once per turn, after the first card that came from the graph.
+  //
+  // ONE RULE, NOT A LIST: if this turn touched 猎源图谱 at all, the reader gets
+  // to see it. A list of "which tools deserve the picture" is a register, and
+  // registers rot in the direction of showing nothing.
+  if (card.classList.contains("gcard") && !turn.graphShown) {
+    turn.graphShown = true;
+    const pic = graphPictureCard();
+    if (pic) turn.results.append(pic);
+  }
   scroll();
+}
+
+// graphPictureCard embeds the graph screen itself.
+//
+// WHY AN IFRAME AND NOT A SECOND DRAWING
+//
+//   The force graph is 200 lines of layout, hit-testing and zoom that already
+//   exist, are already fenced, and already ship in the binary. Drawing it a
+//   second time here would be two implementations of one picture, and the
+//   second one starts disagreeing with the first the day either changes. The
+//   embed is the SAME page in the same session, minus its own chrome.
+//
+// It follows the reader's theme because graph.css is written against
+// prefers-color-scheme, the same as this page.
+function graphPictureCard() {
+  if (state.session?.role !== "recruiter" || !state.session?.id) return null;
+  return el(`<article class="ocard gcard">
+    <div class="ocard-body">
+      <div class="ocard-top"><h3 class="ocard-title">${esc(t("graph.picture"))}</h3></div>
+      <iframe class="gstage" title="${esc(t("graph.picture"))}" loading="lazy"
+        src="/app/sessions/${esc(state.session.id)}/graph/?embed=1&theme=${esc(themeChoice())}"></iframe>
+      ${graphLinkRow()}
+    </div>
+  </article>`);
 }
 
 function cardFor(tool, r) {
@@ -655,8 +690,254 @@ function cardFor(tool, r) {
     case "external_talent_scan": return externalScanCard(r);
     case "handoff_to_human": return handoffCard(r);
     case "document_prepare": return draftCard(r);
+    // ── 猎源图谱 ──────────────────────────────────────────────────────────
+    // Every tool the model can call has a case, with no exceptions list.
+    //
+    // WHY EVERY ONE, INCLUDING THE DULL ONES: these tools shipped for a whole
+    // release with no case at all, so a recruiter asking 阿桥 to sort out what
+    // they know got prose and nothing else — the structure it had just built
+    // went into the collapsed system-detail drawer. An exceptions list is how
+    // that comes back one tool at a time, so the fence requires all of them and
+    // the quiet ones answer with a one-line acknowledgement.
+    // Fence: TestEveryLeadGraphToolIsPresentedInTheConversation
+    case "record_turn": return receiptCard(r);
+    case "graph_reconcile": return proposalsCard(r);
+    case "graph_query": return nodesCard(r);
+    case "org_chart": return chartCard(r);
+    case "path_find": return pathsCard(r);
+    case "lead_board": return leadsCard(r);
+    case "stale_scan": return staleCard(r);
+    case "rating_gap": return ratingGapCard(r);
+    case "import_summary": case "import_remap": return importPlanCard(r);
+    case "import_commit": return importedCard(r);
+    case "touchpoint_add": return gDone("graph.touchpointAdded", (r.at || "").slice(0, 10));
+    case "rate_contact": return gDone("graph.ratedOne", r.label || "");
+    case "contact_remove": return gDone("graph.contactRemoved", r.label || "");
+    case "answer_pending": return answeredCard(r);
+    case "graph_forget": return gDone("graph.forgotten", String(r.removed ?? 0));
+    case "subject_request": return subjectCard(r);
     default: return null;
   }
+}
+
+// ── 猎源图谱 cards ─────────────────────────────────────────────────────────
+//
+// These render what the agent just did to the graph, in the conversation, next
+// to the sentence that describes it. The full book lives on the graph screen;
+// a card is only ever this answer, and says so by carrying a link to it.
+//
+// Every label comes from i18n.js and matches the graph page word for word — the
+// same fact must not be called two different things depending on where you are
+// looking at it. See docs/20-lead-graph.zh-CN.md §3 名词字典.
+
+function gcard(titleKey, note, inner) {
+  return el(`<article class="ocard gcard">
+    <div class="ocard-body">
+      <div class="ocard-top">
+        <h3 class="ocard-title">${esc(t(titleKey))}</h3>
+        ${note ? `<span class="pill">${esc(note)}</span>` : ""}
+      </div>
+      ${inner}
+      ${graphLinkRow()}
+    </div>
+  </article>`);
+}
+
+// Every card offers the way to the whole book. Without it a card is a dead end:
+// the reader has just been shown a fragment and given no way to see the rest.
+function graphLinkRow() {
+  if (state.session?.role !== "recruiter" || !state.session?.id) return "";
+  return `<div class="gcard-foot"><a class="link" target="_blank" rel="noopener"
+    href="/app/sessions/${esc(state.session.id)}/graph/">${esc(t("graph.open"))} →</a></div>`;
+}
+
+function gDone(key, note) { return gcard(key, note, ""); }
+
+function gEmpty(titleKey, msgKey) {
+  return gcard(titleKey, "", `<p class="empty">${esc(t(msgKey))}</p>`);
+}
+
+// tOr is t() with a real fallback.
+//
+// t() returns the KEY when it has no string for it, so `t(k) || fallback` never
+// reaches the fallback — it would put "corr.hearsay" on screen instead of the
+// value it was translating. Anything coming out of Go that this interface has
+// not been taught a word for should read as the value itself, not as a key.
+function tOr(key, fallback) {
+  const s = t(key);
+  return s === key ? fallback : s;
+}
+
+// corr renders a corroboration state. An unknown value is printed as itself
+// rather than dropped: a state this interface has not been taught about is a
+// thing the reader should see, not a blank.
+function corr(c) { return c ? tOr("corr." + c, c) : ""; }
+
+function gChips(x) {
+  const out = [];
+  if (x.corroboration) out.push(`<span class="chip">${esc(corr(x.corroboration))}</span>`);
+  const n = (x.unconfirmed || []).length;
+  if (n) out.push(`<span class="chip chip-warn">${esc(t("graph.unconfirmed"))} ${n}</span>`);
+  return out.join("");
+}
+
+function personLine(p) {
+  const bits = [esc(p.label)];
+  if (p.role_title) bits.push(`<span class="gdim">${esc(p.role_title)}</span>`);
+  if (p.duty) bits.push(`<span class="gdim">${esc(p.duty)}</span>`);
+  return `<li>${bits.join(" · ")} ${gChips(p)}</li>`;
+}
+
+function receiptCard(r) {
+  const rc = r.receipt;
+  if (!rc && !r.question && !r.answered) return gEmpty("graph.receipt", "graph.nothingToShow");
+  const note = rc
+    ? `${t("graph.created")} ${rc.created} · ${t("graph.updated")} ${rc.updated} · ${t("graph.queued")} ${rc.queued}`
+    : "";
+  const items = (rc?.items || []).map((i) => personLine(i)).join("");
+  // At most one question, which is the whole point of the queue: see turn.go.
+  const q = r.question
+    ? `<div class="decision-note"><b>${esc(t("graph.asks"))}</b> ${esc(tOr(r.question.proposal?.question || "", r.question.key))}</div>`
+    : "";
+  return gcard("graph.receipt", note, `${items ? `<ul class="glist">${items}</ul>` : ""}${q}`);
+}
+
+function proposalsCard(r) {
+  const ps = r || [];
+  if (!ps.length) return gEmpty("graph.proposals", "graph.nothingToShow");
+  const rows = ps.map((p) => {
+    const why = (p.conflicts || []).map((c) => `${esc(c.field)}: ${esc(c.current)} → ${esc(c.proposed)}`).join("；")
+      || (p.merges || []).map((m) => esc(m.label)).join("、");
+    return `<li><span class="chip">${esc(tOr("decide." + p.decision, p.decision))}</span>
+      ${esc(p.candidate?.label || "")} ${why ? `<span class="gdim">${why}</span>` : ""}</li>`;
+  }).join("");
+  return gcard("graph.proposals", `${ps.length}`, `<ul class="glist">${rows}</ul>`);
+}
+
+function nodesCard(r) {
+  const ns = r || [];
+  if (!ns.length) return gEmpty("graph.query", "graph.nothing");
+  return gcard("graph.query", `${ns.length}`,
+    `<ul class="glist">${ns.slice(0, 12).map(personLine).join("")}</ul>`);
+}
+
+// chartCard renders the tree the same way the page does: recorded units solid,
+// merely-mentioned ones labelled, and people nobody could place listed rather
+// than dropped — they are the most useful entries, because each is a question
+// worth asking.
+function chartCard(r) {
+  const c = r.counts || {};
+  // units_mentioned is counted separately and MUST be in the note: a group
+  // nobody recorded as its own node still appears in the tree below, so a note
+  // that counted only recorded ones said "0 组织单元" directly above a list with
+  // a group in it. A header that contradicts its own body is worse than no
+  // header — the reader has to work out which half is lying.
+  const note = [
+    `${c.units ?? 0} ${t("graph.units")}`,
+    c.units_mentioned ? `${t("graph.mentioned")} ${c.units_mentioned}` : "",
+    `${c.people ?? 0} ${t("graph.people")}`,
+  ].filter(Boolean).join(" · ");
+  const branch = (n) => `<li>
+      ${esc(n.label)}
+      ${n.presence === "mentioned" ? `<span class="chip">${esc(t("graph.mentionedOnly"))}</span>` : ""}
+      ${(n.people || []).length ? `<ul class="glist">${n.people.map(personLine).join("")}</ul>` : ""}
+      ${(n.children || []).length ? `<ul class="glist">${n.children.map(branch).join("")}</ul>` : ""}
+    </li>`;
+  const unplaced = (r.unplaced || []).length
+    ? `<div class="gsub">${esc(t("graph.unplaced"))}</div><ul class="glist">${r.unplaced.map(personLine).join("")}</ul>`
+    : "";
+  return gcard("graph.chart", `${esc(r.org || "")} · ${note}`,
+    `<ul class="glist gtree">${(r.root || []).map(branch).join("")}</ul>${unplaced}`);
+}
+
+// pathsCard says WHY there is no route, because "no results" and "you never
+// told me who you know" are different problems with different fixes.
+function pathsCard(r) {
+  if (r.you_know_them) return gDone("graph.paths", t("graph.youKnowThem"));
+  if (r.no_seeds) return gcard("graph.paths", "", `<p class="empty">${esc(t("graph.noSeeds"))}</p>`);
+  const ps = r.paths || [];
+  if (!ps.length) return gcard("graph.paths", "", `<p class="empty">${esc(t("graph.noPath"))}</p>`);
+  const rows = ps.map((p) => {
+    const chain = (p.hops || []).map((h) => esc(h.to_label)).join(" → ");
+    return `<li>${chain}
+      <span class="gdim">${esc(t("graph.weakest"))} ${esc(String(p.weakest ?? ""))} · ${(p.hops || []).length} ${esc(t("graph.hops"))}</span>
+      ${p.hearsay ? `<span class="chip chip-warn">${esc(corr("hearsay"))}</span>` : ""}</li>`;
+  }).join("");
+  return gcard("graph.paths", esc(r.target_label || ""), `<ul class="glist">${rows}</ul>`);
+}
+
+// leadsCard's subject is always a group, never a person. See lead.go — this
+// product does not score people, and the card cannot be the place that starts.
+function leadsCard(r) {
+  const ls = r || [];
+  if (!ls.length) return gEmpty("graph.leads", "graph.noLeads");
+  const rows = ls.map((l) => {
+    const score = (l.signals || []).reduce((a, s) => a + (s.weight || 0), 0);
+    const sig = (l.signals || []).map((s) =>
+      `<li class="gsig">${esc(s.because || s.kind)}${s.days != null ? ` · ${esc(String(s.days))}` : ""}
+        <span class="gdim">${esc(corr(s.corroboration))}</span></li>`).join("");
+    return `<li><b>${esc(l.org || "")} ${esc(l.unit_label || "")}</b>
+      <span class="pill">${score}</span>
+      <div class="gsub">${esc(t("graph.signals"))}</div>
+      <ul class="glist">${sig}</ul></li>`;
+  }).join("");
+  return gcard("graph.leads", `${ls.length}`, `<ul class="glist">${rows}</ul>`);
+}
+
+function staleCard(r) {
+  const xs = r || [];
+  if (!xs.length) return gEmpty("graph.stale", "graph.noStale");
+  const rows = xs.slice(0, 12).map((x) =>
+    `<li>${esc(x.label)} <span class="gdim">${esc(x.kind)}${(x.fields || []).length ? ` · ${esc(x.fields.join("、"))}` : ""}</span></li>`).join("");
+  return gcard("graph.stale", `${xs.length}`, `<ul class="glist">${rows}</ul>`);
+}
+
+// ratingGapCard exists because an import fills the graph and leaves it useless:
+// with no relationship strength recorded, path_find has nowhere to start.
+function ratingGapCard(r) {
+  const note = `${t("graph.rated")} ${r.rated ?? 0} · ${t("graph.unrated")} ${r.unrated ?? 0}`;
+  const ask = (r.ask || []).map(personLine).join("");
+  return gcard("graph.ratingGap", note,
+    ask ? `<div class="gsub">${esc(t("graph.ask"))}</div><ul class="glist">${ask}</ul>` : "");
+}
+
+function importPlanCard(r) {
+  const c = r.counts || {};
+  const note = `${esc(r.file || "")} · ${r.rows ?? 0} ${t("graph.importRows")}`;
+  // Zero counts are dropped, not printed: "跳过 0" is four characters saying
+  // nothing happened. What did happen is what the reader needs.
+  const counts = Object.keys(c).filter((k) => c[k]).map((k) =>
+    `<span class="chip">${esc(tOr("count." + k, k))} ${esc(String(c[k]))}</span>`).join(" ");
+  // skipped_rows groups line numbers BY REASON. The count is already a chip
+  // above, so this says the thing the count cannot: WHICH rows and WHY. That is
+  // what the grouping exists for — "第 7、19、23 行没有姓名" is actionable and
+  // "跳过 3" is not.
+  const skipped = Object.entries(r.skipped_rows || {})
+    .filter(([, rows]) => rows?.length)
+    .map(([reason, rows]) => `<div class="decision-note">${esc(tOr("skip." + reason, reason))} ·
+      ${esc(t("skip.rows").replace("{n}", rows.slice(0, 12).join("、")))}</div>`)
+    .join("");
+  const decisions = (r.decisions || []).length
+    ? `<span class="chip chip-warn">${esc(t("graph.queued"))} ${esc(String(r.decisions.length))}</span>` : "";
+  return gcard("graph.import", note, `<p>${counts} ${decisions}</p>${skipped}`);
+}
+
+function importedCard(r) {
+  const note = `${t("graph.created")} ${(r.created || []).length} · ${t("graph.updated")} ${(r.updated || []).length}`;
+  return gDone("graph.imported", note);
+}
+
+function answeredCard(r) {
+  const note = [
+    (r.created || []).length ? `${t("graph.created")} ${(r.created || []).length}` : "",
+    (r.updated || []).length ? `${t("graph.updated")} ${(r.updated || []).length}` : "",
+  ].filter(Boolean).join(" · ");
+  return gDone("graph.answered", note);
+}
+
+function subjectCard(r) {
+  const xs = r || [];
+  return gDone("graph.subject", `${xs.length} ${t("graph.records")}`);
 }
 
 function el(html) {
@@ -1247,6 +1528,9 @@ function syncGraphLink() {
   const on = state.session?.role === "recruiter";
   el.hidden = !on;
   el.href = on ? `/app/sessions/${state.session.id}/graph/` : "#";
+  // The import control belongs to the same audience and the same graph.
+  const imp = $("#importBtn");
+  if (imp) imp.hidden = !on;
 }
 
 async function renderOverview() {
@@ -1660,6 +1944,25 @@ function applyTheme(choice) {
   localStorage.setItem("oba.theme", value);
   const sel = $("#theme");
   if (sel) sel.value = value;
+  // The embedded graph is a separate document and cannot see this stamp, so it
+  // is told. Reloading it costs the force layout its current arrangement,
+  // which is the right trade: switching theme is rare, and a picture left in
+  // the other theme is the thing that looks broken.
+  for (const f of document.querySelectorAll("iframe.gstage")) {
+    const url = new URL(f.src, location.origin);
+    if (url.searchParams.get("theme") !== value) {
+      url.searchParams.set("theme", value);
+      f.src = url.toString();
+    }
+  }
+}
+
+// themeChoice is what the reader has actually chosen, which is what the
+// embedded graph must be told. It is read from storage rather than from the
+// <html> stamp so the two cannot answer differently.
+function themeChoice() {
+  const v = localStorage.getItem("oba.theme");
+  return ["system", "light", "dark"].includes(v) ? v : DEFAULT_THEME;
 }
 
 function status(text, cls) {
@@ -2013,4 +2316,69 @@ function renderEmailPanel() {
       line.textContent = String(e?.message || e);
     }
   });
+}
+
+// ── 批量导入 ───────────────────────────────────────────────────────────────
+//
+// A file the model cannot produce, so it does not travel through the model. It
+// is posted to the server, which STAGES it — reads it, works out the encoding,
+// the separator and the columns, and returns a plan. Nothing is written to the
+// graph here. What lands in the conversation is that plan, and the rest of the
+// import happens the way everything else does: by talking about it.
+//
+// See docs/20-lead-graph.zh-CN.md §10.2 for what a file has to look like — the
+// short answer is that the first row must be a header, and everything else is
+// worked out.
+function wireImport() {
+  const btn = $("#importBtn");
+  const input = $("#importFile");
+  if (!btn || !input) return;
+  btn.addEventListener("click", () => input.click());
+  input.addEventListener("change", async () => {
+    const file = input.files?.[0];
+    // Cleared immediately so picking the SAME file twice still fires a change.
+    input.value = "";
+    if (!file || !state.session) return;
+    await stageImport(file);
+  });
+}
+
+async function stageImport(file) {
+  const turn = agentTurn();
+  turn.typing = false;
+  turn.bubble.textContent = t("import.reading");
+  try {
+    const body = new FormData();
+    body.append("file", file);
+    const res = await fetch(`/api/sessions/${state.session.id}/graph/imports`, {
+      method: "POST", body, credentials: "same-origin",
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      turn.bubble.textContent = t("import.failed");
+      // The server's refusals carry a remedy. Showing the code alone would tell
+      // somebody their file is wrong without telling them what to change.
+      notice(turn, "block", data.code || "IMPORT_FAILED", data.message || "", data.remedy);
+      return;
+    }
+    turn.bubble.textContent = t("import.staged");
+    const card = importPlanCard(data.summary || {});
+    show(turn.results);
+    turn.results.append(card);
+    const pic = graphPictureCard();
+    if (pic) turn.results.append(pic);
+    // One chip, because the next move is a conversation: the plan is read,
+    // corrected and applied through the import tools, which is where a bad
+    // column or a mistranslated value actually gets fixed.
+    show(turn.suggest);
+    const b = document.createElement("button");
+    b.type = "button";
+    b.textContent = t("suggest.importReview");
+    b.addEventListener("click", () => send(b.textContent));
+    turn.suggest.append(b);
+  } catch (err) {
+    turn.bubble.textContent = t("import.failed");
+    notice(turn, "block", "IMPORT_FAILED", String(err), "");
+  }
+  scroll();
 }
