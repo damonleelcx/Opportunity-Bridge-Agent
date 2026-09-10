@@ -529,6 +529,7 @@ c 业务组 · 稳定性信号                                    窗口期 ~3 �
 | 联系方式 | ✅ 已完成 2026-09-10（拍板：存） | `contact_test.go`（10 用例）：团队事实 / 只增不改 / 删除留痕 / 敏感词闸门 / 导出计数 |
 | 导入出错的修复回路 | ✅ 已完成 2026-09-10 | `import_repair_test.go`（12 用例）：读不懂**暂存不拒收** + `import_remap`（改列 / 翻译取值 / 补格 / 排除行） |
 | P8 图谱可视化 | ✅ 已完成 2026-09-10 | `internal/leadgraph/{snapshot,webui}.go` + `web/{graph.html.tmpl,graph.css,graph.js}` + `webui_test.go`（11 用例） |
+| **关系线终于有生产者** | ✅ 已完成 2026-09-10（生产演示时发现） | `record_turn` 加 `links`：端点按「公司+姓名」解析，同名拒绝不猜，strength 仍只能由人写，画不上的线**报出来不吞掉**。此前 `UpsertEdge` 零调用点，**引荐路径在结构上永远为空**。见 [bugfix](bugfix/2026-09-10-the-agent-could-not-record-a-relationship.md)。7/7 演练变红 |
 | **离职提醒变成"推"** | ✅ 已完成 2026-09-10 | `RunDaily` 的告警步骤改为**幂等对账**（扫全部事件，不再只看本次抓取的）+ `tools.RunGraphDaily` 每日巡检 + `prompt.Options.GraphNews` 由阿桥开口说。`cmd/obagent/producer_test.go` 专门盯"这个巡检有没有人调"。7/7 演练变红 |
 | **批量导入的界面入口** | ✅ 已完成 2026-09-10 | composer 里的附件按钮（仅招聘方）→ 暂存 → **导入计划卡片进对话** + 一个继续聊的建议 chip。跳过的行按原因列出行号，不再只报个数。7/7 演练变红 |
 | **阿桥自己能把图谱呈现出来** | ✅ 已完成 2026-09-10 | 17 个工具全部有结果卡片 + 图本身以 `?embed=1` 嵌入对话；`web/interface_test.go` 4 条 + `webui_test.go` 5 条 + `graphpage_test.go` 1 条，**15/15 演练变红**。实机走查抓到 5 个只读代码看不见的缺陷，见 [bugfix](bugfix/2026-09-10-the-agent-could-not-show-the-graph.md) |

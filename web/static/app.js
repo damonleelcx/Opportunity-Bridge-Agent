@@ -629,6 +629,7 @@ function finalise(turn, final, streamed) {
     turn.tech.querySelector("summary").textContent =
       `${t("tech.title")} · ${turn.techCount} ${t("tech.steps")}`;
   }
+  showGraphPicture(turn);
   renderSuggestions(turn, final.tool_calls || []);
   if (state.speak && final.answer) speak(final.answer, turn);
   scroll();
@@ -644,17 +645,31 @@ function renderToolResult(turn, ev) {
   if (!card) return;
   show(turn.results);
   turn.results.append(card);
-  // The picture, once per turn, after the first card that came from the graph.
+  // The picture is only MARKED here, and drawn when the turn ends.
   //
   // ONE RULE, NOT A LIST: if this turn touched 猎源图谱 at all, the reader gets
   // to see it. A list of "which tools deserve the picture" is a register, and
   // registers rot in the direction of showing nothing.
-  if (card.classList.contains("gcard") && !turn.graphShown) {
-    turn.graphShown = true;
-    const pic = graphPictureCard();
-    if (pic) turn.results.append(pic);
-  }
+  //
+  // WHY NOT NOW: the embedded page renders a snapshot taken when its iframe
+  // loads. Inserted here it loaded after the FIRST graph card of the turn —
+  // which is usually graph_reconcile, and reconcile writes nothing by design.
+  // So the reader got an empty picture sitting beside a receipt saying 新建 9.
+  // The turn's writes have all landed by the time it ends.
+  // See docs/bugfix/2026-09-10-the-agent-could-not-record-a-relationship.md
+  if (card.classList.contains("gcard")) turn.graphTouched = true;
   scroll();
+}
+
+// showGraphPicture draws the picture once, at the end of a turn that touched
+// the graph.
+function showGraphPicture(turn) {
+  if (!turn.graphTouched || turn.graphShown) return;
+  turn.graphShown = true;
+  const pic = graphPictureCard();
+  if (!pic) return;
+  show(turn.results);
+  turn.results.append(pic);
 }
 
 // graphPictureCard embeds the graph screen itself.
@@ -784,22 +799,40 @@ function gChips(x) {
 function personLine(p) {
   const bits = [esc(p.label)];
   if (p.role_title) bits.push(`<span class="gdim">${esc(p.role_title)}</span>`);
-  if (p.duty) bits.push(`<span class="gdim">${esc(p.duty)}</span>`);
+  // Not when it repeats the title. The model often fills both fields from one
+  // phrase, and "王五 · c业务组组长 · c业务组组长" reads as a rendering fault
+  // rather than as what it is.
+  if (p.duty && p.duty !== p.role_title) bits.push(`<span class="gdim">${esc(p.duty)}</span>`);
   return `<li>${bits.join(" · ")} ${gChips(p)}</li>`;
 }
 
 function receiptCard(r) {
   const rc = r.receipt;
-  if (!rc && !r.question && !r.answered) return gEmpty("graph.receipt", "graph.nothingToShow");
+  if (!rc && !r.question && !r.answered && !(r.unlinked || []).length) {
+    return gEmpty("graph.receipt", "graph.nothingToShow");
+  }
   const note = rc
-    ? `${t("graph.created")} ${rc.created} · ${t("graph.updated")} ${rc.updated} · ${t("graph.queued")} ${rc.queued}`
+    ? [
+        `${t("graph.created")} ${rc.created}`,
+        `${t("graph.updated")} ${rc.updated}`,
+        // Only when there are any: a "关系 0" on every receipt trains people to
+        // stop reading the line that matters when it is not zero.
+        rc.linked ? `${t("graph.linked")} ${rc.linked}` : "",
+        `${t("graph.queued")} ${rc.queued}`,
+      ].filter(Boolean).join(" · ")
     : "";
   const items = (rc?.items || []).map((i) => personLine(i)).join("");
   // At most one question, which is the whole point of the queue: see turn.go.
   const q = r.question
     ? `<div class="decision-note"><b>${esc(t("graph.asks"))}</b> ${esc(tOr(r.question.proposal?.question || "", r.question.key))}</div>`
     : "";
-  return gcard("graph.receipt", note, `${items ? `<ul class="glist">${items}</ul>` : ""}${q}`);
+  // A line the graph could not draw is shown, never dropped: only a refusal the
+  // reader can see is a refusal they can correct.
+  const unlinked = (r.unlinked || []).map((u) =>
+    `<div class="decision-note">${esc(t("graph.unlinked"))} ${esc(u.from)} — ${esc(u.to)}
+      <span class="gdim">${esc(tOr("unlink." + u.reason, u.reason))}</span></div>`).join("");
+  return gcard("graph.receipt", note,
+    `${items ? `<ul class="glist">${items}</ul>` : ""}${q}${unlinked}`);
 }
 
 function proposalsCard(r) {

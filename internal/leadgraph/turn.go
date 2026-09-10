@@ -36,10 +36,71 @@ type TurnInput struct {
 	// answerable months later.
 	TurnRef string
 	Nodes   []Node
+	// Links are the relationship lines heard this turn.
+	//
+	// WHY THEY ARE HERE AND NOT IN A TOOL OF THEIR OWN
+	//
+	//	A relationship arrives in the same sentence as the people it joins —
+	//	"赵六跟张三是前同事" names two people and a line between them at once. A
+	//	separate call would need node ids the agent cannot have for somebody it
+	//	is describing for the first time, so it would have to be a second turn,
+	//	and the line would be recorded only when the agent remembered to.
+	//
+	//	This was missing entirely. UpsertEdge had no caller outside its tests,
+	//	so nothing in a conversation could ever write a line — and PathsTo, the
+	//	view the PRD calls the most valuable one, walks lines. It answered
+	//	"nobody you have recorded reaches them" for every question ever put to
+	//	it, which is indistinguishable from a correct answer.
+	//	See docs/bugfix/2026-09-10-the-agent-could-not-record-a-relationship.md
+	Links []LinkInput
 	// Answer resolves one queued question. Applied BEFORE this turn's new facts:
 	// the user answered about the graph as it was when asked.
 	Answer *Answer
 }
+
+// LinkInput is a relationship named the way the agent has it: by who the two
+// people are, not by ids it cannot know.
+type LinkInput struct {
+	Kind    EdgeKind
+	From    Endpoint
+	To      Endpoint
+	Context string
+	Intel   []Intel
+}
+
+// Endpoint identifies one end of a link by company and name.
+//
+// Strength is deliberately absent. Only a person may write how well two people
+// know each other (UpsertEdge refuses it from the agent, and stores it per seat
+// anyway) — an agent inferring "很熟" from a sentence is exactly the guess this
+// product does not make. See docs/20-lead-graph.zh-CN.md §8.2.
+type Endpoint struct {
+	Kind  NodeKind
+	Org   string
+	Label string
+}
+
+// Unlinked is a line that could not be attached, and why.
+//
+// Reported rather than dropped: a relationship the user described and the graph
+// silently discarded is worse than one it refused, because only the refusal can
+// be corrected. The reasons are keys, not sentences — the wording belongs to
+// the interface.
+type Unlinked struct {
+	From   string `json:"from"`
+	To     string `json:"to"`
+	Reason string `json:"reason"`
+}
+
+const (
+	// LinkEndpointMissing - no record of that person in this team yet.
+	LinkEndpointMissing = "endpoint_missing"
+	// LinkEndpointAmbiguous - that name belongs to more than one record here,
+	// and picking one silently is how a line ends up on the wrong person.
+	LinkEndpointAmbiguous = "endpoint_ambiguous"
+	// LinkRefused - the store refused the line itself.
+	LinkRefused = "refused"
+)
 
 // Answer is a person's reply to a question this pipeline asked earlier.
 type Answer struct {
@@ -60,15 +121,22 @@ type TurnResult struct {
 	// Answered reports what the user's reply actually did, so the caller can say
 	// it rather than assuming it worked.
 	Answered *ApplyResult `json:"answered,omitempty"`
+	// Unlinked are the lines that could not be drawn, with the reason.
+	Unlinked []Unlinked `json:"unlinked,omitempty"`
 }
 
 // Receipt is the one line. It carries counts and a few named items rather than
 // a sentence, because the sentence belongs to the interface and its language.
 type Receipt struct {
-	Created int           `json:"created"`
-	Updated int           `json:"updated"`
-	Queued  int           `json:"queued"`
-	Items   []ReceiptItem `json:"items,omitempty"`
+	Created int `json:"created"`
+	Updated int `json:"updated"`
+	Queued  int `json:"queued"`
+	// Linked is how many relationship lines were drawn. Counted separately from
+	// Created because a line is not a record of a person — and because the
+	// number a recruiter cares about, when they have just described who knows
+	// whom, is this one.
+	Linked int           `json:"linked"`
+	Items  []ReceiptItem `json:"items,omitempty"`
 }
 
 // ReceiptItemCap is how many things a receipt may name.
@@ -144,9 +212,93 @@ func (s *Store) RecordTurn(v View, actor Actor, in TurnInput) (TurnResult, error
 		}
 	}
 
+	// Links go in AFTER the nodes, because UpsertEdge refuses an endpoint this
+	// team has no record of — and the two people a line joins are usually
+	// described in the same breath as the line itself.
 	out.Receipt = s.receipt(v, applied, len(out.QueuedIDs))
+	linked, unlinked := s.applyLinks(v, actor, in.Links, in.TurnRef)
+	// The receipt is nil when nothing was recorded, and stays that way when
+	// nothing was linked either — a receipt on every turn is noise. A line IS
+	// something recorded, so drawing one brings a receipt into being.
+	if linked > 0 && out.Receipt == nil {
+		out.Receipt = &Receipt{}
+	}
+	if out.Receipt != nil {
+		out.Receipt.Linked = linked
+	}
+	out.Unlinked = unlinked
 	out.Question = s.nextQuestion(v)
 	return out, nil
+}
+
+// applyLinks resolves each end by company and name and writes the line.
+func (s *Store) applyLinks(v View, actor Actor, links []LinkInput, turnRef string) (int, []Unlinked) {
+	var linked int
+	var unlinked []Unlinked
+	for _, l := range links {
+		from, fromErr := s.resolveEndpoint(v, l.From)
+		to, toErr := s.resolveEndpoint(v, l.To)
+		if fromErr != "" || toErr != "" {
+			reason := fromErr
+			if reason == "" {
+				reason = toErr
+			}
+			unlinked = append(unlinked, Unlinked{From: l.From.Label, To: l.To.Label, Reason: reason})
+			continue
+		}
+		intel := l.Intel
+		for i := range intel {
+			if intel[i].TurnRef == "" {
+				intel[i].TurnRef = turnRef
+			}
+		}
+		if _, err := s.UpsertEdge(v, actor, Edge{
+			Kind: l.Kind, From: from, To: to, Context: l.Context, Intel: intel,
+		}); err != nil {
+			unlinked = append(unlinked, Unlinked{From: l.From.Label, To: l.To.Label, Reason: LinkRefused})
+			continue
+		}
+		linked++
+	}
+	return linked, unlinked
+}
+
+// resolveEndpoint finds the one record this end names.
+//
+// It matches on company and name and IGNORES the unit path, because the natural
+// key includes the path and the agent naming a relationship rarely repeats it —
+// "赵六" is how the sentence names him, not "星轨智能 › 算法平台组 › 赵六".
+//
+// Two matches is a refusal, not a coin toss: a line drawn on the wrong 张三 is
+// worse than a line not drawn, and the chart already has a name for that
+// ambiguity rather than resolving it silently.
+func (s *Store) resolveEndpoint(v View, e Endpoint) (string, string) {
+	kind := e.Kind
+	if kind == "" {
+		kind = KindPerson
+	}
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	var found string
+	for id, n := range s.nodes {
+		if n.TeamID != v.TeamID || n.Kind != kind {
+			continue
+		}
+		if norm(n.Label) != norm(e.Label) {
+			continue
+		}
+		if e.Org != "" && norm(n.Org) != norm(e.Org) {
+			continue
+		}
+		if found != "" && found != id {
+			return "", LinkEndpointAmbiguous
+		}
+		found = id
+	}
+	if found == "" {
+		return "", LinkEndpointMissing
+	}
+	return found, ""
 }
 
 // stampTurn puts the turn reference on every piece of intel that carries none,

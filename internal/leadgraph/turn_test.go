@@ -348,3 +348,134 @@ func TestPendingQueueIsOrdered(t *testing.T) {
 		last = p.At
 	}
 }
+
+// A relationship the user describes must become a line, and that line must be
+// what 引荐路径 walks.
+//
+// THIS IS THE FENCE THE WHOLE FEATURE WAS MISSING. UpsertEdge had no caller
+// outside its own tests, so nothing a recruiter said in a conversation could
+// ever draw a line — and PathsTo, which the PRD calls the most valuable view in
+// the product, walks lines. It answered "nobody you have recorded reaches them"
+// to every question ever put to it, which looks exactly like a correct answer.
+func TestARelationshipHeardInAConversationBecomesAPathYouCanWalk(t *testing.T) {
+	s := newStore(t)
+	res, err := s.RecordTurn(amy, leadgraph.ActorAgent, leadgraph.TurnInput{
+		TurnRef: "t1",
+		Nodes: []leadgraph.Node{
+			person("鲸峰科技", "张三", said("张三在鲸峰")),
+			person("星轨智能", "赵六", said("赵六在星轨")),
+		},
+		Links: []leadgraph.LinkInput{{
+			Kind:    leadgraph.EdgeColleague,
+			From:    leadgraph.Endpoint{Org: "鲸峰科技", Label: "张三"},
+			To:      leadgraph.Endpoint{Org: "星轨智能", Label: "赵六"},
+			Context: "前同事，很熟",
+			Intel:   []leadgraph.Intel{said("他俩是前同事")},
+		}},
+	})
+	if err != nil {
+		t.Fatalf("record: %v", err)
+	}
+	if res.Receipt == nil || res.Receipt.Linked != 1 {
+		t.Fatalf("the line was not drawn: %+v", res.Receipt)
+	}
+	if len(res.Unlinked) != 0 {
+		t.Fatalf("unlinked: %+v", res.Unlinked)
+	}
+
+	// The seat has to know somebody for a path to have a start.
+	var 张三 leadgraph.Node
+	for _, n := range s.Nodes(amy, leadgraph.NodeFilter{Kind: leadgraph.KindPerson}) {
+		if n.Label == "张三" {
+			张三 = n
+		}
+	}
+	if err := s.Annotate(amy, leadgraph.ActorUser, 张三.ID, 3, ""); err != nil {
+		t.Fatalf("rate: %v", err)
+	}
+
+	var 赵六 leadgraph.Node
+	for _, n := range s.Nodes(amy, leadgraph.NodeFilter{Kind: leadgraph.KindPerson}) {
+		if n.Label == "赵六" {
+			赵六 = n
+		}
+	}
+	routes := s.PathsTo(amy, 赵六.ID, leadgraph.PathOptions{MaxHops: 3})
+	if routes.NoSeeds {
+		t.Fatal("the seat has a rated contact and the search still reports no seeds")
+	}
+	if len(routes.Paths) == 0 {
+		t.Fatal("the relationship was recorded and 引荐路径 still cannot reach him — " +
+			"which is exactly what shipped")
+	}
+	if got := routes.Paths[0].Hops[len(routes.Paths[0].Hops)-1].ToLabel; got != "赵六" {
+		t.Errorf("the route ends at %q", got)
+	}
+}
+
+// A line whose end nobody has recorded is REPORTED, not dropped.
+func TestALineToSomebodyUnknownIsReportedRatherThanDropped(t *testing.T) {
+	s := newStore(t)
+	res, err := s.RecordTurn(amy, leadgraph.ActorAgent, leadgraph.TurnInput{
+		TurnRef: "t1",
+		Nodes:   []leadgraph.Node{person("鲸峰科技", "张三", said("张三在鲸峰"))},
+		Links: []leadgraph.LinkInput{{
+			Kind:  leadgraph.EdgeKnows,
+			From:  leadgraph.Endpoint{Org: "鲸峰科技", Label: "张三"},
+			To:    leadgraph.Endpoint{Org: "星轨智能", Label: "查无此人"},
+			Intel: []leadgraph.Intel{said("他认识那个人")},
+		}},
+	})
+	if err != nil {
+		t.Fatalf("record: %v", err)
+	}
+	if len(res.Unlinked) != 1 || res.Unlinked[0].Reason != leadgraph.LinkEndpointMissing {
+		t.Fatalf("the failure was swallowed: %+v", res.Unlinked)
+	}
+	if res.Receipt != nil && res.Receipt.Linked != 0 {
+		t.Errorf("a line was drawn to somebody who is not there")
+	}
+}
+
+// Two people of the same name is a refusal, not a coin toss: a line on the
+// wrong 张三 is worse than a line not drawn.
+func TestALineToAnAmbiguousNameIsRefused(t *testing.T) {
+	s := newStore(t)
+	mustNode(t, s, amy, leadgraph.ActorUser, person("鲸峰科技", "张三", said("一个张三")))
+	// Same name, same company, different group - two records, one name.
+	other := person("鲸峰科技", "张三", said("另一个张三"))
+	other.UnitPath = []string{"鲸峰科技", "d业务组"}
+	mustNode(t, s, amy, leadgraph.ActorUser, other)
+	mustNode(t, s, amy, leadgraph.ActorUser, person("星轨智能", "赵六", said("赵六在星轨")))
+
+	res, err := s.RecordTurn(amy, leadgraph.ActorAgent, leadgraph.TurnInput{
+		TurnRef: "t1",
+		Links: []leadgraph.LinkInput{{
+			Kind:  leadgraph.EdgeColleague,
+			From:  leadgraph.Endpoint{Org: "鲸峰科技", Label: "张三"},
+			To:    leadgraph.Endpoint{Org: "星轨智能", Label: "赵六"},
+			Intel: []leadgraph.Intel{said("他俩认识")},
+		}},
+	})
+	if err != nil {
+		t.Fatalf("record: %v", err)
+	}
+	if len(res.Unlinked) != 1 || res.Unlinked[0].Reason != leadgraph.LinkEndpointAmbiguous {
+		t.Fatalf("the graph guessed which 张三 was meant: %+v", res.Unlinked)
+	}
+}
+
+// The agent may not decide how well two people know each other.
+func TestTheAgentCannotWriteRelationshipStrength(t *testing.T) {
+	s := newStore(t)
+	// There is no strength field on a link the agent can send - the schema has
+	// none - so the guarantee is asserted where it is enforced.
+	a := mustNode(t, s, amy, leadgraph.ActorUser, person("鲸峰科技", "张三", said("张三")))
+	b := mustNode(t, s, amy, leadgraph.ActorUser, person("星轨智能", "赵六", said("赵六")))
+	if _, err := s.UpsertEdge(amy, leadgraph.ActorAgent, leadgraph.Edge{
+		Kind: leadgraph.EdgeKnows, From: a.ID, To: b.ID, Strength: 3,
+		Intel: []leadgraph.Intel{said("他俩很熟")},
+	}); err == nil {
+		t.Fatal("the agent recorded how well two people know each other")
+	}
+}
