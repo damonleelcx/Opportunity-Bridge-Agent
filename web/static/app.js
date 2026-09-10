@@ -655,8 +655,245 @@ function cardFor(tool, r) {
     case "external_talent_scan": return externalScanCard(r);
     case "handoff_to_human": return handoffCard(r);
     case "document_prepare": return draftCard(r);
+    // ── 猎源图谱 ──────────────────────────────────────────────────────────
+    // Every tool the model can call has a case, with no exceptions list.
+    //
+    // WHY EVERY ONE, INCLUDING THE DULL ONES: these tools shipped for a whole
+    // release with no case at all, so a recruiter asking 阿桥 to sort out what
+    // they know got prose and nothing else — the structure it had just built
+    // went into the collapsed system-detail drawer. An exceptions list is how
+    // that comes back one tool at a time, so the fence requires all of them and
+    // the quiet ones answer with a one-line acknowledgement.
+    // Fence: TestEveryLeadGraphToolIsPresentedInTheConversation
+    case "record_turn": return receiptCard(r);
+    case "graph_reconcile": return proposalsCard(r);
+    case "graph_query": return nodesCard(r);
+    case "org_chart": return chartCard(r);
+    case "path_find": return pathsCard(r);
+    case "lead_board": return leadsCard(r);
+    case "stale_scan": return staleCard(r);
+    case "rating_gap": return ratingGapCard(r);
+    case "import_summary": case "import_remap": return importPlanCard(r);
+    case "import_commit": return importedCard(r);
+    case "touchpoint_add": return gDone("graph.touchpointAdded", (r.at || "").slice(0, 10));
+    case "rate_contact": return gDone("graph.ratedOne", r.label || "");
+    case "contact_remove": return gDone("graph.contactRemoved", r.label || "");
+    case "answer_pending": return answeredCard(r);
+    case "graph_forget": return gDone("graph.forgotten", String(r.removed ?? 0));
+    case "subject_request": return subjectCard(r);
     default: return null;
   }
+}
+
+// ── 猎源图谱 cards ─────────────────────────────────────────────────────────
+//
+// These render what the agent just did to the graph, in the conversation, next
+// to the sentence that describes it. The full book lives on the graph screen;
+// a card is only ever this answer, and says so by carrying a link to it.
+//
+// Every label comes from i18n.js and matches the graph page word for word — the
+// same fact must not be called two different things depending on where you are
+// looking at it. See docs/20-lead-graph.zh-CN.md §3 名词字典.
+
+function gcard(titleKey, note, inner) {
+  return el(`<article class="ocard gcard">
+    <div class="ocard-body">
+      <div class="ocard-top">
+        <h3 class="ocard-title">${esc(t(titleKey))}</h3>
+        ${note ? `<span class="pill">${esc(note)}</span>` : ""}
+      </div>
+      ${inner}
+      ${graphLinkRow()}
+    </div>
+  </article>`);
+}
+
+// Every card offers the way to the whole book. Without it a card is a dead end:
+// the reader has just been shown a fragment and given no way to see the rest.
+function graphLinkRow() {
+  if (state.session?.role !== "recruiter" || !state.session?.id) return "";
+  return `<div class="gcard-foot"><a class="link" target="_blank" rel="noopener"
+    href="/app/sessions/${esc(state.session.id)}/graph/">${esc(t("graph.open"))} →</a></div>`;
+}
+
+function gDone(key, note) { return gcard(key, note, ""); }
+
+function gEmpty(titleKey, msgKey) {
+  return gcard(titleKey, "", `<p class="empty">${esc(t(msgKey))}</p>`);
+}
+
+// tOr is t() with a real fallback.
+//
+// t() returns the KEY when it has no string for it, so `t(k) || fallback` never
+// reaches the fallback — it would put "corr.hearsay" on screen instead of the
+// value it was translating. Anything coming out of Go that this interface has
+// not been taught a word for should read as the value itself, not as a key.
+function tOr(key, fallback) {
+  const s = t(key);
+  return s === key ? fallback : s;
+}
+
+// corr renders a corroboration state. An unknown value is printed as itself
+// rather than dropped: a state this interface has not been taught about is a
+// thing the reader should see, not a blank.
+function corr(c) { return c ? tOr("corr." + c, c) : ""; }
+
+function gChips(x) {
+  const out = [];
+  if (x.corroboration) out.push(`<span class="chip">${esc(corr(x.corroboration))}</span>`);
+  const n = (x.unconfirmed || []).length;
+  if (n) out.push(`<span class="chip chip-warn">${esc(t("graph.unconfirmed"))} ${n}</span>`);
+  return out.join("");
+}
+
+function personLine(p) {
+  const bits = [esc(p.label)];
+  if (p.role_title) bits.push(`<span class="gdim">${esc(p.role_title)}</span>`);
+  if (p.duty) bits.push(`<span class="gdim">${esc(p.duty)}</span>`);
+  return `<li>${bits.join(" · ")} ${gChips(p)}</li>`;
+}
+
+function receiptCard(r) {
+  const rc = r.receipt;
+  if (!rc && !r.question && !r.answered) return gEmpty("graph.receipt", "graph.nothingToShow");
+  const note = rc
+    ? `${t("graph.created")} ${rc.created} · ${t("graph.updated")} ${rc.updated} · ${t("graph.queued")} ${rc.queued}`
+    : "";
+  const items = (rc?.items || []).map((i) => personLine(i)).join("");
+  // At most one question, which is the whole point of the queue: see turn.go.
+  const q = r.question
+    ? `<div class="decision-note"><b>${esc(t("graph.asks"))}</b> ${esc(tOr(r.question.proposal?.question || "", r.question.key))}</div>`
+    : "";
+  return gcard("graph.receipt", note, `${items ? `<ul class="glist">${items}</ul>` : ""}${q}`);
+}
+
+function proposalsCard(r) {
+  const ps = r || [];
+  if (!ps.length) return gEmpty("graph.proposals", "graph.nothingToShow");
+  const rows = ps.map((p) => {
+    const why = (p.conflicts || []).map((c) => `${esc(c.field)}: ${esc(c.current)} → ${esc(c.proposed)}`).join("；")
+      || (p.merges || []).map((m) => esc(m.label)).join("、");
+    return `<li><span class="chip">${esc(tOr("decide." + p.decision, p.decision))}</span>
+      ${esc(p.candidate?.label || "")} ${why ? `<span class="gdim">${why}</span>` : ""}</li>`;
+  }).join("");
+  return gcard("graph.proposals", `${ps.length}`, `<ul class="glist">${rows}</ul>`);
+}
+
+function nodesCard(r) {
+  const ns = r || [];
+  if (!ns.length) return gEmpty("graph.query", "graph.nothing");
+  return gcard("graph.query", `${ns.length}`,
+    `<ul class="glist">${ns.slice(0, 12).map(personLine).join("")}</ul>`);
+}
+
+// chartCard renders the tree the same way the page does: recorded units solid,
+// merely-mentioned ones labelled, and people nobody could place listed rather
+// than dropped — they are the most useful entries, because each is a question
+// worth asking.
+function chartCard(r) {
+  const c = r.counts || {};
+  // units_mentioned is counted separately and MUST be in the note: a group
+  // nobody recorded as its own node still appears in the tree below, so a note
+  // that counted only recorded ones said "0 组织单元" directly above a list with
+  // a group in it. A header that contradicts its own body is worse than no
+  // header — the reader has to work out which half is lying.
+  const note = [
+    `${c.units ?? 0} ${t("graph.units")}`,
+    c.units_mentioned ? `${t("graph.mentioned")} ${c.units_mentioned}` : "",
+    `${c.people ?? 0} ${t("graph.people")}`,
+  ].filter(Boolean).join(" · ");
+  const branch = (n) => `<li>
+      ${esc(n.label)}
+      ${n.presence === "mentioned" ? `<span class="chip">${esc(t("graph.mentionedOnly"))}</span>` : ""}
+      ${(n.people || []).length ? `<ul class="glist">${n.people.map(personLine).join("")}</ul>` : ""}
+      ${(n.children || []).length ? `<ul class="glist">${n.children.map(branch).join("")}</ul>` : ""}
+    </li>`;
+  const unplaced = (r.unplaced || []).length
+    ? `<div class="gsub">${esc(t("graph.unplaced"))}</div><ul class="glist">${r.unplaced.map(personLine).join("")}</ul>`
+    : "";
+  return gcard("graph.chart", `${esc(r.org || "")} · ${note}`,
+    `<ul class="glist gtree">${(r.root || []).map(branch).join("")}</ul>${unplaced}`);
+}
+
+// pathsCard says WHY there is no route, because "no results" and "you never
+// told me who you know" are different problems with different fixes.
+function pathsCard(r) {
+  if (r.you_know_them) return gDone("graph.paths", t("graph.youKnowThem"));
+  if (r.no_seeds) return gcard("graph.paths", "", `<p class="empty">${esc(t("graph.noSeeds"))}</p>`);
+  const ps = r.paths || [];
+  if (!ps.length) return gcard("graph.paths", "", `<p class="empty">${esc(t("graph.noPath"))}</p>`);
+  const rows = ps.map((p) => {
+    const chain = (p.hops || []).map((h) => esc(h.to_label)).join(" → ");
+    return `<li>${chain}
+      <span class="gdim">${esc(t("graph.weakest"))} ${esc(String(p.weakest ?? ""))} · ${(p.hops || []).length} ${esc(t("graph.hops"))}</span>
+      ${p.hearsay ? `<span class="chip chip-warn">${esc(corr("hearsay"))}</span>` : ""}</li>`;
+  }).join("");
+  return gcard("graph.paths", esc(r.target_label || ""), `<ul class="glist">${rows}</ul>`);
+}
+
+// leadsCard's subject is always a group, never a person. See lead.go — this
+// product does not score people, and the card cannot be the place that starts.
+function leadsCard(r) {
+  const ls = r || [];
+  if (!ls.length) return gEmpty("graph.leads", "graph.noLeads");
+  const rows = ls.map((l) => {
+    const score = (l.signals || []).reduce((a, s) => a + (s.weight || 0), 0);
+    const sig = (l.signals || []).map((s) =>
+      `<li class="gsig">${esc(s.because || s.kind)}${s.days != null ? ` · ${esc(String(s.days))}` : ""}
+        <span class="gdim">${esc(corr(s.corroboration))}</span></li>`).join("");
+    return `<li><b>${esc(l.org || "")} ${esc(l.unit_label || "")}</b>
+      <span class="pill">${score}</span>
+      <div class="gsub">${esc(t("graph.signals"))}</div>
+      <ul class="glist">${sig}</ul></li>`;
+  }).join("");
+  return gcard("graph.leads", `${ls.length}`, `<ul class="glist">${rows}</ul>`);
+}
+
+function staleCard(r) {
+  const xs = r || [];
+  if (!xs.length) return gEmpty("graph.stale", "graph.noStale");
+  const rows = xs.slice(0, 12).map((x) =>
+    `<li>${esc(x.label)} <span class="gdim">${esc(x.kind)}${(x.fields || []).length ? ` · ${esc(x.fields.join("、"))}` : ""}</span></li>`).join("");
+  return gcard("graph.stale", `${xs.length}`, `<ul class="glist">${rows}</ul>`);
+}
+
+// ratingGapCard exists because an import fills the graph and leaves it useless:
+// with no relationship strength recorded, path_find has nowhere to start.
+function ratingGapCard(r) {
+  const note = `${t("graph.rated")} ${r.rated ?? 0} · ${t("graph.unrated")} ${r.unrated ?? 0}`;
+  const ask = (r.ask || []).map(personLine).join("");
+  return gcard("graph.ratingGap", note,
+    ask ? `<div class="gsub">${esc(t("graph.ask"))}</div><ul class="glist">${ask}</ul>` : "");
+}
+
+function importPlanCard(r) {
+  const c = r.counts || {};
+  const note = `${esc(r.file || "")} · ${r.rows ?? 0} ${t("graph.importRows")}`;
+  const counts = Object.keys(c).map((k) =>
+    `<span class="chip">${esc(tOr("decide." + k, k))} ${esc(String(c[k]))}</span>`).join(" ");
+  const skipped = (r.skipped_rows || []).length
+    ? `<div class="decision-note">${esc(t("graph.importSkipped"))} ${r.skipped_rows.length}</div>` : "";
+  const decisions = r.decisions
+    ? `<span class="chip chip-warn">${esc(t("graph.queued"))} ${esc(String(r.decisions))}</span>` : "";
+  return gcard("graph.import", note, `<p>${counts} ${decisions}</p>${skipped}`);
+}
+
+function importedCard(r) {
+  const note = `${t("graph.created")} ${(r.created || []).length} · ${t("graph.updated")} ${(r.updated || []).length}`;
+  return gDone("graph.imported", note);
+}
+
+function answeredCard(r) {
+  const note = [
+    (r.created || []).length ? `${t("graph.created")} ${(r.created || []).length}` : "",
+    (r.updated || []).length ? `${t("graph.updated")} ${(r.updated || []).length}` : "",
+  ].filter(Boolean).join(" · ");
+  return gDone("graph.answered", note);
+}
+
+function subjectCard(r) {
+  const xs = r || [];
+  return gDone("graph.subject", `${xs.length} ${t("graph.records")}`);
 }
 
 function el(html) {

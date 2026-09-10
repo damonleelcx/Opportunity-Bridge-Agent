@@ -222,7 +222,12 @@ func TestTheScreenExplainsWhatItShows(t *testing.T) {
 	if !strings.Contains(boardHTML, `class="bar"`) {
 		t.Error("the signals list is gone: the score stands on its own")
 	}
-	if !strings.Contains(boardHTML, "announced") {
+	// 官方公布, not "announced": the page used to print the raw enum on an
+	// otherwise Chinese screen, and the conversation's own result cards now say
+	// the same three words (web/static/i18n.js, corr.*). The guarantee is
+	// unchanged — a signal must carry how well attested it is — only the word
+	// this asserts changed. See 名词字典, docs/20-lead-graph.zh-CN.md §3.
+	if !strings.Contains(boardHTML, "官方公布") {
 		t.Error("a signal is shown without how well attested it is")
 	}
 	if !strings.Contains(boardHTML, "窗口期约剩") || !strings.Contains(boardHTML, "起算") {

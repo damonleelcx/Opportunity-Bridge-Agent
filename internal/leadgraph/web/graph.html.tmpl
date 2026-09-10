@@ -52,7 +52,7 @@
             {{if eq (printf "%s" .Kind) "hiring_stopped"}}已有 {{.Days}} 天没看到这个组发新招聘
             {{else if eq (printf "%s" .Kind) "hiring_active"}}{{if .Days}}{{.Days}} 天前还在招人{{else}}今天还在招人{{end}}
             {{else}}{{.Because}}{{end}}
-            <span class="src">{{.Corroboration}}{{if .SourceURL}} · 有出处{{end}}</span></li>
+            <span class="src">{{template "corr" .Corroboration}}{{if .SourceURL}} · 有出处{{end}}</span></li>
           {{end}}
         </ul>
         {{if .People}}<p class="who">你图上认识：{{range $i, $p := .People}}{{if $i}}、{{end}}{{$p.Label}}{{end}}</p>{{end}}
@@ -65,7 +65,7 @@
     {{if .Alerts}}
     <ul class="alerts">
       {{range .Alerts}}
-      <li><strong>{{.Org}} · {{.EventLabel}}</strong>（{{.Corroboration}}）
+      <li><strong>{{.Org}} · {{.EventLabel}}</strong>（{{template "corr" .Corroboration}}）
         {{if .People}}—— 你图上在这个组的有：{{range $i, $p := .People}}{{if $i}}、{{end}}{{$p.Label}}{{end}}{{else}}—— 你图上这个组还没有人{{end}}
       </li>
       {{end}}
@@ -107,3 +107,7 @@
 <script src="graph.js"></script>
 </body>
 </html>
+{{/* 证实状态的中文。名词字典见 docs/20-lead-graph.zh-CN.md §3，对话里的结果卡片
+     (web/static/i18n.js 的 corr.*) 用的是同样三个词——同一件事不能因为在哪儿看它
+     而有两个叫法。这里曾经直接打印英文枚举 hearsay/corroborated/announced。 */}}
+{{define "corr"}}{{if eq (printf "%s" .) "hearsay"}}听说{{else if eq (printf "%s" .) "corroborated"}}多源印证{{else if eq (printf "%s" .) "announced"}}官方公布{{else}}{{.}}{{end}}{{end}}
