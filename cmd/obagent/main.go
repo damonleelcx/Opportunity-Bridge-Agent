@@ -34,6 +34,7 @@ import (
 	"github.com/damonleelcx/Opportunity-Bridge-Agent/internal/retrieval"
 	"github.com/damonleelcx/Opportunity-Bridge-Agent/internal/store"
 	"github.com/damonleelcx/Opportunity-Bridge-Agent/internal/talentsource"
+	"github.com/damonleelcx/Opportunity-Bridge-Agent/internal/tools"
 	"github.com/damonleelcx/Opportunity-Bridge-Agent/internal/tts"
 	"github.com/damonleelcx/Opportunity-Bridge-Agent/web"
 )
@@ -187,6 +188,13 @@ func run(addrOverride string, log *slog.Logger) error {
 		Cfg: cfg, LLM: client, Store: st, Corpus: c,
 		Index: retrieval.NewIndex(c), Tools: toolsRegistry(), Live: live,
 		Talent: buildTalentSource(cfg, log), Graph: graph,
+	}
+	// 猎源图谱's daily pass. Every organisational change a recruiter recorded
+	// should carry an alert, and 阿桥 tells them about it the next time they
+	// talk. Nothing here can stop the service: it is a goroutine that logs.
+	if graph != nil {
+		stopDaily := startGraphDaily(st, graph, log)
+		defer stopDaily()
 	}
 	webFS, err := fs.Sub(web.Files, "static")
 	if err != nil {
@@ -491,4 +499,47 @@ func mailSender(cfg config.Config, log *slog.Logger) mailer.Sender {
 		Username: cfg.SMTPUsername, Password: cfg.SMTPPassword,
 		Log: log,
 	}
+}
+
+// startGraphDaily runs 猎源图谱's reconciliation pass on a timer and returns a
+// function that stops it.
+//
+// WHY IN-PROCESS AND NOT A CRONJOB
+//
+//	The pass needs the same store and the same graph handle this process already
+//	holds, and it writes nothing a second process could not corrupt but plenty a
+//	second process would have to be configured for — a database URL, a firm
+//	mapping, a schedule that has to be kept in step with a deployment. One
+//	binary, one schedule, no second thing to install. If this ever needs to run
+//	somewhere else, RunGraphDaily is already the whole of it.
+//
+// WHY IT RUNS ONCE SHORTLY AFTER START
+//
+//	A deployment that restarts daily would otherwise never reach the first tick.
+//	The delay keeps it off the critical path of coming up.
+func startGraphDaily(st *store.Store, graph *leadgraph.Store, log *slog.Logger) func() {
+	ctx, cancel := context.WithCancel(context.Background())
+	go func() {
+		first := time.NewTimer(2 * time.Minute)
+		defer first.Stop()
+		select {
+		case <-ctx.Done():
+			return
+		case <-first.C:
+		}
+		for {
+			// A pass is bounded: a hung one must not stop every later pass.
+			pass, done := context.WithTimeout(ctx, 10*time.Minute)
+			tools.RunGraphDaily(pass, st, graph, log, time.Now().UTC())
+			done()
+			t := time.NewTimer(tools.GraphDailyInterval)
+			select {
+			case <-ctx.Done():
+				t.Stop()
+				return
+			case <-t.C:
+			}
+		}
+	}()
+	return cancel
 }

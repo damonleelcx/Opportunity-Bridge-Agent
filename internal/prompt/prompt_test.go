@@ -182,3 +182,36 @@ func TestSavedDialectPreferenceDoesNotRestateThePolicy(t *testing.T) {
 		t.Error("the saved preference adds nothing: a turn written in standard Chinese would lose the dialect")
 	}
 }
+
+// 猎源图谱's news is news, not an escalation.
+//
+// Options.Alerts already existed and renders "ACT ON THIS BEFORE ANYTHING ELSE
+// … call handoff_to_human". Carrying a reorganisation in that field would make
+// every piece of headhunting news an escalation to a human being — the feature
+// the recruiter asked for would page somebody.
+func TestGraphNewsIsToldWithoutEscalating(t *testing.T) {
+	ctx := prompt.ContextLayer(prompt.Options{
+		Intent:    intent.MustGet(intent.TalentSourcing),
+		Session:   &store.Session{Role: domain.RoleRecruiter},
+		Locale:    "zh-CN",
+		GraphNews: []string{"A司 — c业务组并入b业务组; 2 people you have recorded are in that group (hearsay)"},
+	})
+	if !strings.Contains(ctx, "c业务组并入b业务组") {
+		t.Fatal("the news never reaches the model")
+	}
+	if strings.Contains(ctx, "ACT ON THIS BEFORE ANYTHING ELSE") {
+		t.Error("the news is rendered as an input-guard escalation")
+	}
+	if strings.Contains(ctx, "handoff_to_human") {
+		t.Error("the news tells the agent to hand the person over to a human")
+	}
+	// And it is only there when there is something to say.
+	quiet := prompt.ContextLayer(prompt.Options{
+		Intent:  intent.MustGet(intent.TalentSourcing),
+		Session: &store.Session{Role: domain.RoleRecruiter},
+		Locale:  "zh-CN",
+	})
+	if strings.Contains(quiet, "WHAT CHANGED IN THEIR GRAPH") {
+		t.Error("the block is rendered with nothing in it")
+	}
+}

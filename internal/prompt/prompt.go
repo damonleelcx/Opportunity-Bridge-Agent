@@ -177,6 +177,14 @@ type Options struct {
 	// this turn - an escalation trigger, most often. They are rendered at the very
 	// top of the context layer for exactly that reason.
 	Alerts []string
+	// GraphNews is what changed in 猎源图谱 since this seat was last told:
+	// organisational changes they recorded, now carrying an alert.
+	//
+	// It is NOT Alerts. Alerts above are input-guard findings that stop the
+	// service task and hand over to a person; this is news the recruiter asked
+	// to be told. Putting them in one field would make every reorganisation an
+	// escalation.
+	GraphNews []string
 	// Locale is the session's answer language: "zh-CN", "en", or "match".
 	Locale        string
 	CitiesCovered []string
@@ -274,6 +282,15 @@ func ContextLayer(o Options) string {
 			fmt.Fprintf(&b, "- %s\n", a)
 		}
 		b.WriteString("Acknowledge it in the person's own terms, stop the service task, and call handoff_to_human.\n\n")
+	}
+	if len(o.GraphNews) > 0 {
+		b.WriteString("WHAT CHANGED IN THEIR GRAPH SINCE YOU LAST SPOKE\n")
+		for _, n := range o.GraphNews {
+			fmt.Fprintf(&b, "- %s\n", n)
+		}
+		b.WriteString("Say this near the start, in one sentence, in their own terms — then get on with " +
+			"what they actually asked. It is news, not an emergency: do NOT hand over to a person, and do " +
+			"not repeat it if they do not pick it up.\n\n")
 	}
 	// The language rule goes near the top, not at the end. A rule buried under a
 	// screen of context is the one that gets dropped, and everything the model
