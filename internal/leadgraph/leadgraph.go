@@ -105,6 +105,11 @@ const (
 	IntelPublicSource IntelKind = "public_source"
 	// IntelTeamShared is another seat in the same team.
 	IntelTeamShared IntelKind = "team_shared"
+	// IntelImported is a row of a file the user brought with them. TurnRef
+	// identifies the FILE, not the row - two rows naming the same person are one
+	// file saying it twice, and treating them as independent sources would
+	// promote it to corroborated on its own. The row goes in Excerpt.
+	IntelImported IntelKind = "imported"
 )
 
 // Corroboration is how well supported a claim is. It is DERIVED from the intel
@@ -357,7 +362,7 @@ func intelSource(i Intel) string {
 
 func (i Intel) validate() error {
 	switch i.Kind {
-	case IntelUserSaid, IntelTeamShared:
+	case IntelUserSaid, IntelTeamShared, IntelImported:
 		if strings.TrimSpace(i.Excerpt) == "" {
 			return ErrIntelIncomplete
 		}

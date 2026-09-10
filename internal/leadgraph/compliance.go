@@ -24,6 +24,7 @@ const (
 	AuditSubjectAccess = "subject_access"
 	AuditSubjectDelete = "subject_delete"
 	AuditFetchRefused  = "fetch_refused"
+	AuditImport        = "import"
 )
 
 // AuditEntry is one thing worth being able to account for later.

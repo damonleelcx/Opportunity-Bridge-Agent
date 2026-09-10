@@ -40,11 +40,14 @@ const (
 	DocRegistryChange DocKind = "registry_change"
 	// DocAnnouncement is a company's own published notice. Official.
 	DocAnnouncement DocKind = "announcement"
+	// DocImportedFile is a file the user brought. It is a ledger entry, not a
+	// fetch: no Source produces it, and FetchFrom never returns one.
+	DocImportedFile DocKind = "imported_file"
 )
 
 func (k DocKind) valid() bool {
 	switch k {
-	case DocJobPosting, DocRegistryChange, DocAnnouncement:
+	case DocJobPosting, DocRegistryChange, DocAnnouncement, DocImportedFile:
 		return true
 	}
 	return false
@@ -121,7 +124,10 @@ func FetchFrom(ctx context.Context, src Source, req FetchRequest, now time.Time)
 			})
 			continue
 		}
-		if !d.Kind.valid() || strings.TrimSpace(d.URL) == "" {
+		// A Source may not claim to be an import: that kind exists so a file the
+		// user brought can sit in the same ledger, and letting a fetch wear it
+		// would put unfetched provenance on fetched data.
+		if !d.Kind.valid() || d.Kind == DocImportedFile || strings.TrimSpace(d.URL) == "" {
 			refused = append(refused, RefusedFetch{
 				Source: src.Name(), URL: d.URL, Reason: ErrUnknownKind.Error(), At: now,
 			})

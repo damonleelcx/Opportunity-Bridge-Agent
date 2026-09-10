@@ -220,7 +220,7 @@ footer{border-top:1px solid var(--line-2); background:var(--surface); margin-top
       <p class="deck">组织在变的时候，人才会动。别人拿到的是一份静态人才库；这个产品拿到的是<strong>你自己的关系网</strong>、<strong>组织正在发生的变化</strong>，以及<strong>你离目标还有几步</strong>。</p>
     </div>
     <div class="stamp">
-      <span class="state" style="background:var(--ok-soft);color:var(--ok);border-color:color-mix(in srgb,var(--ok) 30%,transparent)">P1–P9 全部完成 · 126 用例 · 77 道守卫演练过</span>
+      <span class="state" style="background:var(--ok-soft);color:var(--ok);border-color:color-mix(in srgb,var(--ok) 30%,transparent)">P1–P9 + 批量导入 · 140 用例 · 88 道守卫演练过</span>
       <span>定位：<b>独立产品</b></span>
       <span>上游：<b>19-relationship-trail（已冻结）</b></span>
     </div>
@@ -250,7 +250,8 @@ footer{border-top:1px solid var(--line-2); background:var(--surface); margin-top
     <li><a href="#s7"><span class="num">07</span><span>情报来源与红线</span></a></li>
     <li><a href="#s8"><span class="num">08</span><span>线索评分</span></a></li>
     <li><a href="#s9"><span class="num">09</span><span>图谱与三视图</span></a></li>
-    <li><a href="#s10"><span class="num">10</span><span>分期</span></a></li>
+    <li><a href="#s10"><span class="num">10</span><span>批量导入格式</span></a></li>
+    <li><a href="#s10b"><span class="num">11</span><span>分期</span></a></li>
     <li><a href="#s11"><span class="num">11</span><span>测试围栏</span></a></li>
     <li><a href="#s12"><span class="num">12</span><span>待拍板</span></a></li>
   </ol>
@@ -903,6 +904,74 @@ footer{border-top:1px solid var(--line-2); background:var(--surface); margin-top
 </section>
 
 <section id="s10">
+  <h2><span class="num">10</span><span>批量导入：格式要求</span></h2>
+  <p class="lede"><strong>核心原则：适配你的表，不要求你改表。</strong>一个要求用户先把列名改成模板的导入，等于「先做数据清洗再用产品」—— 没人会做。</p>
+
+  <div class="why redline">
+    <span class="tag">为什么导入是最该先做的一件事</span>
+    <p>每一个派生功能都需要用户还没给我们的数据：<code>path_find</code> 在有人标过关系强度之前返回 <code>NoSeeds</code>；<code>HiringGap</code> 在台账攒够几个月历史之前返回 <code>nil</code>；一条预警既要事件、又要你在那个组里已经认识的人。<strong>空图上这个产品什么都不知道、什么都说不出来</strong> —— 而顾问手上早就有一份表格。</p>
+  </div>
+
+  <h4>只有两条硬要求</h4>
+  <ol>
+    <li>第一行必须是表头</li>
+    <li>必须有一列能被认出是「姓名」，否则<strong>整个文件拒收</strong>，报错里会列出它看到的所有列名</li>
+  </ol>
+
+  <h4>自动处理</h4>
+  <div class="tw"><table>
+    <thead><tr><th class="col-n">项</th><th>说明</th></tr></thead>
+    <tbody>
+      <tr><td>编码</td><td>UTF-8 / UTF-8 BOM / <strong>GBK</strong> —— 中文 Excel 另存为 CSV 默认就是 GBK，<strong>这是「导入成功但全是乱码」最常见的来源</strong></td></tr>
+      <tr><td>分隔符</td><td>逗号 / 制表符 / 分号，按表头行里出现最多的那个</td></tr>
+      <tr><td>参差不齐的行</td><td>手工维护的表里很正常，不报错</td></tr>
+    </tbody>
+  </table></div>
+
+  <h4>认识的列名（忽略大小写、空格、下划线、连字符）</h4>
+  <div class="tw"><table>
+    <thead><tr><th class="col-n">字段</th><th>认识的写法</th></tr></thead>
+    <tbody>
+      <tr><td>姓名</td><td>姓名、名字、人名、联系人、候选人、name、full name、contact</td></tr>
+      <tr><td>公司</td><td>公司、单位、所在公司、企业、雇主、现公司、company、organization、employer</td></tr>
+      <tr><td>部门</td><td>部门、团队、业务组、事业部、组、department、team、division、unit</td></tr>
+      <tr><td>职务</td><td>职务、职位、岗位、title、position、role</td></tr>
+      <tr><td>职责</td><td>职责、负责、分管、工作内容、responsibility、scope</td></tr>
+      <tr><td>熟悉程度</td><td>熟悉程度、关系强度、亲密度、熟悉度、关系、strength、closeness</td></tr>
+      <tr><td>备注</td><td>备注、说明、补充、note、notes、comment</td></tr>
+    </tbody>
+  </table></div>
+  <p><strong>不认识的列会被列出来报给你</strong>，不会静默丢弃 —— 一列手机号悄悄消失，和「导入完成」是两件事。</p>
+
+  <div class="why">
+    <span class="tag">强烈建议带上「熟悉程度」这一列</span>
+    <p>有它，<code>path_find</code> <strong>当天就能用</strong>；没有它，导入完图上一条起点都没有。这是导入最值钱的一列 —— <em>一个顾问愿意说出「我到底跟谁熟」的唯一时刻，就是他在导入那份列着这些人的表的时候。</em></p>
+  </div>
+
+  <h4>行级容错：一个坏格子不该毁掉整个文件</h4>
+  <div class="tw"><table>
+    <thead><tr><th class="col-n">情况</th><th>处理</th></tr></thead>
+    <tbody>
+      <tr><td>没有姓名</td><td>跳过该行，报行号</td></tr>
+      <tr><td>熟悉程度不是 1-3</td><td><strong>该行仍然导入</strong>，只是没有强度；报行号和原值</td></tr>
+      <tr><td>某格命中敏感词</td><td><strong>只丢那个字段</strong>，不是整行更不是整个文件；报行号 + 列名 + 命中的词。整份拒收会逼用户盲删一列再试一次</td></tr>
+      <tr><td>疑似已有的同一个人</td><td><strong>不静默新建</strong>，变成一条「需要你决定」，走和对话路径完全一样的合并机制</td></tr>
+    </tbody>
+  </table></div>
+
+  <div class="why">
+    <span class="tag">一个文件 = 一个来源</span>
+    <p>同一份表里 200 行都说同一件事，证实等级<strong>仍然是「听说」</strong>。否则一份表格就能把自己抬成「多源印证」。</p>
+  </div>
+
+  <div class="why redline">
+    <span class="tag">‼️ 已知缺口：联系方式没有进来，需要拍板</span>
+    <p>猎头的表里<strong>最主要的东西是手机号和邮箱</strong>，但 <code>Node</code> 目前<strong>没有联系方式字段</strong>，我没有偷偷加。理由：加字段是扩接口表面积，而且「存不存、加不加密、导出时怎么处理」是一组独立的产品 + 安全决策，不该顺手塞进导入里。</p>
+    <p><strong>当前行为</strong>：这些列会出现在「未识别列」里被报出来 —— 你看得到它们被忽略了，但没有被存下来。<strong>要不要存，请拍板。</strong></p>
+  </div>
+</section>
+
+<section id="s10b">
   <h2><span class="num">10</span><span>分期</span></h2>
   <div class="phase"><span class="p">P1</span><span><span class="t">图存储 <span class="chip c-ok">已完成</span></span><br><span class="d">节点 / 边 / 事件 + <strong>团队 / 席位双归属</strong>（Q1 拍板后重构）+ <strong>无来源拒收</strong> + 迁移幂等。落点 <code>internal/leadgraph</code></span></span></div>
   <div class="phase"><span class="p">P2</span><span><span class="t">对账与落库 <span class="chip c-ok">已完成</span></span><br><span class="d"><code>Reconcile</code>（纯函数，只读）/ <code>Apply</code> / <code>MergeNodes</code>。四判定 × 四答复，三条具名合并规则。<strong>34 条用例，12 道守卫做过变异演练</strong>——逐条删掉守卫都能让对应用例变红，不是空围栏</span></span></div>
