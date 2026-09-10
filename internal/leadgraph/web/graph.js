@@ -75,7 +75,10 @@
   var root = document.createElementNS(ns, "g");
   root.appendChild(gLinks); root.appendChild(gNodes);
   svg.appendChild(root);
-  svg.setAttribute("viewBox", "0 0 " + W + " " + H);
+  // No viewBox is set here. fit() is the ONLY thing that ever sets one, so the
+  // frame the reader gets cannot disagree with the frame the code believes in.
+  // W and H stay what they always were - the world the layout is solved in -
+  // and are no longer also a claim about what is on screen.
 
   var linkEls = links.map(function (l) {
     var el = document.createElementNS(ns, "line");
@@ -112,38 +115,110 @@
     });
   }
 
+  // touched = the reader has framed this picture themselves. After that nothing
+  // re-frames it behind their back - not a resize, not a redraw. fit() is only
+  // ever automatic before the first interaction.
+  var touched = false;
+
   var drag = null;
   function start(e, n, g) {
     drag = { n: n, g: g };
     n.fixed = true;
+    touched = true;
     g.setPointerCapture(e.pointerId);
     e.preventDefault();
   }
+
+  // PANNING THE BACKGROUND. Zoom shipped without it: once the reader had zoomed
+  // in there was no way to reach the rest of the graph, and inside the
+  // conversation card the wheel zoomed on its own (see the wheel handler), so
+  // readers arrived at a magnified corner they could not leave. A viewport you
+  // can enter and cannot leave is worse than no viewport at all.
+  // See docs/bugfix/2026-09-10-the-graph-card-could-not-be-read.md
+  var pan = null;
+  svg.addEventListener("pointerdown", function (e) {
+    if (drag) return;                                  // a node took this press first
+    if (e.pointerType === "mouse" && e.button !== 0) return;
+    var vb = svg.viewBox.baseVal;
+    pan = { cx: e.clientX, cy: e.clientY, x: vb.x, y: vb.y, w: vb.width, h: vb.height };
+    touched = true;
+    // Capture is an optimisation - it keeps the pan alive when the cursor
+    // leaves the picture - and it throws for a pointer the element does not
+    // own. A pan that dies because of a failed optimisation would look exactly
+    // like a pan that was never implemented.
+    try { svg.setPointerCapture(e.pointerId); } catch (err) { /* pan still works */ }
+    e.preventDefault();
+  });
   svg.addEventListener("pointermove", function (e) {
-    if (!drag) return;
-    var p = point(e);
-    drag.n.x = p.x; drag.n.y = p.y;
-    solve(6); draw();
+    if (drag) {
+      var p = point(e);
+      drag.n.x = p.x; drag.n.y = p.y;
+      solve(6); draw();
+      return;
+    }
+    if (!pan) return;
+    var r = svg.getBoundingClientRect();
+    if (!r.width || !r.height) return;
+    // Screen pixels to world units, so the point under the cursor stays under it.
+    var dx = (e.clientX - pan.cx) * (pan.w / r.width);
+    var dy = (e.clientY - pan.cy) * (pan.h / r.height);
+    svg.setAttribute("viewBox",
+      (pan.x - dx) + " " + (pan.y - dy) + " " + pan.w + " " + pan.h);
   });
-  svg.addEventListener("pointerup", function () {
+  function release(e) {
     if (drag) { drag.n.fixed = false; drag = null; }
-  });
+    if (pan) {
+      pan = null;
+      try { svg.releasePointerCapture(e.pointerId); } catch (err) { /* already gone */ }
+    }
+  }
+  svg.addEventListener("pointerup", release);
+  svg.addEventListener("pointercancel", release);
+  // point converts a screen position into world units.
+  //
+  // THE ZERO-SIZED BOX IS NOT HYPOTHETICAL: an svg that has just been revealed,
+  // one in a frame the browser has not laid out yet, and one in a hidden tab
+  // all measure 0x0 while still being perfectly real. Dividing by that width
+  // gives Infinity, and the zoom's `p.x - (p.x - vb.x) * k` then evaluates
+  // Infinity - Infinity = NaN, which goes straight into the viewBox attribute
+  // and takes the whole picture off screen — permanently, because every later
+  // pan and zoom reads that NaN back out. Caught by dispatching one wheel event
+  // at a freshly reloaded card.
+  // See docs/bugfix/2026-09-10-the-graph-card-could-not-be-read.md
   function point(e) {
     var r = svg.getBoundingClientRect();
     var vb = svg.viewBox.baseVal;
+    if (!r.width || !r.height) {
+      return { x: vb.x + vb.width / 2, y: vb.y + vb.height / 2 };
+    }
     return { x: vb.x + ((e.clientX - r.left) / r.width) * vb.width,
              y: vb.y + ((e.clientY - r.top) / r.height) * vb.height };
   }
 
+  // ZOOM IS ON A MODIFIER, AND A BARE WHEEL IS LEFT ALONE.
+  //
+  // This handler used to preventDefault() every wheel event over the picture.
+  // On its own page that is merely opinionated. Inside the conversation the
+  // picture is something the reader scrolls PAST, so scrolling the conversation
+  // with the pointer over the card moved nothing and silently zoomed the graph
+  // instead - readers reported "the graph did not show" while looking at a
+  // graph magnified past its own edges, with no way to pan back.
+  //
+  // macOS pinch-to-zoom arrives as a wheel event with ctrlKey set, so the
+  // trackpad gesture people already expect keeps working with no extra rule.
+  // See docs/bugfix/2026-09-10-the-graph-card-could-not-be-read.md
   svg.addEventListener("wheel", function (e) {
+    if (!(e.ctrlKey || e.metaKey)) return;   // the page keeps its scroll
     e.preventDefault();
+    touched = true;
     var vb = svg.viewBox.baseVal;
     var k = e.deltaY > 0 ? 1.1 : 0.9;
     var p = point(e);
     var w = Math.max(200, Math.min(3000, vb.width * k));
-    var h = w * (H / W);
+    var h = w * (vb.height / vb.width);
     svg.setAttribute("viewBox", (p.x - (p.x - vb.x) * (w / vb.width)) + " " +
       (p.y - (p.y - vb.y) * (h / vb.height)) + " " + w + " " + h);
+    rescale();
   }, { passive: false });
 
   function esc(s) { var d = document.createElement("div"); d.textContent = s == null ? "" : s; return d.innerHTML; }
@@ -212,13 +287,96 @@
 
   var reset = document.getElementById("reset");
   if (reset) reset.addEventListener("click", function () {
-    svg.setAttribute("viewBox", "0 0 " + W + " " + H);
     nodes.forEach(function (n) { n.fixed = false; });
     solve(300); draw();
+    // Back to automatic framing, which is what "reset" means to the reader.
+    // Restoring the CONSTANT viewBox instead is what it used to do, and in a
+    // card that put them straight back in the unreadable state.
+    touched = false;
+    fit();
   });
 
-  // Settle first, reveal second. The first frame the reader sees is finished.
+  // fit frames the graph in whatever box the host actually gave it.
+  //
+  // WHY NOT A CONSTANT viewBox: the picture used to be drawn at "0 0 1000 620"
+  // whatever the frame. On its own page that frame is 60vh and the constant is
+  // fine. In the conversation card the frame is a wide, short strip, so
+  // xMidYMid meet scaled the drawing down to the strip's HEIGHT - measured on
+  // the live deployment: 287px of picture inside a 758px box, nodes about 2px
+  // across. The graph was drawn, and unreadable, which a reader correctly
+  // reports as "the graph did not show".
+  // See docs/bugfix/2026-09-10-the-graph-card-could-not-be-read.md
+  function fit() {
+    if (!nodes.length) return;
+    var minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+    nodes.forEach(function (n) {
+      if (n.x < minX) minX = n.x;
+      if (n.x > maxX) maxX = n.x;
+      if (n.y < minY) minY = n.y;
+      if (n.y > maxY) maxY = n.y;
+    });
+    // Labels sit to the RIGHT of their node, so the box needs more room on that
+    // side than on the others or every rightmost name is cut in half.
+    var padL = 40, padR = 170, padY = 44;
+    var x = minX - padL, y = minY - padY;
+    var w = Math.max((maxX - minX) + padL + padR, 320);
+    var h = Math.max((maxY - minY) + padY * 2, 200);
+    var r = svg.getBoundingClientRect();
+    if (r.width > 0 && r.height > 0) {
+      // GROW the box - never shrink it - to the frame's shape, so `meet`
+      // letterboxes nothing and the picture uses the whole frame it was given.
+      var frame = r.width / r.height;
+      if (w / h < frame) { var nw = h * frame; x -= (nw - w) / 2; w = nw; }
+      else { var nh = w / frame; y -= (nh - h) / 2; h = nh; }
+    }
+    svg.setAttribute("viewBox", x + " " + y + " " + w + " " + h);
+    rescale();
+  }
+
+  // rescale keeps a node the same size ON SCREEN whatever viewBox is in force.
+  //
+  // WHY: R and the label size used to be constants in WORLD units, so the
+  // moment the picture was framed into a small box everything in it shrank with
+  // the frame. In the conversation card that came out at 3.8px circles and 6px
+  // labels — Chinese at 6px is not small text, it is no text. Zoom had the same
+  // problem in the other direction.
+  //
+  // This is not a change to the rule in this file's header. "Node radius is a
+  // constant" means every node is the SAME size as every other, so that size
+  // cannot smuggle in a claim about who matters. That still holds; what is
+  // constant is now measured where the reader is, not where the maths is.
+  //
+  // Inline styles rather than attributes for the two that graph.css also sets:
+  // a stylesheet beats a presentation attribute, so setAttribute would have
+  // been silently overridden and looked like this code doing nothing.
+  function rescale() {
+    var vb = svg.viewBox.baseVal;
+    var box = svg.getBoundingClientRect();
+    if (!vb.width || !box.width) return;
+    var k = vb.width / box.width;          // world units per CSS pixel
+    nodeEls.forEach(function (g) {
+      var c = g.firstChild, t = g.lastChild;
+      c.setAttribute("r", R * k);
+      c.style.strokeWidth = (1.5 * k) + "px";
+      t.setAttribute("x", (R + 4) * k);
+      t.setAttribute("y", 4 * k);
+      t.style.fontSize = (11 * k) + "px";
+    });
+    linkEls.forEach(function (el) { el.style.strokeWidth = (1.4 * k) + "px"; });
+  }
+
+  // Settle first, reveal second, frame third. The first frame the reader sees
+  // is finished AND fits its box. fit() has to come after `on`, because a
+  // display:none ancestor gives the svg no measurable box to be fitted to.
   solve(300);
   draw();
   stage.classList.add("on");
+  fit();
+
+  // The frame changes size after the first paint more often than it looks: the
+  // card is laid out while its iframe is still sizing, and readers resize
+  // windows. Re-framing stays automatic only until the reader frames it.
+  if (window.ResizeObserver) {
+    new ResizeObserver(function () { if (!touched) fit(); }).observe(svg);
+  }
 })();

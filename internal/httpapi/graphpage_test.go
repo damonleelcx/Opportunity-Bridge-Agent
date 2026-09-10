@@ -9,11 +9,18 @@ package httpapi_test
 // mux, the real gate and the real ownership checks.
 //
 // The claims:
-//  1. a signed-in recruiter reaches their own roster, in the markup, before
-//     one line of script runs;
-//  2. nobody else reaches it - not another account, not another role, and not
-//     an anonymous request;
-//  3. the page and the conversation read the SAME book.
+//  1. the screen of its own is GONE (拍板 2026-09-10) and nothing links to it:
+//     everything a reader can act on is drawn by 阿桥 in the conversation;
+//  2. what survives - the embed the card loads, and the assets and snapshot it
+//     needs - is still served, and still only to the right person: not another
+//     account, not another role, and not an anonymous request;
+//  3. the embed and the conversation read the SAME book.
+//
+// Claim 1 replaced "a recruiter reaches their own roster in the markup". That
+// guarantee still exists and is still fenced, one layer down, by
+// leadgraph.TestThePageCarriesTheRosterWithoutAnyScript: the package still
+// serves a whole page to anybody who mounts it. What changed is which surfaces
+// THIS product exposes.
 
 import (
 	"encoding/json"
@@ -44,56 +51,83 @@ func seedPerson(t *testing.T, graph *leadgraph.Store, v leadgraph.View, org, nam
 	}
 }
 
-// The screen is reachable, and it carries the roster in the markup.
-func TestTheGraphScreenIsServedToTheRecruiterWhoOwnsIt(t *testing.T) {
+// 猎源图谱 has no screen of its own, and the embed still does.
+//
+// The two live in the same route on purpose - the card loads the same document
+// the screen was - so "remove the screen" is one query-string apart from
+// "remove the picture". This fence holds both halves at once, because a change
+// that gets it half right is invisible from either side alone.
+func TestTheStandaloneGraphScreenIsGone(t *testing.T) {
 	ts, graph, _ := graphServer(t)
 	c := signedIn(t, ts, "fay-recruiter")
 	ses, seat := recruiterSession(t, c, ts, domain.RoleRecruiter)
 	seedPerson(t, graph, seat, "A司", "王五", "组长")
+	base := ts.URL + "/app/sessions/" + ses + "/graph"
 
-	res, err := c.Get(ts.URL + "/app/sessions/" + ses + "/graph/")
+	// Gone, and gone by every spelling somebody might have bookmarked.
+	for _, q := range []string{"/", "", "/?embed=0", "/?embed=true", "/?embed=", "/?theme=dark"} {
+		res, err := c.Get(base + q)
+		if err != nil {
+			t.Fatalf("get %q: %v", q, err)
+		}
+		b, _ := io.ReadAll(res.Body)
+		res.Body.Close()
+		if res.StatusCode != http.StatusNotFound {
+			t.Errorf("%q still serves the standalone screen: %d", q, res.StatusCode)
+		}
+		// A 404 that does not say where the thing went is a dead end, and this
+		// one has a live answer: it is in the conversation.
+		if !strings.Contains(string(b), "conversation") {
+			t.Errorf("%q 404s without telling the reader where the graph is now: %s", q, b)
+		}
+	}
+
+	// And the embed - the whole reason this route still exists - still works.
+	res, err := c.Get(base + "/?embed=1")
 	if err != nil {
-		t.Fatalf("get: %v", err)
+		t.Fatalf("embed: %v", err)
 	}
 	defer res.Body.Close()
-	if res.StatusCode != http.StatusOK {
-		b, _ := io.ReadAll(res.Body)
-		t.Fatalf("the graph screen is not reachable: %d %s", res.StatusCode, b)
-	}
 	b, _ := io.ReadAll(res.Body)
-	body := string(b)
-	script := strings.Index(body, "<script")
-	if script < 0 {
-		t.Fatal("no script tag at all - this test would prove nothing")
+	if res.StatusCode != http.StatusOK {
+		t.Fatalf("the card's own URL was removed along with the screen: %d %s", res.StatusCode, b)
 	}
-	// Before any script: the same guarantee webui_test makes of the handler,
-	// asserted here of the URL a person actually opens.
-	for _, want := range []string{"王五", "组长", "c业务组"} {
-		if !strings.Contains(body[:script], want) {
-			t.Errorf("%q reaches the reader only through script, or not at all", want)
-		}
+	if !strings.Contains(string(b), "王五") || !strings.Contains(string(b), `id="graph"`) {
+		t.Error("the embed no longer carries a picture that can be drawn")
 	}
 }
 
-// The URL without the trailing slash is one a person types. It must land on the
-// page rather than 404, and it must land on the slashed form, because the
-// page's own links (graph.css, data) are resolved against it.
-func TestTheGraphScreenIsReachableWithoutTheTrailingSlash(t *testing.T) {
+// The redirect to the slashed form must carry the query with it.
+//
+// The unslashed URL is redirected because the document's own links (graph.css,
+// graph.js, data) are relative and only resolve correctly under a trailing
+// slash. Now that ?embed=1 is what separates the card from a 404, a redirect
+// that dropped the query would send the card into the 404 - and it would look
+// like the embed had been removed rather than like the redirect had eaten one
+// parameter.
+func TestTheRedirectToTheSlashedFormKeepsTheQuery(t *testing.T) {
 	ts, graph, _ := graphServer(t)
 	c := signedIn(t, ts, "gus-recruiter")
 	ses, seat := recruiterSession(t, c, ts, domain.RoleRecruiter)
 	seedPerson(t, graph, seat, "A司", "王五", "组长")
 
-	res, err := c.Get(ts.URL + "/app/sessions/" + ses + "/graph")
+	res, err := c.Get(ts.URL + "/app/sessions/" + ses + "/graph?embed=1&theme=light")
 	if err != nil {
 		t.Fatalf("get: %v", err)
 	}
 	defer res.Body.Close()
+	b, _ := io.ReadAll(res.Body)
 	if res.StatusCode != http.StatusOK {
-		t.Fatalf("status %d", res.StatusCode)
+		t.Fatalf("the unslashed embed URL does not arrive: %d %s", res.StatusCode, b)
 	}
 	if got := res.Request.URL.Path; !strings.HasSuffix(got, "/graph/") {
-		t.Errorf("landed on %q, so the page's relative links resolve one level up", got)
+		t.Errorf("landed on %q, so the document's relative links resolve one level up", got)
+	}
+	if got := res.Request.URL.Query().Get("embed"); got != "1" {
+		t.Errorf("the redirect dropped embed=1 (landed with %q), which is the 404 path", got)
+	}
+	if !strings.Contains(string(b), `id="graph"`) {
+		t.Error("what arrived cannot be drawn")
 	}
 }
 
@@ -133,7 +167,7 @@ func TestTheGraphScreenServesItsOwnAssetsAndData(t *testing.T) {
 	// only correct because the page is served with a trailing slash. Resolving
 	// them the way a browser does is what makes that a fence rather than a
 	// reasoned guess.
-	page, err := c.Get(base + "/")
+	page, err := c.Get(base + "/?embed=1")
 	if err != nil {
 		t.Fatalf("page: %v", err)
 	}
@@ -193,14 +227,14 @@ func TestTheGraphScreenAndTheConversationReadTheSameBook(t *testing.T) {
 	seat.TeamID = tools.GraphTeamFor(st, seat.SeatID)
 	seedPerson(t, graph, seat, "A司", "赵六", "总监")
 
-	res, err := c.Get(ts.URL + "/app/sessions/" + ses + "/graph/")
+	res, err := c.Get(ts.URL + "/app/sessions/" + ses + "/graph/?embed=1")
 	if err != nil {
 		t.Fatalf("get: %v", err)
 	}
 	defer res.Body.Close()
 	b, _ := io.ReadAll(res.Body)
 	if !strings.Contains(string(b), "赵六") {
-		t.Errorf("the screen reads a different book from the conversation: %d", res.StatusCode)
+		t.Errorf("the picture reads a different book from the conversation: %d", res.StatusCode)
 	}
 }
 
@@ -281,38 +315,38 @@ func TestTheGraphScreenIsForTheEmployerRoleOnly(t *testing.T) {
 // nobody links to is the other half. So this reads the href OUT OF THE SHIPPED
 // app.js and drives the real mux with it: the link rotting and the route moving
 // both turn it red, and neither can be fixed by editing only one side.
-func TestTheAppShellLinksToAGraphURLThisServerActuallyServes(t *testing.T) {
-	src, err := web.Files.ReadFile("static/app.js")
-	if err != nil {
-		t.Fatalf("read app.js: %v", err)
-	}
-	// The one template literal in the interface that addresses this screen.
-	re := regexp.MustCompile(`/app/sessions/\$\{state\.session\.id\}(/graph/?)`)
-	m := re.FindSubmatch(src)
-	if m == nil {
-		t.Fatal("nothing in app.js links to 猎源图谱: the screen is mounted and unreachable")
-	}
-	// And the control has to be in the markup for the href to live on.
-	if !strings.Contains(string(mustAsset(t, "app.html")), `id="graphLink"`) {
-		t.Fatal("app.html has no 猎源图谱 control")
-	}
+// Nothing in the interface points at the screen that was removed.
+//
+// A link left behind after the route was closed is worse than the screen was:
+// the reader presses a control that used to work and gets a 404, which reads as
+// "this product is broken" rather than "this moved". Both spellings are
+// checked - the header control it lived on, and the footer row every card
+// carried - because the second one was on EVERY graph card.
+func TestNothingLinksToTheStandaloneGraphScreen(t *testing.T) {
+	js := string(mustAsset(t, "app.js"))
+	html := string(mustAsset(t, "app.html"))
 
-	ts, graph, _ := graphServer(t)
-	c := signedIn(t, ts, "nia-recruiter")
-	ses, seat := recruiterSession(t, c, ts, domain.RoleRecruiter)
-	seedPerson(t, graph, seat, "A司", "王五", "组长")
-
-	res, err := c.Get(ts.URL + "/app/sessions/" + ses + string(m[1]))
-	if err != nil {
-		t.Fatalf("get: %v", err)
+	// The embed is the one address that may remain, so the check is for a graph
+	// URL that is NOT the embed.
+	re := regexp.MustCompile(`(?:href|src)="/app/sessions/\$\{[^}]+\}/graph/?(\?[^"]*)?"`)
+	for _, m := range re.FindAllStringSubmatch(js, -1) {
+		if !strings.Contains(m[0], "embed=1") {
+			t.Errorf("app.js still addresses the removed screen: %s", m[0])
+		}
 	}
-	defer res.Body.Close()
-	b, _ := io.ReadAll(res.Body)
-	if res.StatusCode != http.StatusOK {
-		t.Fatalf("the interface links at a URL this server does not serve: %d %s", res.StatusCode, b)
+	if strings.Contains(js, "graphLinkRow") {
+		t.Error("the card footer that linked to the removed screen is still built")
 	}
-	if !strings.Contains(string(b), "王五") {
-		t.Error("the linked URL served something that is not the roster")
+	if strings.Contains(html, `id="graphLink"`) {
+		t.Error("app.html still carries the control that opened the removed screen")
+	}
+	// The strings the two of them printed have to go too, or the next reader
+	// finds "打开完整图谱" in the table and puts the link back.
+	i18n := string(mustAsset(t, "i18n.js"))
+	for _, key := range []string{`"graph.open"`, `"ctl.graph"`} {
+		if strings.Contains(i18n, key) {
+			t.Errorf("%s is still in the string table for a control that no longer exists", key)
+		}
 	}
 }
 

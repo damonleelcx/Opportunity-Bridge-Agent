@@ -2002,9 +2002,9 @@ func TestTheImportControlIsRecruiterOnly(t *testing.T) {
 	}
 
 	src := stripLineComments(asset(t, "app.js"))
-	start := strings.Index(src, "function syncGraphLink(")
+	start := strings.Index(src, "function syncRecruiterControls(")
 	if start < 0 {
-		t.Fatal("syncGraphLink is gone; the fence is watching the wrong function")
+		t.Fatal("syncRecruiterControls is gone; the fence is watching the wrong function")
 	}
 	body := src[start:]
 	if end := strings.Index(body, "\n}\n"); end > 0 {
@@ -2118,5 +2118,39 @@ func TestEveryUnlinkReasonHasAWord(t *testing.T) {
 					"the reader is shown a Go constant", m[1], lang)
 			}
 		}
+	}
+}
+
+// A reopened conversation gets the picture back too.
+//
+// openSession replays a turn's cards from what the server kept, and knew about
+// cardFor and nothing else. So a reader who refreshed saw every graph card
+// again — the receipt saying 新建 9, the org chart, the paths — and no picture
+// under them. The rule has to be the SAME one a live turn uses, from the same
+// function, or the two drift the first time either changes.
+//
+// (The other half of that reader's complaint was server-side: no graph result
+// was being kept at all, so on the first reload the cards went too. See
+// agent.TestEveryGraphToolTheModelCanCallSurvivesAReload.)
+// See docs/bugfix/2026-09-10-the-graph-card-could-not-be-read.md
+func TestAReopenedConversationRedrawsTheGraphPicture(t *testing.T) {
+	src := stripLineComments(asset(t, "app.js"))
+	i := strings.Index(src, "async function openSession(")
+	if i < 0 {
+		t.Fatal("openSession is gone; this fence no longer guards anything")
+	}
+	body := src[i:]
+	if end := strings.Index(body, "\n}\n"); end > 0 {
+		body = body[:end]
+	}
+	// The same function the live turn calls, not a second copy of the rule.
+	if !strings.Contains(body, "showGraphPicture(") {
+		t.Error("replaying a conversation redraws its cards but never its picture")
+	}
+	// And it has to mark the turn, or showGraphPicture has nothing to act on and
+	// the call above is decoration.
+	if !strings.Contains(body, "graphTouched = true") {
+		t.Error("nothing records that a REPLAYED turn touched the graph, so the " +
+			"picture call can never fire")
 	}
 }
