@@ -1,0 +1,110 @@
+/* Lead Graph — the one screen.
+   Colour encodes KIND. Line style encodes CORROBORATION. Nothing encodes
+   importance: every node is the same size, on purpose. See snapshot.go. */
+:root{
+  --paper:#eceef0; --surface:#f7f8f9; --sunk:#e7eaed;
+  --ink:#0f171e; --ink-2:#354552; --muted:#68798a;
+  --line:#d3dadf; --line-2:#b7c2ca;
+  --accent:#1b6b8c; --accent-soft:#deebf2;
+  --amber:#8e6310; --amber-soft:#f3e8d0;
+  --rust:#a03e27; --rust-soft:#f5ded7;
+  --ok:#2c6b4f; --ok-soft:#dceae2;
+  --k-person:#1b6b8c; --k-unit:#5b6b7a; --k-org:#2c4a5c; --k-event:#a05a1b; --k-lead:#2c6b4f;
+  --f-body:"PingFang SC","Hiragino Sans GB","Microsoft YaHei",system-ui,sans-serif;
+  --f-mono:ui-monospace,"SF Mono",Menlo,Consolas,monospace;
+}
+@media (prefers-color-scheme:dark){
+  :root{
+    --paper:#0b1015; --surface:#131b22; --sunk:#0f161c;
+    --ink:#dde5eb; --ink-2:#afbeca; --muted:#7e8e9c;
+    --line:#233038; --line-2:#33434e;
+    --accent:#63b2d1; --accent-soft:#12303d;
+    --amber:#d5a552; --amber-soft:#312611;
+    --rust:#de8168; --rust-soft:#381d16;
+    --ok:#71c097; --ok-soft:#12291f;
+    --k-person:#63b2d1; --k-unit:#8ea2b3; --k-org:#a8c4d4; --k-event:#d5a552; --k-lead:#71c097;
+  }
+}
+*{box-sizing:border-box}
+body{margin:0;background:var(--paper);color:var(--ink);font-family:var(--f-body);line-height:1.7}
+h1{font-size:1.2rem;margin:0}
+a{color:var(--accent)}
+header{display:flex;gap:1rem;align-items:baseline;flex-wrap:wrap;
+  padding:.9rem 1.2rem;border-bottom:1px solid var(--line-2);background:var(--surface)}
+.counts{display:flex;gap:.8rem;flex-wrap:wrap;font-family:var(--f-mono);font-size:.76rem;color:var(--muted)}
+.counts b{color:var(--ink-2);font-weight:500}
+.chip{display:inline-block;font-family:var(--f-mono);font-size:.72rem;padding:.1rem .45rem;
+  border:1px solid var(--line-2);border-radius:2px;color:var(--muted);background:var(--sunk)}
+.chip.warn{color:var(--amber);border-color:var(--amber);background:var(--amber-soft)}
+.chip.ok{color:var(--ok);border-color:var(--ok);background:var(--ok-soft)}
+.chip.alert{color:var(--rust);border-color:var(--rust);background:var(--rust-soft)}
+
+.wrap{display:grid;grid-template-columns:minmax(0,1fr) 20rem;gap:0;align-items:start}
+@media (max-width:60rem){.wrap{grid-template-columns:minmax(0,1fr)}}
+
+/* The graph is an ENHANCEMENT layered over the text. It starts hidden and is
+   revealed by script; with no script the roster below is the whole page. */
+#stage{display:none;border-bottom:1px solid var(--line);background:var(--surface);position:relative}
+#stage.on{display:block}
+#stage svg{display:block;width:100%;height:60vh;min-height:22rem;touch-action:none}
+.filters{display:flex;gap:.35rem;flex-wrap:wrap;padding:.6rem 1.2rem;border-bottom:1px solid var(--line);background:var(--sunk)}
+.filters button{font:inherit;font-size:.78rem;padding:.2rem .6rem;border:1px solid var(--line-2);
+  border-radius:2px;background:var(--surface);color:var(--ink-2);cursor:pointer}
+.filters button[aria-pressed="true"]{background:var(--accent-soft);border-color:var(--accent);color:var(--accent)}
+.hint{padding:.4rem 1.2rem;font-size:.74rem;color:var(--muted);font-family:var(--f-mono)}
+
+.node circle{stroke-width:1.5px}
+.node text{font-size:11px;fill:var(--ink);pointer-events:none}
+.node.dim{opacity:.18}
+.node.sel circle{stroke:var(--ink);stroke-width:2.5px}
+.k-person{fill:var(--k-person);stroke:var(--k-person)}
+.k-unit{fill:var(--k-unit);stroke:var(--k-unit)}
+.k-org{fill:var(--k-org);stroke:var(--k-org)}
+.k-event{fill:var(--k-event);stroke:var(--k-event)}
+.k-lead{fill:var(--k-lead);stroke:var(--k-lead)}
+/* mentioned = we know the name and hold nothing about it */
+.mentioned circle{fill:none;stroke-dasharray:3 3}
+.link{stroke:var(--line-2);fill:none;stroke-width:1.4px}
+/* hearsay = one unconfirmed source */
+.link.hearsay{stroke-dasharray:5 4}
+.link.dim{opacity:.12}
+
+aside{padding:1rem 1.2rem;border-left:1px solid var(--line);background:var(--surface);min-height:10rem}
+@media (max-width:60rem){aside{border-left:0;border-top:1px solid var(--line)}}
+aside h2{font-size:.78rem;font-family:var(--f-mono);letter-spacing:.1em;text-transform:uppercase;
+  color:var(--muted);margin:0 0 .5rem}
+.kv{display:grid;grid-template-columns:5rem minmax(0,1fr);gap:.2rem .6rem;font-size:.86rem}
+.kv dt{color:var(--muted);font-family:var(--f-mono);font-size:.74rem}
+.kv dd{margin:0;color:var(--ink)}
+
+main{padding:1.2rem}
+.alerts{margin:0 0 1.2rem;padding:0;list-style:none;display:grid;gap:.5rem}
+.alerts li{border:1px solid var(--rust);background:var(--rust-soft);padding:.6rem .8rem;font-size:.9rem}
+.roster{display:grid;gap:1rem}
+.grp{border:1px solid var(--line);background:var(--surface)}
+.grp h3{margin:0;padding:.5rem .8rem;border-bottom:1px solid var(--line);background:var(--sunk);
+  font-size:.9rem;font-weight:600;display:flex;gap:.5rem;align-items:baseline;flex-wrap:wrap}
+.grp .path{color:var(--muted);font-family:var(--f-mono);font-size:.74rem}
+.grp ul{margin:0;padding:.4rem .8rem .6rem 1.6rem}
+.grp li{font-size:.9rem}
+.grp .role{color:var(--muted)}
+.empty{color:var(--muted);font-size:.86rem;padding:.5rem .8rem}
+
+/* The lead board. Groups carry a score; the people under one are in NAME
+   order, never ranked — see lead.go. */
+.board{margin:0 0 1.4rem;display:grid;gap:.7rem}
+.board h2{font-size:.78rem;font-family:var(--f-mono);letter-spacing:.1em;text-transform:uppercase;
+  color:var(--muted);margin:0}
+.lead{border:1px solid var(--line);background:var(--surface);padding:.7rem .9rem}
+.lead h3{margin:0 0 .4rem;font-size:.95rem;display:flex;gap:.6rem;align-items:baseline;flex-wrap:wrap}
+.lead .score{font-family:var(--f-mono);font-size:.8rem;color:var(--accent);
+  border:1px solid var(--accent);border-radius:2px;padding:0 .35rem;background:var(--accent-soft)}
+.lead .window{font-size:.76rem;color:var(--muted);font-weight:400}
+.lead .window .note{font-size:.72rem}
+.signals{margin:0;padding:0;list-style:none;display:grid;gap:.15rem}
+.signals li{font-size:.88rem;display:grid;grid-template-columns:2.2rem minmax(0,1fr) auto;gap:.5rem;
+  align-items:baseline;border-bottom:1px solid var(--line);padding:.2rem 0}
+.signals li:last-child{border-bottom:0}
+.signals .bar{font-family:var(--f-mono);color:var(--accent)}
+.signals .src{font-family:var(--f-mono);font-size:.72rem;color:var(--muted)}
+.lead .who{margin:.45rem 0 0;font-size:.85rem;color:var(--ink-2)}

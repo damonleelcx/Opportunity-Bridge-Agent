@@ -1,0 +1,1155 @@
+<title>猎源图谱</title>
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Serif:wght@500;600&display=swap">
+<style>
+:root{
+  --paper:#ECEEF0; --surface:#F7F8F9; --surface-2:#E2E7EA; --sunk:#E7EAED;
+  --ink:#0F171E; --ink-2:#354552; --muted:#68798A;
+  --line:#D3DADF; --line-2:#B7C2CA;
+  --accent:#1B6B8C; --accent-ink:#12506A; --accent-soft:#DEEBF2;
+  --amber:#8E6310; --amber-soft:#F3E8D0;
+  --rust:#A03E27; --rust-soft:#F5DED7;
+  --ok:#2C6B4F; --ok-soft:#DCEBE2;
+  --shadow:0 1px 2px rgba(15,23,30,.06), 0 8px 24px -16px rgba(15,23,30,.35);
+  --f-display:"IBM Plex Serif","Songti SC","Noto Serif CJK SC","Source Han Serif SC",serif;
+  --f-body:"IBM Plex Sans","PingFang SC","Hiragino Sans GB","Microsoft YaHei",system-ui,sans-serif;
+  --f-mono:"IBM Plex Mono",ui-monospace,"SF Mono",Menlo,Consolas,monospace;
+}
+@media (prefers-color-scheme:dark){
+  :root:not([data-theme="light"]){
+    --paper:#0B1015; --surface:#131B22; --surface-2:#1B252D; --sunk:#0F161C;
+    --ink:#DDE5EB; --ink-2:#AFBECA; --muted:#7E8E9C;
+    --line:#233038; --line-2:#33434E;
+    --accent:#63B2D1; --accent-ink:#8ECBE4; --accent-soft:#12303D;
+    --amber:#D5A552; --amber-soft:#312611;
+    --rust:#DE8168; --rust-soft:#381D16;
+    --ok:#71C097; --ok-soft:#12291F;
+    --shadow:0 1px 2px rgba(0,0,0,.5), 0 10px 28px -18px rgba(0,0,0,.9);
+  }
+}
+:root[data-theme="dark"]{
+  --paper:#0B1015; --surface:#131B22; --surface-2:#1B252D; --sunk:#0F161C;
+  --ink:#DDE5EB; --ink-2:#AFBECA; --muted:#7E8E9C;
+  --line:#233038; --line-2:#33434E;
+  --accent:#63B2D1; --accent-ink:#8ECBE4; --accent-soft:#12303D;
+  --amber:#D5A552; --amber-soft:#312611;
+  --rust:#DE8168; --rust-soft:#381D16;
+  --ok:#71C097; --ok-soft:#12291F;
+  --shadow:0 1px 2px rgba(0,0,0,.5), 0 10px 28px -18px rgba(0,0,0,.9);
+}
+
+*{box-sizing:border-box}
+body{
+  background:var(--paper); color:var(--ink);
+  font-family:var(--f-body); font-size:16px; line-height:1.8;
+  -webkit-font-smoothing:antialiased;
+}
+::selection{background:var(--accent-soft); color:var(--accent-ink)}
+a{color:var(--accent-ink); text-underline-offset:3px; text-decoration-thickness:1px}
+a:focus-visible,button:focus-visible{outline:2px solid var(--accent); outline-offset:3px; border-radius:2px}
+
+/* ---------- masthead ---------- */
+.masthead{border-bottom:1px solid var(--line-2); background:var(--surface)}
+.masthead-in{max-width:78rem; margin:0 auto; padding:2.6rem 1.5rem 2rem;
+  display:grid; grid-template-columns:minmax(0,1fr) auto; gap:2rem; align-items:end}
+.kicker{font-family:var(--f-mono); font-size:.72rem; letter-spacing:.16em; text-transform:uppercase;
+  color:var(--muted); margin:0 0 .7rem}
+h1{font-family:var(--f-display); font-weight:600; font-size:clamp(2rem,4.6vw,3.05rem);
+  line-height:1.15; margin:0; letter-spacing:-.01em; text-wrap:balance}
+h1 .en{font-size:.42em; color:var(--muted); font-weight:500; letter-spacing:.02em; margin-left:.7em; white-space:nowrap}
+.deck{max-width:40rem; margin:1.1rem 0 0; color:var(--ink-2); font-size:1.06rem}
+.stamp{display:flex; flex-direction:column; gap:.45rem; align-items:flex-end; font-family:var(--f-mono); font-size:.75rem; color:var(--muted)}
+.stamp b{color:var(--ink-2); font-weight:500}
+.state{display:inline-flex; align-items:center; gap:.45rem; padding:.3rem .6rem; border-radius:2px;
+  background:var(--amber-soft); color:var(--amber); border:1px solid color-mix(in srgb,var(--amber) 30%,transparent)}
+.state::before{content:""; width:6px; height:6px; border-radius:50%; background:currentColor}
+
+/* ---------- pipeline strip ---------- */
+.pipe{border-bottom:1px solid var(--line); background:var(--sunk)}
+.pipe-in{max-width:78rem; margin:0 auto; padding:1.1rem 1.5rem; display:flex; gap:.4rem; flex-wrap:wrap; align-items:stretch}
+.pstep{flex:1 1 8rem; min-width:8rem; background:var(--surface); border:1px solid var(--line);
+  padding:.6rem .75rem; display:flex; flex-direction:column; gap:.15rem}
+.pstep .n{font-family:var(--f-mono); font-size:.68rem; color:var(--accent); letter-spacing:.1em}
+.pstep .t{font-size:.92rem; font-weight:600}
+.pstep .s{font-size:.76rem; color:var(--muted); line-height:1.5}
+
+/* ---------- shell ---------- */
+.shell{max-width:78rem; margin:0 auto; padding:0 1.5rem 6rem;
+  display:grid; grid-template-columns:14.5rem minmax(0,1fr); gap:3.5rem; align-items:start}
+nav.toc{position:sticky; top:1.5rem; padding-top:2.5rem; font-size:.85rem}
+nav.toc .lbl{font-family:var(--f-mono); font-size:.68rem; letter-spacing:.16em; text-transform:uppercase;
+  color:var(--muted); padding-bottom:.6rem; border-bottom:1px solid var(--line); display:block; margin-bottom:.5rem}
+nav.toc ol{list-style:none; margin:0; padding:0; display:flex; flex-direction:column}
+nav.toc a{display:grid; grid-template-columns:1.7rem 1fr; gap:.2rem; padding:.34rem 0;
+  color:var(--ink-2); text-decoration:none; border-left:2px solid transparent; padding-left:.6rem}
+nav.toc a .num{font-family:var(--f-mono); font-size:.72rem; color:var(--muted)}
+nav.toc a:hover{color:var(--accent-ink)}
+nav.toc a.on{color:var(--accent-ink); border-left-color:var(--accent); font-weight:600}
+nav.toc a.on .num{color:var(--accent)}
+
+article{padding-top:2.5rem; max-width:47rem; min-width:0}
+section{padding-block:1.6rem 2.2rem; border-top:1px solid var(--line)}
+section:first-of-type{border-top:0; padding-top:.4rem}
+h2{font-family:var(--f-display); font-weight:600; font-size:1.62rem; line-height:1.3; margin:0 0 .2rem;
+  display:grid; grid-template-columns:2.3rem 1fr; align-items:baseline; text-wrap:balance}
+h2 .num{font-family:var(--f-mono); font-size:.82rem; color:var(--accent); font-weight:400}
+h3{font-family:var(--f-body); font-weight:600; font-size:1.04rem; margin:2rem 0 .5rem; color:var(--ink)}
+h4{font-family:var(--f-mono); font-weight:500; font-size:.78rem; letter-spacing:.1em; text-transform:uppercase;
+  color:var(--muted); margin:1.6rem 0 .5rem}
+p{margin:.75rem 0}
+.lede{color:var(--ink-2); font-size:1.02rem; margin-top:.6rem}
+strong{font-weight:600}
+em{font-style:normal; background:linear-gradient(transparent 62%,var(--accent-soft) 0); padding:0 .1em}
+code{font-family:var(--f-mono); font-size:.86em; background:var(--surface-2); padding:.1em .35em; border-radius:2px; color:var(--ink)}
+ul,ol{margin:.7rem 0; padding-left:1.25rem}
+li{margin:.3rem 0}
+li::marker{color:var(--muted)}
+hr{border:0; border-top:1px solid var(--line); margin:2rem 0}
+
+/* ---------- why block: the page's signature ---------- */
+.why{border-left:3px solid var(--accent); background:var(--surface); padding:.95rem 1.1rem; margin:1.1rem 0;
+  display:grid; gap:.3rem}
+.why .tag{font-family:var(--f-mono); font-size:.7rem; letter-spacing:.14em; text-transform:uppercase; color:var(--accent)}
+.why p{margin:0; color:var(--ink-2); font-size:.95rem}
+.why p + p{margin-top:.5rem}
+.redline{border-left-color:var(--rust); background:var(--rust-soft)}
+.redline .tag{color:var(--rust)}
+.redline p{color:var(--ink)}
+
+/* ---------- tables ---------- */
+.tw{overflow-x:auto; margin:1.1rem 0; border:1px solid var(--line); background:var(--surface)}
+table{border-collapse:collapse; width:100%; font-size:.9rem; min-width:34rem}
+th,td{text-align:left; padding:.62rem .8rem; border-bottom:1px solid var(--line); vertical-align:top; line-height:1.65}
+thead th{font-family:var(--f-mono); font-size:.72rem; letter-spacing:.08em; text-transform:uppercase;
+  color:var(--muted); font-weight:500; background:var(--sunk); border-bottom:1px solid var(--line-2); white-space:nowrap}
+tbody tr:last-child td{border-bottom:0}
+td code{background:transparent; padding:0; color:var(--accent-ink)}
+.col-n{width:5.5rem; white-space:nowrap}
+
+/* ---------- chips ---------- */
+.chip{display:inline-block; font-family:var(--f-mono); font-size:.7rem; letter-spacing:.04em;
+  padding:.12rem .42rem; border-radius:2px; border:1px solid; white-space:nowrap; line-height:1.6}
+.c-block{color:var(--rust); border-color:color-mix(in srgb,var(--rust) 40%,transparent); background:var(--rust-soft)}
+.c-warn{color:var(--amber); border-color:color-mix(in srgb,var(--amber) 40%,transparent); background:var(--amber-soft)}
+.c-ok{color:var(--ok); border-color:color-mix(in srgb,var(--ok) 40%,transparent); background:var(--ok-soft)}
+.c-info{color:var(--accent-ink); border-color:color-mix(in srgb,var(--accent) 40%,transparent); background:var(--accent-soft)}
+.c-mute{color:var(--muted); border-color:var(--line-2); background:var(--surface-2)}
+
+/* ---------- figure ---------- */
+figure{margin:1.6rem 0; border:1px solid var(--line); background:var(--surface)}
+figure .fig-body{overflow-x:auto; padding:1.1rem}
+figure svg{display:block; min-width:34rem; width:100%; height:auto}
+figcaption{border-top:1px solid var(--line); padding:.55rem .9rem; font-size:.8rem; color:var(--muted); background:var(--sunk)}
+svg text{font-family:var(--f-body)}
+.sv-box{fill:var(--surface); stroke:var(--line-2)}
+.sv-box-a{fill:var(--accent-soft); stroke:var(--accent)}
+.sv-box-w{fill:var(--amber-soft); stroke:var(--amber)}
+.sv-t{fill:var(--ink); font-size:12.5px}
+.sv-s{fill:var(--muted); font-size:11px}
+.sv-m{fill:var(--accent); font-size:10.5px; font-family:var(--f-mono); letter-spacing:.08em}
+.sv-line{stroke:var(--line-2); fill:none}
+.sv-line-a{stroke:var(--accent); fill:none}
+
+/* ---------- ui mock ---------- */
+.mock{border:1px solid var(--line-2); background:var(--surface); margin:1.4rem 0; box-shadow:var(--shadow)}
+.mock-bar{display:flex; align-items:center; justify-content:space-between; gap:1rem;
+  padding:.55rem .85rem; border-bottom:1px solid var(--line); background:var(--sunk);
+  font-family:var(--f-mono); font-size:.72rem; color:var(--muted); letter-spacing:.06em}
+.mock-body{padding:1rem 1.05rem; display:grid; gap:.7rem}
+.mock h5{margin:0; font-size:1rem; font-weight:600}
+.mock .row{display:flex; gap:.6rem; align-items:baseline; font-size:.9rem; flex-wrap:wrap}
+.mock .who{font-weight:600}
+.mock .src{font-family:var(--f-mono); font-size:.72rem; color:var(--muted)}
+.mock .ask{border-top:1px dashed var(--line-2); padding-top:.7rem; font-size:.9rem; color:var(--ink-2)}
+.btnrow{display:flex; gap:.45rem; flex-wrap:wrap}
+.btn{font-family:var(--f-mono); font-size:.74rem; padding:.28rem .6rem; border:1px solid var(--line-2);
+  background:var(--surface-2); color:var(--ink-2); border-radius:2px}
+.btn.pri{background:var(--accent-soft); border-color:var(--accent); color:var(--accent-ink)}
+.sig{display:grid; grid-template-columns:1.4rem 1fr auto; gap:.5rem; align-items:baseline; font-size:.9rem;
+  padding:.35rem 0; border-bottom:1px solid var(--line)}
+.sig:last-child{border-bottom:0}
+.sig .w{font-family:var(--f-mono); color:var(--accent); font-size:.85rem; letter-spacing:.06em}
+.sig .neg{color:var(--muted)}
+
+/* ---------- phases ---------- */
+.phase{display:grid; grid-template-columns:3.2rem minmax(0,1fr); gap:.9rem; padding:.7rem 0; border-bottom:1px solid var(--line)}
+.phase:last-child{border-bottom:0}
+.phase .p{font-family:var(--f-mono); font-size:.85rem; color:var(--accent); font-weight:500; padding-top:.1rem}
+.phase .t{font-weight:600; font-size:.97rem}
+.phase .d{font-size:.87rem; color:var(--muted); line-height:1.6}
+.phase.hi{background:var(--accent-soft); margin-inline:-.7rem; padding-inline:.7rem}
+.phase.hi .d{color:var(--ink-2)}
+
+/* ---------- decisions ---------- */
+.dec{border:1px solid var(--line); background:var(--surface); padding:1rem 1.1rem; margin:1rem 0}
+.dec > .h{display:flex; gap:.6rem; align-items:baseline; margin-bottom:.35rem}
+.dec .q{font-family:var(--f-mono); font-size:.78rem; color:var(--accent); letter-spacing:.06em}
+.dec .title{font-weight:600; font-size:1rem}
+.opts{display:grid; gap:.5rem; margin-top:.7rem}
+.opt{display:grid; grid-template-columns:auto minmax(0,1fr); gap:.6rem; font-size:.9rem; align-items:baseline;
+  padding:.5rem .65rem; background:var(--sunk); border-left:2px solid var(--line-2)}
+.opt.rec{border-left-color:var(--accent); background:var(--accent-soft)}
+.opt .k{font-family:var(--f-mono); font-size:.75rem; color:var(--ink-2)}
+.opt .v{color:var(--ink-2)}
+.opt.rec .v{color:var(--ink)}
+
+/* ---------- footer ---------- */
+footer{border-top:1px solid var(--line-2); background:var(--surface); margin-top:2rem}
+.foot-in{max-width:78rem; margin:0 auto; padding:1.8rem 1.5rem; display:flex; flex-wrap:wrap; gap:1.2rem;
+  justify-content:space-between; font-size:.82rem; color:var(--muted); font-family:var(--f-mono)}
+
+@media (max-width:60rem){
+  .shell{grid-template-columns:minmax(0,1fr); gap:0}
+  nav.toc{position:static; padding-top:1.8rem}
+  nav.toc ol{display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:0 .8rem}
+  nav.toc a{padding-block:.26rem}
+  .masthead-in{grid-template-columns:minmax(0,1fr); padding-top:2rem}
+  .stamp{align-items:flex-start; flex-direction:row; flex-wrap:wrap; gap:.4rem .9rem}
+  .pipe-in{flex-wrap:nowrap; overflow-x:auto; scrollbar-width:thin}
+  .pstep{flex:0 0 10.5rem}
+  article{padding-top:1.4rem}
+}
+@media (prefers-reduced-motion:reduce){*{animation:none!important; transition:none!important}}
+</style>
+
+<header class="masthead">
+  <div class="masthead-in">
+    <div>
+      <p class="kicker">产品需求文档 · v1 · 2026-09-10</p>
+      <h1>猎源图谱<span class="en">Lead Graph</span></h1>
+      <p class="deck">组织在变的时候，人才会动。别人拿到的是一份静态人才库；这个产品拿到的是<strong>你自己的关系网</strong>、<strong>组织正在发生的变化</strong>，以及<strong>你离目标还有几步</strong>。</p>
+    </div>
+    <div class="stamp">
+      <span class="state" style="background:var(--ok-soft);color:var(--ok);border-color:color-mix(in srgb,var(--ok) 30%,transparent)">P1–P9 + 导入 · 联系方式 · 174 用例 · 114 道守卫演练过</span>
+      <span>定位：<b>独立产品</b></span>
+      <span>上游：<b>19-relationship-trail（已冻结）</b></span>
+    </div>
+  </div>
+</header>
+
+<div class="pipe">
+  <div class="pipe-in">
+    <div class="pstep"><span class="n">01</span><span class="t">组织变动情报</span><span class="s">公开源 + 你自己听说的</span></div>
+    <div class="pstep"><span class="n">02</span><span class="t">谁在那里</span><span class="s">一次图查询，不是模型推理</span></div>
+    <div class="pstep"><span class="n">03</span><span class="t">时机判断</span><span class="s">可拆开的分数，主体是组</span></div>
+    <div class="pstep"><span class="n">04</span><span class="t">怎么够到他</span><span class="s">引荐路径，跳数与关系强度</span></div>
+    <div class="pstep"><span class="n">05</span><span class="t">触达与跟进</span><span class="s">留痕、节流、可回溯</span></div>
+  </div>
+</div>
+
+<div class="shell">
+<nav class="toc" aria-label="目录">
+  <span class="lbl">目录</span>
+  <ol>
+    <li><a href="#s1"><span class="num">01</span><span>为什么是独立产品</span></a></li>
+    <li><a href="#s2"><span class="num">02</span><span>核心洞察</span></a></li>
+    <li><a href="#s3"><span class="num">03</span><span>用户与场景</span></a></li>
+    <li><a href="#s4"><span class="num">04</span><span>名词字典</span></a></li>
+    <li><a href="#s5"><span class="num">05</span><span>Agent 怎么工作</span></a></li>
+    <li><a href="#s6"><span class="num">06</span><span>数据模型</span></a></li>
+    <li><a href="#s7"><span class="num">07</span><span>情报来源与红线</span></a></li>
+    <li><a href="#s8"><span class="num">08</span><span>线索评分</span></a></li>
+    <li><a href="#s9"><span class="num">09</span><span>图谱与三视图</span></a></li>
+    <li><a href="#s10"><span class="num">10</span><span>批量导入格式</span></a></li>
+    <li><a href="#s10b"><span class="num">11</span><span>分期</span></a></li>
+    <li><a href="#s11"><span class="num">11</span><span>测试围栏</span></a></li>
+    <li><a href="#s12"><span class="num">12</span><span>待拍板</span></a></li>
+  </ol>
+</nav>
+
+<article>
+
+<section id="s1">
+  <h2><span class="num">01</span><span>为什么它是独立产品，而不是阿桥的一个功能</span></h2>
+  <p class="lede">阿桥（Opportunity Bridge Agent）的底线是<strong>不认定资格、不给人打分</strong>。本产品的核心恰恰是给组织和岗位打分排序、判断什么时候该联系谁。<em>这两件事不能装在同一个意图登记表里</em>——装进去就等于把阿桥那套边界推翻，而那套边界是它对用户的承诺。</p>
+
+  <div class="tw"><table>
+    <thead><tr><th style="width:50%">复用</th><th>不复用</th></tr></thead>
+    <tbody>
+      <tr><td>图存储、幂等写入、迁移规范</td><td>阿桥的意图登记表 <code>internal/intent</code></td></tr>
+      <tr><td>Agent 循环 understand → plan → act → verify → respond</td><td>阿桥的五个意图及其边界</td></tr>
+      <tr><td>校验器框架 <code>internal/guardrail</code></td><td><code>no_candidate_scoring</code> 等禁止打分的校验器</td></tr>
+      <tr><td>人工审批机制（参数哈希绑定）</td><td>面向居民的授权范围模型</td></tr>
+    </tbody>
+  </table></div>
+
+  <div class="why">
+    <span class="tag">为什么要写下这条</span>
+    <p>把两个价值观相反的产品塞进一个仓库，最先坏掉的不是代码，是<strong>判断标准</strong>：下一个人加功能时，不知道该按哪套边界来审。文档里留下这张表，是为了让"该不该复用"这个问题有一个可查的答案，而不是每次重新吵一遍。</p>
+  </div>
+</section>
+
+<section id="s2">
+  <h2><span class="num">02</span><span>核心洞察：值钱的是时机和路径，不是名单</span></h2>
+  <p>主流工具（领英、Apollo、各类简历库）卖的是<strong>人的静态档案</strong>——联系方式、履历、技能。这类数据是<em>同质的</em>：谁都买得到，谁都在发同样的开发信，回复率被打到地板。</p>
+  <p>真正决定成单的是两件档案里没有的东西：</p>
+
+  <div class="tw"><table>
+    <thead><tr><th class="col-n">变量</th><th>为什么它决定成败</th></tr></thead>
+    <tbody>
+      <tr><td><strong>时机</strong></td><td>同一个人，组织重组后的三个月和平常的三个月，接电话的概率完全不同</td></tr>
+      <tr><td><strong>路径</strong></td><td>陌生开发信 vs「张三让我联系你」，是两个数量级的回复率差距</td></tr>
+    </tbody>
+  </table></div>
+
+  <div class="why">
+    <span class="tag">为什么这构成壁垒</span>
+    <p>本产品的两个核心资产是<strong>组织变动事件流</strong>（时机）和<strong>你自己的关系图</strong>（路径）。这两样都不是买来的，是攒出来的——竞品能买到和你一样的人才库，买不到你的关系网，也补不回你过去半年积累的事件时间轴。</p>
+  </div>
+
+  <h3>触发这个产品的那个场景</h3>
+  <p>「A 司的 c 业务组并入 b 组，那这一群人都会流入市场，c 组老大可能就会看机会。」——这句话拆开，就是产品的完整工作流：顶部那条五步管道。</p>
+</section>
+
+<section id="s3">
+  <h2><span class="num">03</span><span>用户与场景</span></h2>
+  <div class="tw"><table>
+    <thead><tr><th class="col-n">用户</th><th>场景</th><th>最痛的一点</th></tr></thead>
+    <tbody>
+      <tr><td>猎头顾问</td><td>找候选人、维护人脉、判断切入时机</td><td>消息滞后。等岗位挂出来，早有人先联系过了</td></tr>
+      <tr><td>招聘负责人 / HRBP</td><td>建人才地图、盯竞对组织变化</td><td>手上几百个联系人，但「谁跟谁认识」全在脑子里</td></tr>
+      <tr><td>BD / 销售</td><td>找决策人、找引荐路径</td><td>知道要找谁，不知道<strong>怎么够到他</strong></td></tr>
+      <tr><td>团队负责人</td><td>团队共享情报与人脉</td><td>人一离职，他那份关系网就归零</td></tr>
+    </tbody>
+  </table></div>
+</section>
+
+<section id="s4">
+  <h2><span class="num">04</span><span>名词字典</span></h2>
+  <p class="lede">代码、界面、文档三处必须用同一套词。任何一处不一致，排查问题时就会多花一倍时间。</p>
+  <div class="tw"><table>
+    <thead><tr><th class="col-n">中文</th><th class="col-n">代码</th><th>含义</th></tr></thead>
+    <tbody>
+      <tr><td>猎源图谱</td><td><code>lead graph</code></td><td>产品整体</td></tr>
+      <tr><td>节点</td><td><code>Node</code></td><td>组织 / 组织单元 / 人 / 事件 / 线索 / 触达</td></tr>
+      <tr><td>边</td><td><code>Edge</code></td><td>架构线、关系线、影响线</td></tr>
+      <tr><td>组织变动事件</td><td><code>Event</code></td><td>合并、拆分、裁撤、新设、换帅、融资、裁员……</td></tr>
+      <tr><td>情报</td><td><code>Intel</code></td><td>一条带<strong>来源和证实状态</strong>的事实陈述</td></tr>
+      <tr><td>证实状态</td><td><code>corroboration</code></td><td><span class="chip c-warn">听说 hearsay</span> <span class="chip c-info">多源印证 corroborated</span> <span class="chip c-ok">官方公布 announced</span> — 默认<strong>听说</strong></td></tr>
+      <tr><td>线索</td><td><code>Lead</code></td><td>值得现在投入时间的判断对象，主体是<strong>组织单元或岗位</strong>，不是人</td></tr>
+      <tr><td>窗口期</td><td><code>window</code></td><td>这条线索大概还有多久失效</td></tr>
+      <tr><td>引荐路径</td><td><code>path</code></td><td>从我到目标人的连接链，每跳带关系强度和来源</td></tr>
+      <tr><td>对账</td><td><code>reconcile</code></td><td>新情报与已有图的比对：新建 / 合并 / 冲突</td></tr>
+    </tbody>
+  </table></div>
+</section>
+
+<section id="s5">
+  <h2><span class="num">05</span><span>Agent 怎么工作</span></h2>
+  <p class="lede"><strong>整理和更新是 Agent 的活，不是用户的活。</strong>用户只负责说话、确认、纠错；建节点、连边、发现冲突、发现过期、发现该问什么，全部由 Agent 做。</p>
+
+  <div class="why redline">
+    <span class="tag">这是生死线</span>
+    <p>一个需要用户自己填表维护的图，三周之后一定是废的。这是这类产品最常见的死法——不是功能不够，是<strong>数据饿死</strong>。所以下面每一条设计，都在回答同一个问题：怎么让用户什么都不用做，图还能保持准确。</p>
+  </div>
+
+  <h3>5.1　意图的划分维度必须换一个</h3>
+  <p>阿桥的登记表里 <strong>intent = 受众</strong>（居民 / 窗口 / 雇主 / 政策）。本产品<em>只有一类受众</em>（猎头 / 招聘方），受众维度切不出东西来。所以这里的 <strong>intent = 任务</strong>：</p>
+
+  <div class="tw"><table>
+    <thead><tr><th class="col-n">意图</th><th class="col-n">用户在干什么</th><th>典型问句</th></tr></thead>
+    <tbody>
+      <tr><td><code>graph_maintenance</code></td><td>维护图谱<br><span class="chip c-info">Agent 主导</span></td><td>「我今天跟王五聊了，他说 c 组要并进 b 组」</td></tr>
+      <tr><td><code>lead_discovery</code></td><td>找线索、判断时机</td><td>「最近有哪些组织在动？」「这条现在值不值得投时间？」</td></tr>
+      <tr><td><code>path_navigation</code></td><td>找引荐路径</td><td>「我怎么够到 C 司的技术负责人？」</td></tr>
+      <tr><td><code>outreach_ops</code></td><td>触达与跟进</td><td>「王五这条我上次聊到哪了？该跟进了吗？」</td></tr>
+    </tbody>
+  </table></div>
+
+  <div class="why">
+    <span class="tag">为什么必须显式说明这个改动</span>
+    <p>登记表的语义一旦从「受众」变成「任务」，后面每加一行的判断标准就不一样了。不写下来，三个月后没人知道该按什么标准加——然后登记表就会变成一个什么都往里塞的杂物箱。</p>
+    <p>每个意图仍然带自己的<strong>目标、成功判据、边界、工具白名单、校验器、预算</strong>。这套结构照搬阿桥，因为它是被验证过的那部分。</p>
+  </div>
+
+  <h3>5.2　工具清单</h3>
+  <h4>A · 抽取与写入 —— Agent 从对话里拿事实</h4>
+  <div class="tw"><table>
+    <thead><tr><th class="col-n">工具</th><th class="col-n">风险</th><th>做什么</th></tr></thead>
+    <tbody>
+      <tr><td><code>graph_reconcile</code></td><td><span class="chip c-mute">只读</span></td><td>传入候选新事实，返回三选一：<strong>新建 / 合并到已有 / 与已有冲突</strong>。<em>不写库</em></td></tr>
+      <tr><td><code>graph_apply</code></td><td><span class="chip c-ok">低</span></td><td>把对账结果落库。带幂等键，重复调用不产生重复节点</td></tr>
+      <tr><td><code>touchpoint_add</code></td><td><span class="chip c-ok">低</span></td><td>记一次接触：时间、渠道、聊了什么、结果、下一步</td></tr>
+      <tr><td><code>event_record</code></td><td><span class="chip c-ok">低</span></td><td>记一条组织变动事件，<strong>来源与证实状态必填</strong></td></tr>
+    </tbody>
+  </table></div>
+
+  <h4>Reconcile 的四个判定 · Apply 的四个答复 <span class="chip c-ok">已实现</span></h4>
+  <div class="tw"><table>
+    <thead><tr><th class="col-n">判定</th><th class="col-n">含义</th><th>谁能落库</th></tr></thead>
+    <tbody>
+      <tr><td><code>create</code></td><td>图上没有像它的东西</td><td><span class="chip c-ok">Agent 直接落</span></td></tr>
+      <tr><td><code>update</code></td><td>完全同一条记录，没有任何值相抵触</td><td><span class="chip c-ok">Agent 直接落</span></td></tr>
+      <tr><td><code>merge</code></td><td>按<strong>具名规则</strong>像某条已有记录</td><td><span class="chip c-block">必须人答</span></td></tr>
+      <tr><td><code>conflict</code></td><td>同一条记录，某个值不一样</td><td><span class="chip c-block">必须人答</span></td></tr>
+    </tbody>
+  </table></div>
+  <p>四个答复：<code>create_new</code>（是两个人）· <code>merge_into</code>（是同一个）· <code>accept_change</code>（世界变了 → 落值并生成事件）· <code>keep_current</code>（那个说法不对 → 不改值，但把「有人这么说过、被驳回」写进时间轴）。</p>
+
+  <h4>合并候选的三条具名规则 —— 每条都要两个信号</h4>
+  <div class="tw"><table>
+    <thead><tr><th class="col-n">规则键</th><th>触发条件</th></tr></thead>
+    <tbody>
+      <tr><td><code>same_org_same_unit_shared_surname</code></td><td>同公司 + 同组 + 同姓 + 一个称呼是另一个的缩写（王总 → 王，是 王五 的前缀）</td></tr>
+      <tr><td><code>same_org_same_role_shared_surname</code></td><td>同公司 + 同职务 + 同姓 + 称呼可缩写</td></tr>
+      <tr><td><code>same_org_label_contained</code></td><td>组织 / 单元：同公司 + 一个名字包含另一个（c业务组 / c组）</td></tr>
+    </tbody>
+  </table></div>
+  <div class="why">
+    <span class="tag">为什么「王五 vs 王六」不算候选</span>
+    <p>同姓在任何一家中国公司都能匹配三分之一的人，是<strong>弱信号</strong>。规则额外要求「一个称呼是另一个的缩写」——王五和王六互相都不是前缀，所以它们是两个人。<em>永远不靠单一弱信号，永远说出是哪两个。</em></p>
+  </div>
+
+  <div class="why">
+    <span class="tag">工具层已交付 <span class="chip c-ok">2026-09-10</span></span>
+    <p><code>internal/leadgraph/tool.go</code> —— 11 个工具，四组齐全，每个带 JSON Schema、风险等级和实现。三条保证：<strong>所有对象 <code>additionalProperties:false</code> 且校验在进入 <code>Run</code> 之前</strong>（带 <code>匹配度</code> 的调用在门口就被拒）；<strong>不可逆操作的审批绑定这一次调用的参数哈希</strong>（给另一条记录的审批放不了这一条过）；只读工具不需要审批（给读也加闸门会训练调用方「什么都批」）。</p>
+    <p><strong>一处如实记录的成本：</strong>这个包自带了一份 JSON Schema 子集（约 150 行），没有复用兄弟产品的 <code>internal/tools</code> —— 那会把它的 consent scope、role 和意图登记表一起拖进来。这是<em>已知的重复</em>，也是 Q4 拆仓时第一个该抽成共享库的部分。</p>
+  </div>
+
+  <div class="why">
+    <span class="tag">为什么 reconcile 和 apply 必须拆成两个工具</span>
+    <p>这是本产品最关键的一个结构决定。如果让模型一边判断一边写库，「这两个王五是不是同一个人」就成了一次<strong>不可复现的模型判断</strong>：同一份数据两次可能给出不同答案，用户的图会随机漂移，而且<em>没法写测试</em>。</p>
+    <p>拆开之后，合并与冲突的判定是一个<strong>确定性的、可测试的、可回归的只读函数</strong>；模型只负责两件它擅长的事——把话变成候选事实，以及把冲突讲给用户听。</p>
+  </div>
+
+  <h4>B · 组织与查询 —— Agent 把图理清楚</h4>
+  <div class="tw"><table>
+    <thead><tr><th class="col-n">工具</th><th class="col-n">风险</th><th>做什么</th></tr></thead>
+    <tbody>
+      <tr><td><code>graph_query</code></td><td><span class="chip c-mute">只读</span></td><td>按公司 / 单元 / 类别 / 时间查节点和边</td></tr>
+      <tr><td><code>org_chart</code></td><td><span class="chip c-mute">只读</span></td><td>某公司的架构树。<strong>残缺就画成残缺</strong>，不补全</td></tr>
+      <tr><td><code>path_find</code></td><td><span class="chip c-mute">只读</span></td><td>我 → ? → 目标人，最多 3 条最短路径，每跳带关系强度和来源</td></tr>
+      <tr><td><code>stale_scan</code></td><td><span class="chip c-mute">只读</span></td><td>扫出待确认字段、超过 N 个月没更新的关系、悬空的下一步</td></tr>
+    </tbody>
+  </table></div>
+
+  <h4>C · 情报与线索 —— Agent 主动去看外面</h4>
+  <div class="tw"><table>
+    <thead><tr><th class="col-n">工具</th><th class="col-n">风险</th><th>做什么</th></tr></thead>
+    <tbody>
+      <tr><td><code>public_source_fetch</code></td><td><span class="chip c-mute">只读</span></td><td><strong>仅限合法公开源</strong>：公司公告、招聘网站公开 JD、公开新闻、工商变更。返回原文片段 + URL + 抓取时间</td></tr>
+      <tr><td><code>signal_extract</code></td><td><span class="chip c-mute">只读</span></td><td>从公开源文本抽出组织变动信号，输出候选 <code>Event</code>，每条必须引用原文片段</td></tr>
+      <tr><td><code>lead_board</code></td><td><span class="chip c-mute">只读</span></td><td>线索看板：按窗口期排序，每条附<strong>它由哪几条信号构成</strong></td></tr>
+    </tbody>
+  </table></div>
+
+  <h4>D · 触达与合规</h4>
+  <div class="tw"><table>
+    <thead><tr><th class="col-n">工具</th><th class="col-n">风险</th><th>做什么</th></tr></thead>
+    <tbody>
+      <tr><td><code>outreach_log</code></td><td><span class="chip c-ok">低</span></td><td>记一次触达及结果</td></tr>
+      <tr><td><code>outreach_plan</code></td><td><span class="chip c-ok">低</span></td><td>排下一次跟进；带节流（同一个人 N 天内不重复提醒）</td></tr>
+      <tr><td><code>subject_request</code></td><td><span class="chip c-block">不可逆</span></td><td>处理被记录人的查询 / 更正 / 删除请求。删除是真删</td></tr>
+      <tr><td><code>graph_forget</code></td><td><span class="chip c-block">不可逆</span></td><td>删节点 / 整家公司 / 整张图</td></tr>
+    </tbody>
+  </table></div>
+  <p><strong>风险分级的实际含义：</strong>标「不可逆」的工具走人工审批，审批与<em>这一次调用的参数哈希</em>绑定——用户看到的就是将要执行的那组参数，不是一句概括。</p>
+
+  <h3>5.3　Agent 的维护循环</h3>
+  <p>Agent 有<strong>两条</strong>跑动路径，缺一不可。</p>
+
+  <figure>
+    <div class="fig-body">
+      <svg viewBox="0 0 780 300" role="img" aria-label="Agent 的两条维护路径：对话中每轮被动触发，后台每天主动触发，两者都写入同一张图谱">
+        <text x="0" y="20" class="sv-m">路径一 · 对话中 · 每一轮</text>
+        <g>
+          <rect x="0" y="34" width="104" height="46" rx="2" class="sv-box"/>
+          <text x="52" y="55" text-anchor="middle" class="sv-t">用户说话</text>
+          <text x="52" y="70" text-anchor="middle" class="sv-s">顺口一句</text>
+          <rect x="120" y="34" width="104" height="46" rx="2" class="sv-box"/>
+          <text x="172" y="55" text-anchor="middle" class="sv-t">抽出候选事实</text>
+          <text x="172" y="70" text-anchor="middle" class="sv-s">plan 阶段</text>
+          <rect x="240" y="34" width="118" height="46" rx="2" class="sv-box-a"/>
+          <text x="299" y="55" text-anchor="middle" class="sv-t">reconcile 对账</text>
+          <text x="299" y="70" text-anchor="middle" class="sv-s">确定性 · 只读</text>
+          <rect x="374" y="34" width="104" height="46" rx="2" class="sv-box"/>
+          <text x="426" y="52" text-anchor="middle" class="sv-t">有把握 → 落库</text>
+          <text x="426" y="70" text-anchor="middle" class="sv-s">有冲突 → 攒起来</text>
+          <rect x="494" y="34" width="118" height="46" rx="2" class="sv-box"/>
+          <text x="553" y="52" text-anchor="middle" class="sv-t">回答 + 一行回执</text>
+          <text x="553" y="70" text-anchor="middle" class="sv-s">最多问一个问题</text>
+        </g>
+        <g class="sv-line" stroke-width="1">
+          <path d="M104 57 L118 57" marker-end="url(#ah)"/>
+          <path d="M224 57 L238 57" marker-end="url(#ah)"/>
+          <path d="M358 57 L372 57" marker-end="url(#ah)"/>
+          <path d="M478 57 L492 57" marker-end="url(#ah)"/>
+        </g>
+
+        <text x="0" y="185" class="sv-m">路径二 · 后台 · 每天一次</text>
+        <g>
+          <rect x="0" y="199" width="104" height="46" rx="2" class="sv-box"/>
+          <text x="52" y="220" text-anchor="middle" class="sv-t">定时触发</text>
+          <text x="52" y="235" text-anchor="middle" class="sv-s">关注公司清单</text>
+          <rect x="120" y="199" width="104" height="46" rx="2" class="sv-box"/>
+          <text x="172" y="220" text-anchor="middle" class="sv-t">公开源抓取</text>
+          <text x="172" y="235" text-anchor="middle" class="sv-s">JD · 公告 · 工商</text>
+          <rect x="240" y="199" width="118" height="46" rx="2" class="sv-box"/>
+          <text x="299" y="220" text-anchor="middle" class="sv-t">信号抽取</text>
+          <text x="299" y="235" text-anchor="middle" class="sv-s">带原文片段</text>
+          <rect x="374" y="199" width="104" height="46" rx="2" class="sv-box-a"/>
+          <text x="426" y="220" text-anchor="middle" class="sv-t">对账去重</text>
+          <text x="426" y="235" text-anchor="middle" class="sv-s">同一函数</text>
+          <rect x="494" y="199" width="118" height="46" rx="2" class="sv-box-w"/>
+          <text x="553" y="220" text-anchor="middle" class="sv-t">预警 + 保鲜提醒</text>
+          <text x="553" y="235" text-anchor="middle" class="sv-s">不占对话轮次</text>
+        </g>
+        <g class="sv-line" stroke-width="1">
+          <path d="M104 222 L118 222" marker-end="url(#ah)"/>
+          <path d="M224 222 L238 222" marker-end="url(#ah)"/>
+          <path d="M358 222 L372 222" marker-end="url(#ah)"/>
+          <path d="M478 222 L492 222" marker-end="url(#ah)"/>
+        </g>
+
+        <rect x="646" y="34" width="126" height="211" rx="2" class="sv-box-a"/>
+        <text x="709" y="132" text-anchor="middle" class="sv-t" style="font-size:14px">同一张图谱</text>
+        <text x="709" y="152" text-anchor="middle" class="sv-s">节点 · 边 · 事件时间轴</text>
+        <g class="sv-line-a" stroke-width="1.2">
+          <path d="M612 57 L644 57" marker-end="url(#aha)"/>
+          <path d="M612 222 L644 222" marker-end="url(#aha)"/>
+        </g>
+
+        <defs>
+          <marker id="ah" viewBox="0 0 8 8" refX="7" refY="4" markerWidth="7" markerHeight="7" orient="auto">
+            <path d="M0 0 L8 4 L0 8 z" fill="var(--line-2)"/>
+          </marker>
+          <marker id="aha" viewBox="0 0 8 8" refX="7" refY="4" markerWidth="7" markerHeight="7" orient="auto">
+            <path d="M0 0 L8 4 L0 8 z" fill="var(--accent)"/>
+          </marker>
+        </defs>
+      </svg>
+    </div>
+    <figcaption>两条路径共用同一个 <code>reconcile</code> 函数，所以「用户说的」和「系统抓的」不会各自建出一份重复的图。</figcaption>
+  </figure>
+
+  <div class="why">
+    <span class="tag">为什么回执只有一行、问题最多一个</span>
+    <p>用户是在干别的事的过程中顺口说了那句话。一个每次都跳出来确认三件事的助手，第二天就会被绕开——用户会停止告诉它任何事，图随之饿死。<strong>「不打断」不是体验优化，是这个产品能不能活下来的前提。</strong></p>
+  </div>
+
+  <h4>路径一的三条硬约束 <span class="chip c-ok">已实现</span></h4>
+  <div class="tw"><table>
+    <thead><tr><th class="col-n">约束</th><th>为什么</th></tr></thead>
+    <tbody>
+      <tr><td>一轮<strong>最多一个问题</strong></td><td>不是每条一个，是<em>总共</em>一个。其余进队列，跨轮保留</td></tr>
+      <tr><td>没记下东西就<strong>不出回执</strong></td><td>每轮都有回执 = 噪音；噪音会让「一行回执」变成用户学会跳过的东西</td></tr>
+      <tr><td>安静<strong>不等于</strong>放行</td><td>这轮没空问的判断<strong>一条都不落库</strong>。被动 ≠ 宽松</td></tr>
+    </tbody>
+  </table></div>
+
+  <div class="why">
+    <span class="tag">两个排序决定</span>
+    <p><strong>① 冲突优先于合并。</strong>冲突意味着图上存着一条被用户刚说的话推翻的事实——不问，下一次回答就会引用一条他刚纠正过的事实，这是最快丢掉信任的方式。未解决的合并只是多一条重复记录：看得见、无害、以后能修。</p>
+    <p><strong>② 问过一次没答的，下一轮不再问。</strong>用户没答的问题第二次并不会更紧急。重复问是唠叨，唠叨会训练用户忽略这个通道。</p>
+  </div>
+
+  <div class="why">
+    <span class="tag">队列按席位，不按团队</span>
+    <p>问题是关于<strong>这个人自己那次对话</strong>的。一个没听过那场对话的同事去回答，比没人回答更糟。顾问离职时队列随他删除——留着是一份只会增长、没人能答的积压。</p>
+    <p>另外，<strong>「算了」和「我决定了」是两个 API</strong>（<code>DropPending</code> vs <code>Answer</code>），这样「我不想决定」永远不会在记录里被当成「我决定了」。</p>
+  </div>
+
+  <div class="why">
+    <span class="tag">为什么必须有路径二</span>
+    <p>只靠路径一，图只会记录<em>用户已经知道的事</em>——而这个产品的价值恰恰是<strong>告诉用户他还不知道的事</strong>。没有路径二，它就是个手工 CRM，卖不出溢价。</p>
+  </div>
+
+  <h4>组织变动预警长什么样</h4>
+  <div class="mock">
+    <div class="mock-bar"><span>预警 · 组织变动</span><span>8/29 · 未证实</span></div>
+    <div class="mock-body">
+      <h5>A 司 · c 业务组 并入 b 业务组</h5>
+      <div class="row"><span class="who">你图上在 c 组的有 3 个人：</span></div>
+      <div class="row"><span class="who">王五</span><span class="src">组长 · 6/12 电话</span><span class="chip c-warn">职责待确认</span></div>
+      <div class="row"><span class="who">张三</span><span class="src">高级工程师 · 3/04 现场</span></div>
+      <div class="row"><span class="who">李四</span><span class="src">职责待确认</span><span class="chip c-mute">6 个月未更新</span></div>
+      <div class="ask">这条你标的是<strong>听说</strong>，还没证实。要把它挂成某条线索的信号吗？<br>下次可以问王五：「你们组这次调整，你那块是怎么安排的？」</div>
+      <div class="btnrow"><span class="btn pri">标为已证实</span><span class="btn">标为不实</span><span class="btn">挂到线索…</span><span class="btn">找引荐路径</span></div>
+    </div>
+  </div>
+
+  <h3>5.4　冲突怎么处理</h3>
+  <p>这是 Agent 做整理最难的一段，也是最容易被做成「静默覆盖」的一段。</p>
+  <div class="tw"><table>
+    <thead><tr><th class="col-n">冲突类型</th><th class="col-n">例子</th><th>处理规则</th></tr></thead>
+    <tbody>
+      <tr><td>同一实体<br>不同叫法</td><td>王五 / 王总 / 老王</td><td><code>reconcile</code> 给出合并候选 + 依据（同公司同组同职务），<strong>必须用户确认才合并</strong>。绝不自动合并</td></tr>
+      <tr><td>同一字段<br>不同值</td><td>上次说组长<br>这次说总监</td><td><strong>默认解释为「发生了变化」</strong>：生成一条晋升事件，旧值保留在时间轴上；同时问一句「是升了，还是我之前记错了？」</td></tr>
+      <tr><td>传闻与官方<br>冲突</td><td>听说要裁撤<br>公告说是合并</td><td>官方优先成为当前值，<strong>传闻不删</strong>，留在时间轴上并标注「后被公告推翻」</td></tr>
+      <tr><td>同一情报<br>重复进来</td><td>用户说过一遍<br>新闻里又抓到</td><td>幂等键 =（来源标识, 实体键）。重复不产生新节点，但证实状态从 <span class="chip c-warn">听说</span> 升到 <span class="chip c-info">多源印证</span></td></tr>
+    </tbody>
+  </table></div>
+
+  <div class="why redline">
+    <span class="tag">两条铁律</span>
+    <p><strong>一 · 绝不静默覆盖。</strong>任何对已有字段的修改都留痕、都可回溯。这类系统最致命的失败是——用户几周后基于一个被悄悄改过的事实做了决定，而且<em>没有任何痕迹能让他发现</em>。宁可多问一句，不可静默改一次。</p>
+    <p><strong>二 · 默认解释为「世界变了」，而不是「用户记错了」。</strong>这个产品的全部价值建立在追踪变化上。把变化当成录入错误改掉，等于把产品最值钱的那类数据当垃圾删了。</p>
+  </div>
+
+  <h3>5.5　校验器</h3>
+  <div class="tw"><table>
+    <thead><tr><th class="col-n">校验器</th><th class="col-n">严重级</th><th>拦什么</th></tr></thead>
+    <tbody>
+      <tr><td><code>source_required</code></td><td><span class="chip c-block">阻断</span></td><td>任何节点 / 边 / 事件落库时来源为空</td></tr>
+      <tr><td><code>no_silent_overwrite</code></td><td><span class="chip c-block">阻断</span></td><td>修改已有字段却没有生成变更记录</td></tr>
+      <tr><td><code>score_is_explained</code></td><td><span class="chip c-block">阻断</span></td><td>输出分数却没有附上构成它的具名信号</td></tr>
+      <tr><td><code>no_sensitive_fields</code></td><td><span class="chip c-block">阻断</span></td><td>健康、婚育、宗教、政治、金融账户、行踪轨迹入库</td></tr>
+      <tr><td><code>no_scraped_source</code></td><td><span class="chip c-block">阻断</span></td><td>情报来源指向禁止来源清单里的平台</td></tr>
+      <tr><td><code>corroboration_stated</code></td><td><span class="chip c-warn">修复</span></td><td>把「听说」说成已发生的事实</td></tr>
+    </tbody>
+  </table></div>
+</section>
+
+<section id="s6">
+  <h2><span class="num">06</span><span>数据模型</span></h2>
+  <div class="tw"><table>
+    <thead><tr><th class="col-n">节点类型</th><th>说明</th></tr></thead>
+    <tbody>
+      <tr><td><code>org</code></td><td>公司</td></tr>
+      <tr><td><code>unit</code></td><td>部门 / 业务组 —— <strong>组织变动的主体</strong></td></tr>
+      <tr><td><code>person</code></td><td>人</td></tr>
+      <tr><td><code>event</code></td><td>组织变动。有时间点，追加不覆盖</td></tr>
+      <tr><td><code>lead</code></td><td>线索。主体是 unit 或岗位，<strong>不是人</strong></td></tr>
+      <tr><td><code>outreach</code></td><td>一次触达</td></tr>
+    </tbody>
+  </table></div>
+
+  <h4>关键字段</h4>
+  <div class="tw"><table>
+    <thead><tr><th class="col-n">字段</th><th>作用</th></tr></thead>
+    <tbody>
+      <tr><td><code>UnitPath</code></td><td><code>["A司","技术中心","c业务组"]</code> —— 架构树的层级</td></tr>
+      <tr><td><code>Intel[]</code></td><td>支撑这个节点的每一条情报：来源类型、URL、<strong>原文片段</strong>、抓取时间、证实状态</td></tr>
+      <tr><td><code>Unconfirmed[]</code></td><td>哪些字段还没有来源。序列化必须是 <code>[]</code> 而不是 <code>null</code></td></tr>
+      <tr><td><code>History[]</code></td><td>每次字段变更的留痕，<code>no_silent_overwrite</code> 的落点</td></tr>
+      <tr><td><code>Edge.Strength</code></td><td>关系强度 1–3，<strong>只能由用户填，系统不推断</strong></td></tr>
+      <tr><td><code>Edge.ValidUntil</code></td><td>组织调整后旧的隶属边在这里截止，<strong>而不是被删掉</strong></td></tr>
+    </tbody>
+  </table></div>
+
+  <div class="why">
+    <span class="tag">三个刻意的设计决定</span>
+    <p><strong>① <code>Intel</code> 为空的边，store 层直接拒收。</strong>让「每条线都有来源」成为存储层的性质，而不是靠调用方自觉。校验器是第二道防线，不是第一道。</p>
+    <p><strong>② 组织调整时旧边写 <code>ValidUntil</code> 而不是删除。</strong>三个月后要回答「他当时在哪个组」。删掉就答不出来了，而这正是本产品的核心资产。</p>
+    <p><strong>③ <code>unit</code> 是一等公民节点，不是 person 上的一个字符串字段。</strong>组织变动的主体是<em>组</em>不是人。「c 组并入 b 组」必须能一次性作用到组里所有人，字符串字段做不到这件事。</p>
+  </div>
+</section>
+
+<section id="s7">
+  <h2><span class="num">07</span><span>情报来源分级与合规红线</span></h2>
+  <p class="lede">这一节决定公司会不会出事。前面所有设计都可以慢慢演进，<strong>这一节的红线必须在第一行代码之前定死。</strong></p>
+
+  <div class="tw"><table>
+    <thead><tr><th class="col-n">级别</th><th class="col-n">来源</th><th>能不能用</th></tr></thead>
+    <tbody>
+      <tr><td><span class="chip c-ok">自有</span></td><td>用户自己的接触、团队内共享、朋友告知</td><td>能。标 <code>user_said</code>，默认「听说」</td></tr>
+      <tr><td><span class="chip c-ok">合法公开</span></td><td>公司公告、财报、官方新闻、招聘网站公开 JD、工商登记变更</td><td>能。必须存 URL + 抓取时间 + 原文片段</td></tr>
+      <tr><td><span class="chip c-warn">采购</span></td><td>第三方联系方式库</td><td><strong>默认不接。</strong>要接必须先拿到供应商的来源合法性证明与授权链路说明</td></tr>
+      <tr><td><span class="chip c-block">抓取</span></td><td>领英 / 脉脉 / BOSS 等平台的简历、动态、通讯录</td><td><strong>禁止，写死在代码里</strong></td></tr>
+    </tbody>
+  </table></div>
+
+  <div class="why redline">
+    <span class="tag">为什么「抓平台」这条必须写死，而不是做成开关</span>
+    <p>它同时踩三样东西，而且代价是<strong>刑事和民事级别，不是罚款级别</strong>：① 违反平台服务条款——账号封禁、平台民事索赔，国内已有多起判例；② 可能触及《刑法》285 条「非法获取计算机信息系统数据」——绕过反爬措施获取数据；③ 《个人信息保护法》——抓来的个人信息没有任何合法处理依据。</p>
+    <p><strong>开关会被打开。</strong>所以它不是一个默认关闭的配置项，而是一份<em>禁止来源清单 + 一道阻断级校验器 + 一条围栏测试</em>。要打开它，需要改代码、过评审、留下记录。</p>
+  </div>
+
+  <h4>P6 + P9 一起做的原因：它们共用同一份记录 <span class="chip c-ok">已实现</span></h4>
+  <p>P6 要知道「上次这个源说了什么」才能发现某个组不再招人；P9 要知道「这条事实从哪来」才能回答主体查询。这是同一张表：<strong>每次抓取一行，无论有没有产出</strong>。</p>
+  <div class="why">
+    <span class="tag">保留「什么都没产出」的那些行才是关键</span>
+    <p>「我们看过了，没有」和「我们从来没看」是两个不同的答案，<strong>只有台账分得清</strong>。</p>
+  </div>
+
+  <div class="tw"><table>
+    <thead><tr><th class="col-n">P6 的规则</th><th>为什么</th></tr></thead>
+    <tbody>
+      <tr><td>禁止来源<strong>在发请求之前</strong>就被拒</td><td>只在存储层拒绝已经太晚：那时爬取已经发生、对方的日志已经存在、ToS 已经违反。<code>Source</code> 必须声明它会访问哪些 host，声明里带禁止 host 的源<strong>一次请求都不会发出</strong>；返回结果里再查一遍 URL 是纵深防御，不是主闸门</td></tr>
+      <tr><td>招聘广告产出 <code>unit</code>，不产出 <code>event</code></td><td>一条广告说明这个组存在、在招人；它<strong>没有说发生了什么</strong>。硬变成事件就是制造新闻。真正的信号是<em>时间上的缺席</em>（<code>HiringGap</code> 从台账算），不是从一条广告里猜</td></tr>
+      <tr><td>工商变更 / 公司公告 = <span class="chip c-ok">官方公布</span></td><td>这是公司自己在说话，是本包里<strong>唯一</strong>产生这个等级的地方</td></tr>
+    </tbody>
+  </table></div>
+
+  <div class="why redline">
+    <span class="tag">预警只说两件用户已经告诉过我们的事</span>
+    <p>「A 司 c 组并入 b 组（公告）+ 你图上在 c 组的有 3 个人」。<strong>没有分数、没有排序、不预测任何人的去留</strong> —— §05.7 那条边界的落点。而且<strong>一个事件只预警一次</strong>：重复提醒等于催促行动，这个功能的定位是「别错过」，不是「快去联系」。</p>
+    <p>预警里「谁在那个组」直接复用架构树，所以它自动继承了「已截止的隶属不回落到旧组」那条规则。</p>
+  </div>
+
+  <h3>7.2　敏感个人信息一律不入库 <span class="chip c-ok">已实现</span></h3>
+  <p>健康、婚育、宗教、政治、金融账户、行踪轨迹——<strong>字段层面拦截</strong>，不是「尽量不记」。</p>
+  <div class="why">
+    <span class="tag">两个理由，一个合规一个业务</span>
+    <p>① 《个人信息保护法》第 28–29 条：敏感个人信息需要<em>单独同意</em>加必要性论证，本产品拿不到。<br>② <strong>它对判断根本没用。</strong>加进去只增加风险，不增加成单率。</p>
+    <p><strong>落地：</strong>健康 / 婚育 / 宗教 / 政治 / 金融证件 / 行踪 六类词表，<strong>在写入时拒绝</strong>，所有接受自由文本的路径都接了（节点、边、接触记录、私人备注）。</p>
+  </div>
+  <div class="why">
+    <span class="tag">误伤是明说的取舍</span>
+    <p>「残疾证办理专员」是真实岗位。所以词表刻意<strong>窄而具体</strong>——多字、难以无辜使用的词，不用「病」「残疾」这种裸词。误伤时报错<strong>指名是哪个词、哪一类</strong>，让用户一次改对而不是猜。<em>加宽这张表是产品决策，不是 bug fix。</em></p>
+  </div>
+
+  <h3>7.3　被记录人的权利通道</h3>
+  <p>被记录的人有权查询、更正、删除关于自己的记录（《个人信息保护法》44–47 条）。必须有一条<strong>真实可走完</strong>的通道：查询返回系统里关于他的全部记录及来源；更正要改并留痕；删除是<em>真删</em>，包括团队共享副本和导出记录里的引用。</p>
+  <div class="why redline">
+    <span class="tag">两个需要你知道的判断</span>
+    <p><strong>① <code>SubjectRecords</code> 是本包里唯一跨团队的读，而且不接受 <code>View</code>。</strong>一个人的权利是关于他自己的，不是关于我们的租户模型；让他先说出「可能哪几个团队存了我」是不可能的，只答一个团队就是答错。它是<em>运营动作</em>，每碰一个团队写一条审计。</p>
+    <p><strong>② 私人备注会交给主体本人。</strong>这是真实的张力——顾问的私人判断变成可披露的，会改变他愿意写什么——这里按法律口径判给主体。<strong>建议找法务确认后再定稿。</strong></p>
+  </div>
+
+  <div class="why">
+    <span class="tag">为什么这不只是合规成本</span>
+    <p>这是风控。to B 客户最怕的不是罚款，是<strong>一封投诉信让客户的品牌部介入</strong>。有一条能立刻走完的删除通道，这件事停在客服层面；没有，它会一路走到客户的法务。</p>
+  </div>
+</section>
+
+<section id="s8">
+  <h2><span class="num">08</span><span>线索评分：可以有分数，但分数必须能被拆开</span></h2>
+  <p class="lede">要「离职提醒」就是要<strong>排序</strong>。这里不回避排序，但对分数有三条硬约束。</p>
+
+  <h3>8.1　评的是「处境」，主体尽量是组织单元，不是人</h3>
+  <div class="mock">
+    <div class="mock-bar"><span>线索 · c 业务组 · 稳定性信号</span><span>窗口期 ≈ 3 个月</span></div>
+    <div class="mock-body">
+      <div class="sig"><span class="w">+++</span><span>并入 b 组</span><span class="src">公告 · 8/29 <span class="chip c-ok">官方</span></span></div>
+      <div class="sig"><span class="w">++</span><span>该组 6 个月无新增招聘</span><span class="src">招聘网站 · 9/1 <span class="chip c-info">多源</span></span></div>
+      <div class="sig"><span class="w neg">−</span><span>组长上季度公开分享过团队规划</span><span class="src">公开动态 · 6/12</span></div>
+      <div class="ask">图上你认识 3 个人：<strong>王五</strong>（组长）、张三、李四。<span class="chip c-info">2 跳可达</span></div>
+    </div>
+  </div>
+
+  <div class="why">
+    <span class="tag">为什么主体是组不是人</span>
+    <p>组织级信号<strong>推不出</strong>个人意图。硬推出来的「王五 87% 会离职」是编的——猎头拿去用，第一句话就会露馅，转化率反而更低。个人级分数只在有<em>个人级信号</em>时才成立（本人公开表达、简历更新、公开求职），而这类信号本来就少。</p>
+  </div>
+
+  <h3>8.2　分数必须附带构成它的具名信号 <span class="chip c-ok">已实现</span></h3>
+  <p>界面上永远是「因为这几条」，不是一个孤零零的数字。</p>
+  <div class="why redline">
+    <span class="tag">做成结构上不可能违反，而不是事后检查</span>
+    <p><strong><code>Score()</code> 是方法，不是字段</strong> —— 它由 <code>Signals</code> 求和得出。于是「持有一个没有证据的分数」这件事<em>在类型上就不存在</em>，也没有任何未来的代码路径能忘记附上证据。<strong>一道校验器只是它的弱化版。</strong></p>
+    <p>猎头要用这个分数决定<em>今天打哪通电话</em>。一个黑箱数字既没法验证也没法反驳，用错了还没法归因。<strong>可拆开的分数才是能改进的分数。</strong></p>
+  </div>
+  <div class="why">
+    <span class="tag">权重是一张表，窗口期自带定义</span>
+    <p>每个数字都在界面上紧挨着它的来源；散进 <code>if</code> 里，恰好会让榜单在有人不同意它的时候解释不清 —— 而那正是解释存在的意义。事件权重随证实等级上升（公告 3 / 多源 2 / 听说 1）：<strong>如果公告和传闻等重，追踪证实等级就只是装饰</strong>。</p>
+    <p>界面写的是「窗口期约剩 77 天（自最近一条信号起算 90 天）」—— 90 天是<em>约定</em>不是测量，所以印在数字旁边。<strong>一个需要读者信任的数字，不是一个被解释过的数字。</strong></p>
+  </div>
+  <div class="why redline">
+    <span class="tag">走查又抓到两个（第二次证明「跑测试 ≠ 走查」）</span>
+    <p><strong>① 同一个组在榜上出现两行</strong>，一行带人一行不带 —— 「c业务组」在图上有两个位置。榜单原本是「每个图节点一行」，而它应该是<strong>每个「情形」一行</strong>：事件说的是「A司的c业务组」，这样的情形只有一个。已按 (公司, 组名) 合并、人去重、信号只算一次，并在行上注明名字出现在几个位置。</p>
+    <p><strong>② Go 代码里写了英文界面句子</strong>（<code>"no advert seen for 240 days"</code>）出现在全中文页面上 —— 我自己在 P3 定的规矩被自己破了。已改为信号只带 <code>Kind</code> + <code>Days</code>，句子由模板渲染。</p>
+  </div>
+
+  <h3>8.3　分数不进导出、不进 API、不出现在给候选人看的任何地方</h3>
+  <div class="why redline">
+    <span class="tag">为什么这条要在两层各拦一次</span>
+    <p>一份「离职可能性排行榜」外流的后果远不止是尴尬——<strong>榜上的人可能因此在自己公司里出事。</strong>导出和 API 是两条独立的出口，各拦一次，各配一条围栏测试。</p>
+  </div>
+</section>
+
+<section id="s9">
+  <h2><span class="num">09</span><span>图谱与三个视图</span></h2>
+  <div class="tw"><table>
+    <thead><tr><th class="col-n">视图</th><th class="col-n">回答什么问题</th><th>形态</th></tr></thead>
+    <tbody>
+      <tr><td>组织架构图 <span class="chip c-ok">已实现</span></td><td>A 司这个组都有谁？</td><td>层级树。已记录实线、只被提过虚线、<strong>不知道就空着</strong>，不补全</td></tr>
+      <tr><td>关系图谱</td><td>谁跟谁认识？</td><td>力导向图。分类筛选、拖拽、缩放、点击看详情</td></tr>
+      <tr><td><strong>引荐路径</strong> <span class="chip c-ok">已实现</span></td><td><strong>我怎么够到他？</strong></td><td>从我出发的连接链，最多 3 条，每跳带关系强度和来源</td></tr>
+    </tbody>
+  </table></div>
+
+  <figure>
+    <div class="fig-body">
+      <svg viewBox="0 0 780 226" role="img" aria-label="引荐路径示意：经张三与 b2 两跳可达王五，或经李四一跳但关系弱">
+        <text x="0" y="18" class="sv-m">路径 A · 2 跳可达 · 建议走这条</text>
+        <g>
+          <circle cx="40" cy="62" r="24" class="sv-box-a"/>
+          <text x="40" y="67" text-anchor="middle" class="sv-t">你</text>
+          <circle cx="230" cy="62" r="24" class="sv-box"/>
+          <text x="230" y="67" text-anchor="middle" class="sv-t">张三</text>
+          <circle cx="440" cy="62" r="24" class="sv-box"/>
+          <text x="440" y="67" text-anchor="middle" class="sv-t">b2</text>
+          <circle cx="650" cy="62" r="26" class="sv-box-w"/>
+          <text x="650" y="67" text-anchor="middle" class="sv-t">王五</text>
+        </g>
+        <g class="sv-line-a" stroke-width="1.6">
+          <path d="M64 62 L204 62" marker-end="url(#ah2)"/>
+          <path d="M254 62 L414 62" marker-end="url(#ah2)"/>
+          <path d="M464 62 L622 62" marker-end="url(#ah2)"/>
+        </g>
+        <text x="134" y="52" text-anchor="middle" class="sv-s">前同事 · 强</text>
+        <text x="134" y="80" text-anchor="middle" class="sv-s">2019–21 A 司同项目</text>
+        <text x="334" y="52" text-anchor="middle" class="sv-s">现同事 · 中</text>
+        <text x="334" y="80" text-anchor="middle" class="sv-s">张三 8/12 提到</text>
+        <text x="543" y="52" text-anchor="middle" class="sv-s">直属上级 · 强</text>
+        <text x="543" y="80" text-anchor="middle" class="sv-s">C 司架构图</text>
+        <text x="650" y="106" text-anchor="middle" class="sv-s">目标 · c 组组长</text>
+
+        <text x="0" y="152" class="sv-m">路径 B · 1 跳但关系弱</text>
+        <g>
+          <circle cx="40" cy="192" r="22" class="sv-box-a"/>
+          <text x="40" y="197" text-anchor="middle" class="sv-t">你</text>
+          <circle cx="330" cy="192" r="22" class="sv-box"/>
+          <text x="330" y="197" text-anchor="middle" class="sv-t">李四</text>
+          <circle cx="650" cy="192" r="24" class="sv-box-w"/>
+          <text x="650" y="197" text-anchor="middle" class="sv-t">王五</text>
+        </g>
+        <g class="sv-line" stroke-width="1.4" stroke-dasharray="5 4">
+          <path d="M62 192 L306 192" marker-end="url(#ah)"/>
+          <path d="M352 192 L624 192" marker-end="url(#ah)"/>
+        </g>
+        <text x="184" y="182" text-anchor="middle" class="sv-s">微信群认识 · 弱</text>
+        <text x="488" y="182" text-anchor="middle" class="sv-s">同行 · 弱 · 未证实</text>
+        <defs>
+          <marker id="ah2" viewBox="0 0 8 8" refX="7" refY="4" markerWidth="7" markerHeight="7" orient="auto">
+            <path d="M0 0 L8 4 L0 8 z" fill="var(--accent)"/>
+          </marker>
+        </defs>
+      </svg>
+    </div>
+    <figcaption>跳数少不等于路径好。关系强度和来源必须和跳数一起显示，否则用户会挑一条走不通的最短路。</figcaption>
+  </figure>
+
+  <h4>架构树：核心不是画树，是把「不知道」画出来 <span class="chip c-ok">已实现</span></h4>
+  <div class="tw"><table>
+    <thead><tr><th class="col-n">规则</th><th>落点</th></tr></thead>
+    <tbody>
+      <tr><td>不凭空造层级</td><td>树只由<strong>有人说过的路径</strong>构成：已记录的 unit 路径 + 能放进去的人的路径。中间不插值</td></tr>
+      <tr><td>只被提过的层级标 <code>mentioned</code></td><td>界面画虚线：它有名字，但我们手上没有关于它的任何东西</td></tr>
+      <tr><td>放不进去的人<strong>列出来</strong></td><td>一个被悄悄丢掉的人，和一个不存在的人，在页面上长得一模一样</td></tr>
+      <tr><td>同名两处报歧义</td><td>「c业务组」出现在两个深度：可能是同一个组，也可能是两个，都说出来而不是挑一个</td></tr>
+      <tr><td>计数来自树本身</td><td>从别处算的汇总，就是「9 个人的列表上面写着 12 人」的来源</td></tr>
+    </tbody>
+  </table></div>
+
+  <div class="why redline">
+    <span class="tag">已截止的隶属，不回落到人身上那条路径</span>
+    <p>组织调整后 <code>belongs_to</code> 被截止，但这个人自己的 <code>UnitPath</code> 字段还写着老组。如果「找不到有效隶属就去读那个字段」，<strong>就会把他放回他刚离开的组</strong> —— 而那正是有人要照着这张图去联系他的时刻，是这张图能犯的最贵的错。</p>
+    <p>规则：<strong>只要他有过隶属关系，就只认还有效的那些</strong>；全截止了就是「不知道他现在在哪」，并附上截止日期。围栏同时验证「调整后不在旧组」和「调整前的历史仍然答得出来」。</p>
+  </div>
+
+  <div class="why">
+    <span class="tag">文字兜底是从架构树推导的，不是另查一遍</span>
+    <p>它们回答同一个问题，各写一份两次改动之内就会不一致。而它是图谱在低带宽 / 渲染失败时的兜底 —— <strong>一个和它所替代的东西说法不一致的兜底，比没有兜底更糟</strong>。它保留了「已记录 / 只被提过」的区分：<em>兜底不能显得比原件更确定。</em></p>
+  </div>
+
+  <div class="why">
+    <span class="tag">为什么引荐路径比「离职预测」更值钱</span>
+    <p>① 它建立在<strong>你自己的关系记录</strong>上，没有任何第三方数据风险；<br>② 它直接决定回复率——「张三让我联系你」和陌生开发信是两个数量级；<br>③ <strong>别人抄不走。</strong>竞品能买到同样的人才库，买不到你的关系网。</p>
+    <p><code>Strength</code> 只能由用户填，系统不推断。系统推不出「你跟这个人有多熟」——硬推的结果是把一条弱关系当强关系用出去，尴尬的是用户本人。</p>
+  </div>
+
+  <h4>路径从哪里起算：这个问题只有一个诚实答案 <span class="chip c-ok">已实现</span></h4>
+  <p>图里<strong>没有「我」这个节点</strong>——图存的是外部的人，不是团队自己。所以「我能去问谁」必须从用户亲口说过的东西里推导，而这个模型里只有一样：<strong>关系强度</strong>。于是 <code>Strength</code> 从装饰变成承重结构：<em>标过强度 = 我认识他 = 可以作为路径起点</em>。</p>
+  <div class="tw"><table>
+    <thead><tr><th class="col-n">空结果</th><th class="col-n">含义</th><th>下一步</th></tr></thead>
+    <tbody>
+      <tr><td><code>NoSeeds</code></td><td>你还没标过任何人的关系强度</td><td>告诉我你认识谁</td></tr>
+      <tr><td>路径为空</td><td>你认识的人里没有一条连得上他</td><td>换个人问 / 扩大跳数</td></tr>
+    </tbody>
+  </table></div>
+  <p>这两种在屏幕上长得一模一样，<strong>但补救方式完全不同</strong>，所以必须分开。</p>
+
+  <div class="why redline">
+    <span class="tag">最弱一环优先于跳数少</span>
+    <p>一条链条的强度取决于最弱那一环。<strong>通过一个不太熟的人的 1 跳，比通过两个熟人的 2 跳更差。</strong>先给短的那条，就是让用户挑一条走不通的路。围栏专门构造了这个对照：把「1 跳弱」和「2 跳强」摆在一起，断言强的那条排前面。</p>
+    <p>另外 <strong>只走关系线，不走架构线</strong>：汇报线和隶属线是结构，不是「这个人会帮我引荐」。把汇报线当温路径，正好产出那种让托人的人尴尬的引荐。</p>
+  </div>
+
+  <div class="why">
+    <span class="tag">Q1 的一个直接后果</span>
+    <p>别人跟别人有多熟，<strong>你看不到</strong>——强度是席位私有的。所以路径里不属于你的那一跳标 <code>Mine=false</code> / <code>Strength=0</code>，界面要说「这一跳不是你自己的关系」，而不是显示一个看起来很确定的 0。</p>
+  </div>
+
+  <h4>接触记录：为什么是团队的 <span class="chip c-ok">已实现</span></h4>
+  <div class="why">
+    <span class="tag">它挡住的那一个失误</span>
+    <p>「上周有人已经打过他电话了」是<strong>唯一</strong>能阻止两个顾问一周内先后 cold-call 同一个人的事实——而那正是让公司在它最想打动的人面前显得没组织的失误。它必须在打电话那个顾问离职之后仍然存在。</p>
+    <p>所以：<strong>记录归团队，只有上面那条私人印象归席位</strong>。字段上也照这条切——<code>Topic</code> / <code>Outcome</code> / <code>NextStep</code> 是事实（说了什么），归团队；「他听起来很敷衍」是判断，进 <code>Note</code>（私有）。</p>
+    <p><strong>一个刻意的例外：接触记录不要求来源。</strong>其他记录都必须说明出处，因为它们是关于第三方、会被拿去行动的断言。接触记录<em>本身就是它自己的出处</em>：谁、什么时候、哪轮对话。没有外部出处可引，因为出处就是填它的人。</p>
+  </div>
+
+  <h4>图谱是叠加层，文字才是页面 <span class="chip c-ok">已实现</span></h4>
+  <p>服务端把<strong>文字版清单直接渲染进 HTML</strong>，图谱是脚本在它上面叠的一层。</p>
+  <div class="why redline">
+    <span class="tag">为什么不能反过来</span>
+    <p>一个需要先取数、再渲染才能出现的「兜底」根本不是兜底 —— <strong>它恰好在它该起作用的那些条件下失效</strong>。没有脚本、链路慢、渲染出错、打印页面，读者拿到的仍是每个人、每个组、每个「待确认」角标。围栏把 HTML 在<em>第一个 <code>&lt;script&gt;</code> 之前</em>截断，断言这些内容已经在里面了。</p>
+  </div>
+  <div class="tw"><table>
+    <thead><tr><th class="col-n">视觉编码</th><th>含义</th></tr></thead>
+    <tbody>
+      <tr><td>颜色</td><td>节点类别</td></tr>
+      <tr><td>虚线圈</td><td>只被提过、没有记录的组</td></tr>
+      <tr><td>虚线</td><td>未证实的关系</td></tr>
+      <tr><td><strong>大小</strong></td><td><strong>恒定 —— 什么都不编码</strong></td></tr>
+    </tbody>
+  </table></div>
+  <p>围栏直接读发布出去的 <code>graph.js</code>，断言半径只来自常量、线宽不来自任何 strength/score；另一条断言 payload 里根本没有 <code>score</code>/<code>rank</code>/<code>weight</code>/<code>size</code> 这些键 —— <strong>数据里没有，未来任何一版样式表都没法开始编码它</strong>。</p>
+  <div class="why">
+    <span class="tag">布局先算完再画</span>
+    <p>力导向若只在 <code>requestAnimationFrame</code> 里收敛，它就只在标签页可见时收敛：渲染进隐藏标签、打印、截图或被节流的后台，它画完<strong>第一帧混乱状态就停</strong> —— 而那一帧看起来像一张画完的图。所以模拟在第一次绘制之前同步跑完，拖拽时局部重算，没有任何自走的动画。</p>
+  </div>
+  <div class="why redline">
+    <span class="tag">界面走查抓到两个真 bug —— 这就是验收标准里写「走查」的原因</span>
+    <p><strong>① 预警说「你图上这个组还没有人」，而那个组里有 3 个人。</strong>事件只知道<em>公司 + 组</em>，而用户把那个组放在了更深的位置（A司 › 技术中心 › c业务组）。按整条路径匹配，<strong>恰好在用户告诉了我们更多结构的时候找不到人</strong> —— 方向反了。</p>
+    <p><strong>② 图上根本没有架构线，只有关系线。</strong>一个没被记录过的层级在图上完全不存在，于是「架构图 + 关系线」只做了一半 —— 更糟的是，<strong>图看起来比它本该更丰富的那个文字清单还要整洁</strong>。已补：层级和人-组归属都进图，只被提过的层级作为虚线框节点，且这些线标记为 <code>Derived</code>，绝不和「有人记录过的隶属」混为一谈。</p>
+  </div>
+  <div class="why">
+    <span class="tag">一个设计观察，不是 bug</span>
+    <p>真实数据里<strong>几乎所有线都是「未证实」</strong>（大多数事实来自一次对话、单一来源），所以虚线会变成默认样式、失去区分度。当前是诚实的，但视觉信息量低。P7 之后可以考虑把「已证实」做成更明显的<em>正向</em>标记，而不是靠「没有虚线」来表达。</p>
+  </div>
+
+  <p><strong>降级：</strong>图谱是展示层，<em>它不产生任何新信息</em>。</p>
+</section>
+
+<section id="s10">
+  <h2><span class="num">10</span><span>批量导入：格式要求</span></h2>
+  <p class="lede"><strong>核心原则：适配你的表，不要求你改表。</strong>一个要求用户先把列名改成模板的导入，等于「先做数据清洗再用产品」—— 没人会做。</p>
+
+  <div class="why redline">
+    <span class="tag">为什么导入是最该先做的一件事</span>
+    <p>每一个派生功能都需要用户还没给我们的数据：<code>path_find</code> 在有人标过关系强度之前返回 <code>NoSeeds</code>；<code>HiringGap</code> 在台账攒够几个月历史之前返回 <code>nil</code>；一条预警既要事件、又要你在那个组里已经认识的人。<strong>空图上这个产品什么都不知道、什么都说不出来</strong> —— 而顾问手上早就有一份表格。</p>
+  </div>
+
+  <h4>只有一条硬要求</h4>
+  <p><strong>第一行必须是表头。</strong>除此之外，读不懂的文件<strong>不拒收，而是暂存下来让人看</strong>。</p>
+  <div class="why redline">
+    <span class="tag">「整个文件拒收」就是把「先做数据清洗」挪到了失败之后</span>
+    <p>一个读不懂的文件应该是<strong>一次对话</strong>，不是一次拒绝：系统暂存它，连同表头和前 5 行样例，让 agent 看着提议「第 1 列看起来是姓名（前三行是王五 / 张三 / 李四），对吗？」，用户确认之后<strong>整份文件重读一遍</strong>。</p>
+  </div>
+
+  <h4>出问题时 agent 怎么修 <span class="chip c-ok">已实现</span></h4>
+  <p><code>import_remap</code> 一个工具，四种修法 —— <strong>全部是「用户确认之后由 agent 转达」，不是 agent 自己猜</strong>。</p>
+  <div class="tw"><table>
+    <thead><tr><th class="col-n">修法</th><th class="col-n">场景</th><th>例子</th></tr></thead>
+    <tbody>
+      <tr><td>改列映射</td><td>别名表不认识用户的叫法</td><td><code>客户名称</code> → 姓名；表头空白时可以按位置 <code>#1</code></td></tr>
+      <tr><td>翻译取值</td><td>文件用的是用户自己的词汇</td><td><code>很熟</code>→3、<code>一般</code>→2。<strong>这不是缺陷，是他就这么写的</strong></td></tr>
+      <tr><td>补单元格</td><td>某行缺了姓名</td><td>用户说「第 4 行是李四」→ agent 转达。<strong>agent 不许自己编</strong></td></tr>
+      <tr><td>排除行</td><td>用户说这几行不要</td><td>第 3 行忽略</td></tr>
+    </tbody>
+  </table></div>
+  <div class="why">
+    <span class="tag">修改是「整份重读」，不是「打补丁」</span>
+    <p>每一次修改都从<strong>原始字节</strong>重新读一遍全文件 —— 所以不存在「修了一半的计划」，用户看到的永远是一份完整连贯的读法，改三次也不会攒出一个谁也说不清的状态。围栏验证：再发一次空的修改，文件会回到最初的状态。</p>
+    <p>修改仍然过所有闸门：<strong>敏感值补不进来</strong>；指向一个不存在的列名会被<em>忽略</em>而不是悄悄读成第 0 列；只有上传的那个席位能改。</p>
+    <p><strong>为什么 <code>import_remap</code> 是「写」不是「只读」</strong>：它改的是暂存的读法，<em>不写图</em>。所以它不需要审批 —— 审批在后面的 <code>import_commit</code> 上，覆盖的是它产出的那份读法。</p>
+  </div>
+
+  <h4>自动处理</h4>
+  <div class="tw"><table>
+    <thead><tr><th class="col-n">项</th><th>说明</th></tr></thead>
+    <tbody>
+      <tr><td>编码</td><td>UTF-8 / UTF-8 BOM / <strong>GBK</strong> —— 中文 Excel 另存为 CSV 默认就是 GBK，<strong>这是「导入成功但全是乱码」最常见的来源</strong></td></tr>
+      <tr><td>分隔符</td><td>逗号 / 制表符 / 分号，按表头行里出现最多的那个</td></tr>
+      <tr><td>参差不齐的行</td><td>手工维护的表里很正常，不报错</td></tr>
+    </tbody>
+  </table></div>
+
+  <h4>认识的列名（忽略大小写、空格、下划线、连字符）</h4>
+  <div class="tw"><table>
+    <thead><tr><th class="col-n">字段</th><th>认识的写法</th></tr></thead>
+    <tbody>
+      <tr><td>姓名</td><td>姓名、名字、人名、联系人、候选人、name、full name、contact</td></tr>
+      <tr><td>公司</td><td>公司、单位、所在公司、企业、雇主、现公司、company、organization、employer</td></tr>
+      <tr><td>部门</td><td>部门、团队、业务组、事业部、组、department、team、division、unit</td></tr>
+      <tr><td>职务</td><td>职务、职位、岗位、title、position、role</td></tr>
+      <tr><td>职责</td><td>职责、负责、分管、工作内容、responsibility、scope</td></tr>
+      <tr><td>熟悉程度</td><td>熟悉程度、关系强度、亲密度、熟悉度、关系、strength、closeness</td></tr>
+      <tr><td>备注</td><td>备注、说明、补充、note、notes、comment</td></tr>
+    </tbody>
+  </table></div>
+  <p><strong>不认识的列会被列出来报给你</strong>，不会静默丢弃 —— 一列手机号悄悄消失，和「导入完成」是两件事。</p>
+
+  <div class="why">
+    <span class="tag">强烈建议带上「熟悉程度」这一列</span>
+    <p>有它，<code>path_find</code> <strong>当天就能用</strong>；没有它，导入完图上一条起点都没有。这是导入最值钱的一列 —— <em>一个顾问愿意说出「我到底跟谁熟」的唯一时刻，就是他在导入那份列着这些人的表的时候。</em></p>
+  </div>
+
+  <h4>行级容错：一个坏格子不该毁掉整个文件</h4>
+  <div class="tw"><table>
+    <thead><tr><th class="col-n">情况</th><th>处理</th></tr></thead>
+    <tbody>
+      <tr><td>没有姓名</td><td>跳过该行，报行号</td></tr>
+      <tr><td>熟悉程度不是 1-3</td><td><strong>该行仍然导入</strong>，只是没有强度；报行号和原值</td></tr>
+      <tr><td>某格命中敏感词</td><td><strong>只丢那个字段</strong>，不是整行更不是整个文件；报行号 + 列名 + 命中的词。整份拒收会逼用户盲删一列再试一次</td></tr>
+      <tr><td>疑似已有的同一个人</td><td><strong>不静默新建</strong>，变成一条「需要你决定」，走和对话路径完全一样的合并机制</td></tr>
+    </tbody>
+  </table></div>
+
+  <div class="why">
+    <span class="tag">一个文件 = 一个来源</span>
+    <p>同一份表里 200 行都说同一件事，证实等级<strong>仍然是「听说」</strong>。否则一份表格就能把自己抬成「多源印证」。</p>
+  </div>
+
+  <h4>Agent 在导入里做什么、不做什么 <span class="chip c-ok">已实现</span></h4>
+  <p><strong>它产不出文件</strong> —— 上传是用户的动作。所以形状是：用户上传 → 系统出计划 → <em>agent 讲解并陪着走</em> → 用户拍板 → 落库。</p>
+  <div class="tw"><table>
+    <thead><tr><th class="col-n">Agent 能做</th><th class="col-n">工具</th><th>风险</th></tr></thead>
+    <tbody>
+      <tr><td>把计划讲成人话</td><td><code>import_summary</code></td><td><span class="chip c-mute">只读</span></td></tr>
+      <tr><td>追问「这些人里你最熟的是哪几个」</td><td><code>rating_gap</code></td><td><span class="chip c-mute">只读</span></td></tr>
+      <tr><td>记下用户说的熟悉程度</td><td><code>rate_contact</code></td><td><span class="chip c-ok">写</span></td></tr>
+      <tr><td>落库</td><td><code>import_commit</code></td><td><span class="chip c-block">不可逆 · 需审批</span></td></tr>
+    </tbody>
+  </table></div>
+  <div class="why redline">
+    <span class="tag">为什么落库是「不可逆」级</span>
+    <p>转达<em>一条</em>合并决定是聊天；一次性转达<em>两百行</em>的决定是另一回事。它拿和删除同级的闸门 —— <strong>审批绑定的是这一次调用的全部参数，包括里面每一条决定</strong>。所以「同意导入这份表」<strong>不等于</strong>「同意把第 3 行并进王五」。</p>
+  </div>
+
+  <h4>导入的待办不进对话队列</h4>
+  <div class="why">
+    <span class="tag">两个不同的时刻，两套结构</span>
+    <p><code>RecordTurn</code> 一轮最多一个问题，是因为<strong>用户在干别的事</strong>。而导入是<strong>用户正盯着屏幕</strong>的时刻 —— 12 条决定应该在一个 review 屏上一次过。共用一条队列会两头不讨好：对话被 12 个它本来设计成永远不会问的问题淹掉，或者导入要聊 12 轮。</p>
+    <p><strong>暂存的计划只在内存里，没有新建表。</strong>一次 review 就几分钟；为了「进程重启」建表 + 迁移 + 生命周期，换来的补救是「重新传一次文件」。等 review 变成长流程再持久化，现在不。</p>
+  </div>
+
+  <div class="why redline">
+    <span class="tag">‼️ 导入之后必须有人问那一句</span>
+    <p>导入 200 个人、一条熟悉程度都没标 → <strong>图是满的，<code>path_find</code> 仍然返回 <code>NoSeeds</code></strong>。这个包里没有任何别的东西会去问，所以 <code>RatingGap</code> 就是干这个的：报出已标 / 未标，外加<strong>最多 10 个</strong>名字（10 个是人会回答的清单，200 个是人会关掉的清单）。</p>
+    <p><strong>名字按姓名排序，不按任何别的东西排。</strong>那个看起来很贴心的排法——「谁连着的边最多、谁能打开最多路径」——<em>就是换了顶帽子的给人排名</em>，而且用户比图更清楚自己跟谁熟。</p>
+  </div>
+
+  <h4>联系方式 <span class="chip c-ok">已拍板 2026-09-10：存</span></h4>
+  <p><strong>归团队。</strong>它是事实不是判断，按 Q1 的口径就归团队。而且这条本身就是团队模式的意义所在 —— 「上周有人已经打过他电话了」，<strong>而没有号码谁也打不了下一个</strong>。</p>
+  <div class="tw"><table>
+    <thead><tr><th class="col-n">规则</th><th>为什么</th></tr></thead>
+    <tbody>
+      <tr><td><strong>只增不改</strong></td><td>人有两个号码 —— 第二个不是对第一个的否定，所以是<strong>集合、并集合并</strong>。于是「Agent 不能覆盖已有值」在这里根本不会触发：Agent 只可能新增。<code>138-0000-0000</code> 和 <code>13800000000</code> 是同一个</td></tr>
+      <tr><td><strong>删除只有人能做，且留痕</strong></td><td>加一个错号码是「多了一条、看得见」；<strong>删掉唯一对的那个，是团队悄无声息地失去联系方式</strong></td></tr>
+      <tr><td>仍然过敏感词闸门</td><td>手机号在 PIPL 下是<em>普通</em>个人信息，<code>身份证号</code> 是<em>敏感</em>的 —— 而联系方式列正是它最容易被粘进来的地方。命中时<strong>只丢那一条联系方式</strong>，不丢整行</td></tr>
+      <tr><td>导出要数它</td><td>泄漏后第一个问题是「谁拷走了」，第二个是「里面有多少个能打通的号码」 —— 节点数回答不了第二个</td></tr>
+    </tbody>
+  </table></div>
+  <p><strong>主体权利自动覆盖</strong>：号码会交给本人（他有权知道我们存了），删除时连带清掉。<strong>没有新建表</strong>：存在 <code>lead_nodes.doc</code> 的 JSONB 里，零迁移。</p>
+</section>
+
+<section id="s10b">
+  <h2><span class="num">10</span><span>分期</span></h2>
+  <div class="phase"><span class="p">P1</span><span><span class="t">图存储 <span class="chip c-ok">已完成</span></span><br><span class="d">节点 / 边 / 事件 + <strong>团队 / 席位双归属</strong>（Q1 拍板后重构）+ <strong>无来源拒收</strong> + 迁移幂等。落点 <code>internal/leadgraph</code></span></span></div>
+  <div class="phase"><span class="p">P2</span><span><span class="t">对账与落库 <span class="chip c-ok">已完成</span></span><br><span class="d"><code>Reconcile</code>（纯函数，只读）/ <code>Apply</code> / <code>MergeNodes</code>。四判定 × 四答复，三条具名合并规则。<strong>34 条用例，12 道守卫做过变异演练</strong>——逐条删掉守卫都能让对应用例变红，不是空围栏</span></span></div>
+  <div class="phase"><span class="p">P3</span><span><span class="t">对话路径（路径一） <span class="chip c-ok">已完成</span></span><br><span class="d"><code>RecordTurn</code> + 按席位的待答队列 + <code>Answer</code> / <code>DropPending</code>。<strong>一轮最多一问、没记东西就不出回执、安静不等于放行</strong> —— 14 条用例，9 道守卫演练过</span></span></div>
+  <div class="phase"><span class="p">P4</span><span><span class="t">架构树与查询 <span class="chip c-ok">已完成</span></span><br><span class="d"><code>OrgChart</code>（按时间点）+ <code>Roster</code> 文字兜底。<strong>不造层级 · 只被提过的画虚线 · 放不进去的人列出来 · 同名两处报歧义</strong> —— 10 条用例，10 道守卫演练过</span></span></div>
+  <div class="phase hi"><span class="p">P5</span><span><span class="t">引荐路径 + 接触记录 <span class="chip c-ok">已完成</span></span><br><span class="d"><code>PathsTo</code> / <code>Seeds</code> / <code>AddTouchpoint</code> / <code>LastTouch</code> / <code>DueTouchpoints</code>。<strong>最弱一环优先于跳数少 · 只走关系线不走架构线 · 「没有起点」和「没有路」分开</strong> —— 14 条用例，12 道守卫演练过（其中抓到 2 道真空围栏并已修）</span></span></div>
+  <div class="phase"><span class="p">P6</span><span><span class="t">公开源与后台路径二 <span class="chip c-ok">已完成</span></span><br><span class="d"><code>FetchFrom</code>（发请求前就拒禁止来源）· <code>ExtractSignals</code> · <code>HiringGap</code> · <code>RaiseAlert</code> · <code>StaleScan</code> · <code>RunDaily</code>。8 道守卫演练过</span></span></div>
+  <div class="phase"><span class="p">P7</span><span><span class="t">线索看板与可解释评分 <span class="chip c-ok">已完成</span></span><br><span class="d"><code>LeadBoard</code> / <code>Signal</code> / <code>Lead.Score()</code>。<strong>Score 是方法不是字段 —— 没有证据的分数在类型上就不存在</strong>。11 条用例；走查又抓到 2 个真 bug</span></span></div>
+  <div class="phase"><span class="p">P8</span><span><span class="t">图谱可视化 <span class="chip c-ok">已完成</span></span><br><span class="d">力导向 + 分类筛选 + 详情面板 + 拖拽缩放，<strong>文字清单由服务端渲染、图谱只是叠加层</strong>。11 条用例；<strong>走查抓到 2 个真 bug，已修并补围栏</strong></span></span></div>
+  <div class="phase hi"><span class="p">P9</span><span><span class="t">合规模块 <span class="chip c-ok">已完成 · 与 P6 并行</span></span><br><span class="d">敏感字段闸门（写入即拒）· 来源台账 + <code>Provenance</code> · <code>SubjectRecords</code> / <code>ForgetSubject</code>（跨团队）· <code>Export</code> + 审计。<strong>删除端到端已验：删完在两个团队的导出、通讯记录、主体查询里都查不到</strong>。7 道守卫演练过</span></span></div>
+
+  <div class="why redline">
+    <span class="tag">两处排期上的取舍</span>
+    <p><strong>P5 排在 P7 前面</strong>：路径的商业价值更高、数据风险更低、而且竞品抄不走。先做评分等于先做那个又贵又容易惹事的部分。</p>
+    <p><strong>P9 不能拖到最后一版</strong>：它是唯一一个「出事之后再补就来不及」的模块。建议与 P6 并行开工——P6 一旦开始抓公开源，合规就已经在跑了。</p>
+  </div>
+</section>
+
+<section id="s11">
+  <h2><span class="num">11</span><span>测试围栏</span></h2>
+  <p class="lede">每一条围栏对应上面一条设计决定。围栏变红时，要能立刻找到当初为什么这样写。</p>
+  <div class="why">
+    <span class="tag">绿的测试证明不了围栏存在</span>
+    <p>标 <span class="chip c-ok">已过</span> 的每一条都做过<strong>变异演练</strong>：把对应的守卫从产品代码里删掉，确认这条用例真的会变红，然后还原。一条删掉守卫仍然全绿的测试，比没有测试更糟 —— 它会让人以为这里有保护。</p>
+    <p><strong>P5 就抓到两道真空的。</strong>一道是我的尺子错了（变异打在了一个冗余的判断上，真正的机制在另一行）；另一道是<em>代码里真有一个永远不改变结果的分支</em>——删掉它测试全绿。它读起来像保护，实际什么也没保护，已经合并成一条规则一行代码。</p>
+  </div>
+  <div class="tw"><table>
+    <thead><tr><th class="col-n">围栏</th><th>断言</th></tr></thead>
+    <tbody>
+      <tr><td><code>TestEdgeWithoutIntelIsRejected</code> <span class="chip c-ok">已过</span></td><td>无来源的边在 store 层就写不进去</td></tr>
+      <tr><td><code>TestReconcileIsDeterministic</code> <span class="chip c-ok">已过</span></td><td>同一份输入跑 21 次，对账结果字节一致</td></tr>
+      <tr><td><code>TestReconcileWritesNothing</code> <span class="chip c-ok">已过</span></td><td>对账不改图，否则两工具拆分只是装饰</td></tr>
+      <tr><td><code>TestUnansweredProposalsAreNotApplied</code> <span class="chip c-ok">已过</span></td><td>没人答复的合并 / 冲突一条都不落库</td></tr>
+      <tr><td><code>TestATurnAsksAtMostOneQuestion</code> <span class="chip c-ok">已过</span></td><td>一轮无论raise了几个判断，只问一个</td></tr>
+      <tr><td><code>TestATurnThatRecordsNothingSaysNothing</code> <span class="chip c-ok">已过</span></td><td>没记下东西的一轮不出回执也不提问</td></tr>
+      <tr><td><code>TestConflictsAreAskedBeforeMerges</code> <span class="chip c-ok">已过</span></td><td>冲突排在合并前面，与输入顺序无关</td></tr>
+      <tr><td><code>TestAnUnansweredQuestionIsNotRepeated</code> <span class="chip c-ok">已过</span></td><td>问过没答的下一轮不再问</td></tr>
+      <tr><td><code>TestOnlyTheSeatThatWasAskedMayAnswer</code> <span class="chip c-ok">已过</span></td><td>同事和 Agent 都不能替这个席位答</td></tr>
+      <tr><td><code>TestDroppingIsNotAnswering</code> <span class="chip c-ok">已过</span></td><td>「算了」不会被记成一次决定</td></tr>
+      <tr><td><code>TestReconcileDoesNotMergeOnASingleWeakSignal</code> <span class="chip c-ok">已过</span></td><td>同姓、同公司、同组，任一单独出现都不提合并</td></tr>
+      <tr><td><code>TestMergeNodesIsRefusedToTheAgent</code> <span class="chip c-ok">已过</span></td><td>合并两条已存在的记录只有人能做</td></tr>
+      <tr><td><code>TestKeepCurrent…NotStrengtheningTheRecord</code> <span class="chip c-ok">已过</span></td><td>被驳回的说法不得追加 intel（否则谣言自我加强）</td></tr>
+      <tr><td><code>TestPrivateNotesNeverLeaveTheSeat</code> <span class="chip c-ok">已过</span></td><td>同队同事读不到你的私人备注，序列化里也没有</td></tr>
+      <tr><td><code>TestSeatDepartureLeavesTheFacts</code> <span class="chip c-ok">已过</span></td><td>顾问离职：判断随他走，团队事实留下</td></tr>
+      <tr><td><code>TestNoAutoMerge</code> <span class="chip c-ok">已过</span></td><td>同姓不同人不会被自动合并</td></tr>
+      <tr><td><code>TestUserOverwriteLeavesHistory</code> <span class="chip c-ok">已过</span></td><td>任何字段修改都产生变更记录</td></tr>
+      <tr><td><code>TestScrapedSourceIsRefused</code> <span class="chip c-ok">已过</span></td><td>禁止来源清单里的域名一律拒收</td></tr>
+      <tr><td><code>TestSensitiveFieldsRejected</code></td><td>敏感字段写入被阻断</td></tr>
+      <tr><td><code>TestScoreCarriesSignals</code></td><td>输出分数必带构成信号，否则阻断</td></tr>
+      <tr><td><code>TestScoreNeverExported</code></td><td>导出和 API 两层都拿不到分数</td></tr>
+      <tr><td><code>TestSubjectDeleteIsComplete</code></td><td>删除后团队副本、导出引用里都查不到</td></tr>
+      <tr><td><code>TestStrengthIsNeverWrittenBySystem</code> <span class="chip c-ok">已过</span></td><td>系统写 <code>Strength</code> 的路径不存在</td></tr>
+      <tr><td><code>TestStrengthIsPerSeat</code> <span class="chip c-ok">已过</span></td><td>两个席位对同一条边可以有不同的关系强度，互不覆盖</td></tr>
+    </tbody>
+  </table></div>
+</section>
+
+<section id="s12">
+  <h2><span class="num">12</span><span>待拍板</span></h2>
+
+  <div class="dec">
+    <div class="h"><span class="q">Q1</span><span class="title">团队共享怎么做？ <span class="chip c-ok">已拍板 2026-09-10 · 已实现</span></span></div>
+    <p><strong>事实归团队，关系强度和私人备注归个人。</strong></p>
+    <div class="opts">
+      <div class="opt rec"><span class="k">落地形态</span><span class="v">不是过滤，是<strong>两条记录</strong>：事实在 <code>lead_nodes</code> / <code>lead_edges</code>（团队可见），判断在 <code>lead_annotations</code>（<code>seat_id + target_id</code> 为主键，只有本人读得到）</span></div>
+      <div class="opt"><span class="k">为什么不是加一列</span><span class="v">「同事看不到你的私人备注」如果靠每条 SELECT 记得排除，只要有一个 join 忘了就不成立。放进另一张按 seat 键的表，那个 join 根本不会被写出来</span></div>
+      <div class="opt"><span class="k">顺带解决离职</span><span class="v"><code>ForgetSeat()</code> 删掉他的整套判断，团队事实一条不动 —— 围栏 <code>TestSeatDepartureLeavesTheFacts</code></span></div>
+      <div class="opt"><span class="k">单人版</span><span class="v">一人团队，不做「个人模式 / 团队模式」两套分支</span></div>
+    </div>
+  </div>
+
+  <div class="dec">
+    <div class="h"><span class="q">Q2</span><span class="title">公开源从哪几个开始接？</span></div>
+    <p>建议第一批只接<strong>工商变更 + 招聘网站公开 JD</strong>：结构化程度高、合法性清楚、信号密度高——<em>一个组停止招聘，本身就是强信号</em>。新闻和公告的抽取难度高一档，放第二批。</p>
+  </div>
+
+  <div class="dec">
+    <div class="h"><span class="q">Q3</span><span class="title">个人级评分要不要做？</span></div>
+    <p>§08 建议主体是组织单元。若一定要做个人分，需要先回答：<strong>个人级信号从哪来？</strong>如果答案是「从平台抓」，那就回到了 §07 的禁止项——<em>这条会决定整个产品的合规姿态</em>。</p>
+  </div>
+
+  <div class="dec">
+    <div class="h"><span class="q">Q4</span><span class="title">与阿桥的代码关系：同仓复用，还是独立仓？</span></div>
+    <div class="opts">
+      <div class="opt"><span class="k">同仓</span><span class="v">复用图存储和 Agent 循环最省事，但两个产品的边界会互相污染（阿桥禁止打分，这里必须打分）</span></div>
+      <div class="opt rec"><span class="k">独立仓 · 推荐</span><span class="v">把 store / agent loop / guardrail 框架抽成共享库，两个产品各自持有自己的意图和校验器</span></div>
+    </div>
+  </div>
+
+  <div class="dec">
+    <div class="h"><span class="q">Q5</span><span class="title">产品名</span></div>
+    <p>「猎源图谱」是占位名。定名之后，代码包名、UI、文档要一次性统一——名词字典（§04）是这次统一的唯一真相源。</p>
+  </div>
+</section>
+
+</article>
+</div>
+
+<footer>
+  <div class="foot-in">
+    <span>猎源图谱 · Lead Graph · PRD v1</span>
+    <span>状态：未执行 · 待拍板</span>
+    <span>上游：19-relationship-trail.zh-CN.md（已冻结）</span>
+  </div>
+</footer>
+
+<script>
+(function(){
+  var links = Array.prototype.slice.call(document.querySelectorAll('nav.toc a'));
+  var map = {};
+  links.forEach(function(a){
+    var el = document.querySelector(a.getAttribute('href'));
+    if (el) map[el.id] = a;
+  });
+  if (!('IntersectionObserver' in window)) return;
+  var io = new IntersectionObserver(function(entries){
+    entries.forEach(function(e){
+      if (!e.isIntersecting) return;
+      links.forEach(function(a){ a.classList.remove('on'); });
+      var a = map[e.target.id];
+      if (a) a.classList.add('on');
+    });
+  }, { rootMargin: '-12% 0px -70% 0px', threshold: 0 });
+  Object.keys(map).forEach(function(id){ io.observe(document.getElementById(id)); });
+})();
+</script>
