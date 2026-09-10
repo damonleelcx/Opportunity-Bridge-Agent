@@ -171,6 +171,9 @@ func (s *Store) foldInto(v View, keepID string, in Node) (Node, error) {
 	cur.History = append(cur.History, changes...)
 	cur.UpdatedAt = now
 	normaliseNode(cur)
+	if err := s.putNode(cur); err != nil {
+		return Node{}, err
+	}
 	return s.project(v, *cur), nil
 }
 
@@ -198,7 +201,7 @@ func (s *Store) rejectClaim(v View, targetID string, cs []FieldConflict, why []I
 		})
 	}
 	n.UpdatedAt = now
-	return nil
+	return s.putNode(n)
 }
 
 // MergeNodes joins two records that both already exist, because a person said
@@ -278,6 +281,24 @@ func (s *Store) MergeNodes(v View, actor Actor, keepID, dropID string, because I
 
 	delete(s.byKey, naturalKey(*drop))
 	delete(s.nodes, dropID)
+	if err := s.putNode(keep); err != nil {
+		return Node{}, err
+	}
+	// Everything the merge touched, written together: the survivor above, the
+	// lines that moved, the overlays that followed them, and the record that
+	// stopped existing.
+	for _, e := range s.edges {
+		if e.TeamID == v.TeamID && (e.From == keepID || e.To == keepID) {
+			_ = s.putEdge(e)
+		}
+	}
+	for _, seat := range s.notes {
+		if a, ok := seat[keepID]; ok {
+			_ = s.putAnnotation(a)
+		}
+	}
+	_ = s.deleteRecord("lead_nodes", "id = $1", dropID)
+	_ = s.deleteRecord("lead_annotations", "target_id = $1", dropID)
 	return s.project(v, *keep), nil
 }
 

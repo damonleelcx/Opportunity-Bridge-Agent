@@ -64,12 +64,17 @@ CREATE INDEX IF NOT EXISTS lead_edges_to_idx ON lead_edges (team_id, to_id);
 -- target_id is a node id or an edge id; the two cascade rules below are why it
 -- is not a foreign key to either - a row is deleted explicitly when its target
 -- goes, in the same transaction, so that a deletion request is answerable.
+-- Like every other table here it carries the record as a document, with the
+-- columns that are queried or constrained promoted out of it. Uniform on
+-- purpose: one generic upsert writes all eight, so adding a record type is a
+-- call site rather than another hand-written statement to get subtly wrong.
 CREATE TABLE IF NOT EXISTS lead_annotations (
     team_id    TEXT        NOT NULL,
     seat_id    TEXT        NOT NULL,
     target_id  TEXT        NOT NULL,
     strength   SMALLINT,
     note       TEXT,
+    doc        JSONB       NOT NULL,
     updated_at TIMESTAMPTZ NOT NULL,
     PRIMARY KEY (seat_id, target_id)
 );
@@ -160,7 +165,44 @@ CREATE TABLE IF NOT EXISTS lead_audit (
     seat_id TEXT        NOT NULL,
     action  TEXT        NOT NULL,
     at      TIMESTAMPTZ NOT NULL,
-    detail  JSONB
+    doc     JSONB       NOT NULL
 );
 
 CREATE INDEX IF NOT EXISTS lead_audit_team_idx ON lead_audit (team_id, at DESC);
+
+-- Questions waiting on a person. These outlive a restart on purpose: a backlog
+-- that evaporates when the process recycles is worse than no backlog, because
+-- the user was told the question was saved.
+CREATE TABLE IF NOT EXISTS lead_pending (
+    id         TEXT PRIMARY KEY,
+    team_id    TEXT        NOT NULL,
+    seat_id    TEXT        NOT NULL,
+    dedupe_key TEXT        NOT NULL,
+    doc        JSONB       NOT NULL,
+    at         TIMESTAMPTZ NOT NULL
+);
+
+-- One question per seat per thing being asked about; repeating yourself does
+-- not queue it twice.
+CREATE UNIQUE INDEX IF NOT EXISTS lead_pending_key_idx ON lead_pending (seat_id, dedupe_key);
+CREATE INDEX IF NOT EXISTS lead_pending_seat_idx ON lead_pending (team_id, seat_id, at);
+
+-- Who may use this graph. A seat is the unit of identity: it belongs to exactly
+-- one team, it owns its own private annotations, and its token is what turns an
+-- HTTP request into a View.
+--
+-- The token is stored HASHED. A token database that can be read back is a
+-- credential database, and the point of a token is that only its holder has it.
+CREATE TABLE IF NOT EXISTS lead_seats (
+    seat_id    TEXT PRIMARY KEY,
+    team_id    TEXT        NOT NULL,
+    label      TEXT        NOT NULL,
+    token_hash TEXT        NOT NULL,
+    doc        JSONB       NOT NULL,
+    created_at TIMESTAMPTZ NOT NULL,
+    revoked_at TIMESTAMPTZ
+);
+
+-- The lookup on every single request.
+CREATE UNIQUE INDEX IF NOT EXISTS lead_seats_token_idx ON lead_seats (token_hash);
+CREATE INDEX IF NOT EXISTS lead_seats_team_idx ON lead_seats (team_id);

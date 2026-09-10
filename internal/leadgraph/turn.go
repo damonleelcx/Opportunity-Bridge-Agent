@@ -224,6 +224,7 @@ func (s *Store) queuePending(v View, p Proposal) (string, bool) {
 	}
 	s.pending[item.ID] = item
 	s.byKey[key] = item.ID
+	_ = s.putPending(item, key)
 	return item.ID, true
 }
 
@@ -323,6 +324,7 @@ func (s *Store) Answer(v View, actor Actor, pendingID string, r Resolution) (App
 	s.mu.Lock()
 	delete(s.pending, pendingID)
 	delete(s.byKey, v.SeatID+"|pending|"+pendingKey(p))
+	_ = s.deleteRecord("lead_pending", "id = $1", pendingID)
 	s.mu.Unlock()
 	return res, nil
 }
@@ -339,5 +341,6 @@ func (s *Store) DropPending(v View, pendingID string) bool {
 	}
 	delete(s.pending, pendingID)
 	delete(s.byKey, v.SeatID+"|pending|"+pendingKey(item.Proposal))
+	_ = s.deleteRecord("lead_pending", "id = $1", pendingID)
 	return true
 }

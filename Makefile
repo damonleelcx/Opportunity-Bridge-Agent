@@ -101,6 +101,15 @@ drill: ## Break each intent rule on purpose and check its fence goes red
 	./scripts/mutation-drill.sh
 
 .PHONY: check
+test-leadgraph-pg: ## Lead Graph against a real postgres in a container
+	@docker rm -f leadgraph-pg >/dev/null 2>&1 || true
+	@docker run -d --name leadgraph-pg -e POSTGRES_PASSWORD=leadgraph \
+		-e POSTGRES_DB=leadgraph -p 55433:5432 postgres:16-alpine >/dev/null
+	@for i in $$(seq 1 30); do docker exec leadgraph-pg pg_isready -U postgres >/dev/null 2>&1 && break; sleep 1; done
+	@LEADGRAPH_TEST_DATABASE_URL="postgres://postgres:leadgraph@127.0.0.1:55433/leadgraph?sslmode=disable" \
+		go test -count=1 ./internal/leadgraph/ || (docker rm -f leadgraph-pg >/dev/null; exit 1)
+	@docker rm -f leadgraph-pg >/dev/null
+
 check: ## fmt check, vet, test - what CI runs
 	@test -z "$$(gofmt -l . | grep -v '^$$')" || { echo "gofmt needed:"; gofmt -l .; exit 1; }
 	go vet ./...
