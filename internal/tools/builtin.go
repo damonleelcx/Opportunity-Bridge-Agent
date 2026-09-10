@@ -24,7 +24,7 @@ func Default() *Registry {
 		consentRequest(), consentCheck(), gapAnalysis(),
 		candidateSearch(), outreachRequest(), outreachList(), outreachRespond(),
 		externalTalentScan(),
-	)
+	).with(leadGraphTools()...)
 }
 
 // caseworkerNeedsShare is the per-role permission rule applied to every tool

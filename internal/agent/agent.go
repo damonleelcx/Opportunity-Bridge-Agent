@@ -12,6 +12,7 @@ import (
 	"github.com/damonleelcx/Opportunity-Bridge-Agent/internal/domain"
 	"github.com/damonleelcx/Opportunity-Bridge-Agent/internal/guardrail"
 	"github.com/damonleelcx/Opportunity-Bridge-Agent/internal/intent"
+	"github.com/damonleelcx/Opportunity-Bridge-Agent/internal/leadgraph"
 	"github.com/damonleelcx/Opportunity-Bridge-Agent/internal/livesource"
 	"github.com/damonleelcx/Opportunity-Bridge-Agent/internal/llm"
 	"github.com/damonleelcx/Opportunity-Bridge-Agent/internal/obs"
@@ -38,6 +39,10 @@ type Agent struct {
 	// Talent looks for PEOPLE outside the opt-in pool, for the recruiter intent.
 	// Nil is the common case and means the pool is all there is.
 	Talent talentsource.Provider
+	// Graph is 猎源图谱, reachable only from talent_sourcing. Nil is legitimate
+	// and means this deployment has no graph database; the tools that need it
+	// say so rather than failing obscurely. See internal/tools/leadgraph.go.
+	Graph *leadgraph.Store
 }
 
 // Input is one turn.
@@ -198,7 +203,7 @@ func (a *Agent) Run(ctx context.Context, in Input) (Result, error) {
 
 	env := tools.Env{
 		Cfg: a.Cfg, Store: a.Store, Corpus: a.Corpus, Index: a.Index,
-		Session: ses, Rec: rec, Live: a.Live, Talent: a.Talent,
+		Session: ses, Rec: rec, Live: a.Live, Talent: a.Talent, Graph: a.Graph,
 		Approvals: map[string]store.PendingApproval{},
 		// One sequence for the whole turn. Built here because this is the only
 		// scope that IS the turn: env is made once per Run and reused across
