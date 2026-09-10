@@ -36,7 +36,7 @@ func TestHeadersAreMatchedNotDictated(t *testing.T) {
 	// Every header here is a different word for the same thing.
 	file := "Full Name,雇主,Team,Position,closeness\n" +
 		"王五,A司,c业务组,组长,3\n"
-	plan, err := s.PlanImport(amy, "crm.csv", []byte(file))
+	plan, err := s.PlanImport(amy, "crm.csv", []byte(file), leadgraph.ImportOverrides{})
 	if err != nil {
 		t.Fatalf("plan: %v", err)
 	}
@@ -56,7 +56,7 @@ func TestHeadersAreMatchedNotDictated(t *testing.T) {
 // import that "succeeds" and fills the graph with 乱码.
 func TestAGBKFileIsReadCorrectly(t *testing.T) {
 	s := newStore(t)
-	plan, err := s.PlanImport(amy, "从Excel导出.csv", gbk(t, plainCSV))
+	plan, err := s.PlanImport(amy, "从Excel导出.csv", gbk(t, plainCSV), leadgraph.ImportOverrides{})
 	if err != nil {
 		t.Fatalf("plan: %v", err)
 	}
@@ -75,7 +75,7 @@ func TestAGBKFileIsReadCorrectly(t *testing.T) {
 func TestBOMAndTabsAreHandled(t *testing.T) {
 	s := newStore(t)
 	tsv := "\xEF\xBB\xBF姓名\t公司\t职位\n王五\tA司\t组长\n"
-	plan, err := s.PlanImport(amy, "export.tsv", []byte(tsv))
+	plan, err := s.PlanImport(amy, "export.tsv", []byte(tsv), leadgraph.ImportOverrides{})
 	if err != nil {
 		t.Fatalf("plan: %v", err)
 	}
@@ -87,16 +87,25 @@ func TestBOMAndTabsAreHandled(t *testing.T) {
 	}
 }
 
-// Without a name column there is nothing to import, and the refusal has to say
-// what it DID see - otherwise the person holding the file has no next move.
-func TestAFileWithNoNameColumnIsRefusedWithWhatWeSaw(t *testing.T) {
+// A file we cannot read is STAGED, not refused. Refusing outright sends the
+// user back to their spreadsheet - which is the thing this feature exists to
+// avoid - and leaves nobody able to look at the file and say how to read it.
+func TestAFileWithNoNameColumnIsStagedNotRefused(t *testing.T) {
 	s := newStore(t)
-	_, err := s.PlanImport(amy, "wrong.csv", []byte("公司,部门,电话\nA司,c业务组,138\n"))
-	if err == nil {
-		t.Fatal("a file with no name column was accepted")
+	plan, err := s.PlanImport(amy, "wrong.csv",
+		[]byte("客户名称,部门,电话\n王五,c业务组,138\n"), leadgraph.ImportOverrides{})
+	if err != nil {
+		t.Fatalf("the file was refused instead of staged: %v", err)
 	}
-	if !strings.Contains(err.Error(), "公司") || !strings.Contains(err.Error(), "电话") {
-		t.Errorf("the refusal does not list the columns it saw: %v", err)
+	if plan.Blocked != leadgraph.BlockNoNameColumn {
+		t.Fatalf("the plan does not say why it is unusable: %q", plan.Blocked)
+	}
+	// And it carries what somebody needs to work out the answer.
+	if len(plan.Header) != 3 || len(plan.Samples) != 1 {
+		t.Fatalf("the file cannot be inspected: header=%v samples=%v", plan.Header, plan.Samples)
+	}
+	if plan.Samples[0][0] != "王五" {
+		t.Errorf("the sample rows are not the file's own: %v", plan.Samples[0])
 	}
 }
 
@@ -105,7 +114,7 @@ func TestAFileWithNoNameColumnIsRefusedWithWhatWeSaw(t *testing.T) {
 // was told about.
 func TestUnusedColumnsAreReported(t *testing.T) {
 	s := newStore(t)
-	plan, err := s.PlanImport(amy, "x.csv", []byte("姓名,手机,邮箱\n王五,13800000000,a@b.com\n"))
+	plan, err := s.PlanImport(amy, "x.csv", []byte("姓名,手机,邮箱\n王五,13800000000,a@b.com\n"), leadgraph.ImportOverrides{})
 	if err != nil {
 		t.Fatalf("plan: %v", err)
 	}
@@ -122,7 +131,7 @@ func TestUnusedColumnsAreReported(t *testing.T) {
 // happened.
 func TestPlanningWritesNothing(t *testing.T) {
 	s := newStore(t)
-	if _, err := s.PlanImport(amy, "x.csv", []byte(plainCSV)); err != nil {
+	if _, err := s.PlanImport(amy, "x.csv", []byte(plainCSV), leadgraph.ImportOverrides{}); err != nil {
 		t.Fatalf("plan: %v", err)
 	}
 	if n := len(s.Nodes(amy, leadgraph.NodeFilter{})); n != 0 {
@@ -136,7 +145,7 @@ func TestPlanningWritesNothing(t *testing.T) {
 // The whole point: after an import, path_find has somewhere to start.
 func TestImportSeedsTheRelationshipStrengths(t *testing.T) {
 	s := newStore(t)
-	plan, err := s.PlanImport(amy, "contacts.csv", []byte(plainCSV))
+	plan, err := s.PlanImport(amy, "contacts.csv", []byte(plainCSV), leadgraph.ImportOverrides{})
 	if err != nil {
 		t.Fatalf("plan: %v", err)
 	}
@@ -166,7 +175,7 @@ func TestImportCannotCreateADuplicateTheConversationWouldHaveQueried(t *testing.
 	existing := mustNode(t, s, amy, leadgraph.ActorUser, inUnit(person("A司", "王五"), "A司", "c业务组"))
 
 	// The file calls him 王总 - the same address-form case Reconcile handles.
-	plan, err := s.PlanImport(amy, "x.csv", []byte("姓名,公司,部门\n王总,A司,c业务组\n"))
+	plan, err := s.PlanImport(amy, "x.csv", []byte("姓名,公司,部门\n王总,A司,c业务组\n"), leadgraph.ImportOverrides{})
 	if err != nil {
 		t.Fatalf("plan: %v", err)
 	}
@@ -207,7 +216,7 @@ func TestASensitiveCellLosesTheFieldNotTheFile(t *testing.T) {
 	file := "姓名,公司,备注\n" +
 		"王五,A司,他老婆刚怀孕不想动\n" +
 		"张三,A司,想去做平台\n"
-	plan, err := s.PlanImport(amy, "x.csv", []byte(file))
+	plan, err := s.PlanImport(amy, "x.csv", []byte(file), leadgraph.ImportOverrides{})
 	if err != nil {
 		t.Fatalf("plan: %v", err)
 	}
@@ -259,7 +268,7 @@ func TestUnusableRowsAreReportedWithLineNumbers(t *testing.T) {
 		"王五,A司,3\n" +
 		",A司,2\n" + // no name
 		"张三,A司,很熟\n" // not 1-3
-	plan, err := s.PlanImport(amy, "x.csv", []byte(file))
+	plan, err := s.PlanImport(amy, "x.csv", []byte(file), leadgraph.ImportOverrides{})
 	if err != nil {
 		t.Fatalf("plan: %v", err)
 	}
@@ -284,7 +293,7 @@ func TestUnusableRowsAreReportedWithLineNumbers(t *testing.T) {
 func TestOneFileIsOneSourceHoweverManyRows(t *testing.T) {
 	s := newStore(t)
 	file := "姓名,公司,职位\n王五,A司,组长\n王五,A司,组长\n"
-	plan, err := s.PlanImport(amy, "x.csv", []byte(file))
+	plan, err := s.PlanImport(amy, "x.csv", []byte(file), leadgraph.ImportOverrides{})
 	if err != nil {
 		t.Fatalf("plan: %v", err)
 	}
@@ -304,7 +313,7 @@ func TestOneFileIsOneSourceHoweverManyRows(t *testing.T) {
 // data gets in.
 func TestAnImportIsTraceableAfterwards(t *testing.T) {
 	s := newStore(t)
-	plan, err := s.PlanImport(amy, "contacts.csv", []byte(plainCSV))
+	plan, err := s.PlanImport(amy, "contacts.csv", []byte(plainCSV), leadgraph.ImportOverrides{})
 	if err != nil {
 		t.Fatalf("plan: %v", err)
 	}
@@ -364,7 +373,7 @@ func TestAFetchCannotClaimToBeAnImport(t *testing.T) {
 // Import obeys the team boundary like every other write.
 func TestImportStaysInsideTheTeam(t *testing.T) {
 	s := newStore(t)
-	plan, err := s.PlanImport(amy, "x.csv", []byte(plainCSV))
+	plan, err := s.PlanImport(amy, "x.csv", []byte(plainCSV), leadgraph.ImportOverrides{})
 	if err != nil {
 		t.Fatalf("plan: %v", err)
 	}

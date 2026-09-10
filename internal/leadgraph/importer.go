@@ -83,6 +83,51 @@ const (
 	SkipBadValue  = "bad_value"
 )
 
+// ImportOverrides is the user's correction to how their file was read.
+//
+// WHY REPAIR IS A RE-READ AND NOT AN EDIT
+//
+//	Every fix here changes how the FILE is interpreted, and the whole file is
+//	then read again from the original bytes. Nothing is patched in place, so
+//	there is no half-corrected plan, and the user can always see the current
+//	reading in one piece rather than as a base plus a pile of amendments.
+//
+// WHY THE AGENT PROPOSES AND THE USER CONFIRMS
+//
+//	Guessing that column 3 is the company and then importing 200 rows on that
+//	guess is not a small error - it is 200 wrong records that all look right.
+//	The agent can see the header and a few sample rows and say what it thinks;
+//	turning that into an override is the user agreeing.
+type ImportOverrides struct {
+	// Columns maps a canonical field to a header name, or to "#3" for the third
+	// column when the header is blank or duplicated.
+	Columns map[Column]string `json:"columns,omitempty"`
+	// Values normalises what a column actually contains: 很熟 -> 3, 一般 -> 2.
+	// A file uses the vocabulary its owner uses, and that is not a defect.
+	Values map[Column]map[string]string `json:"values,omitempty"`
+	// Rows fills in a single cell the user supplied, keyed by the line number
+	// as reported. Used for the name a row was missing - NEVER invented, only
+	// relayed.
+	Rows map[int]map[Column]string `json:"rows,omitempty"`
+	// Ignore are line numbers the user said to leave out.
+	Ignore []int `json:"ignore,omitempty"`
+}
+
+// Why a plan can be unusable as it stands.
+const (
+	BlockNoNameColumn = "no_name_column"
+	BlockNoRows       = "no_rows"
+)
+
+// MaxImportBytes caps a staged file. Generous for a contact list, and a runaway
+// upload is refused with a reason rather than sitting in memory.
+const MaxImportBytes = 8 << 20
+
+// SampleRows is how much of the file to keep for inspection. Enough for
+// somebody - or an agent - to tell a column of companies from a column of job
+// titles, and not enough to be a second copy of the file.
+const SampleRows = 5
+
 // ImportPlan is what WOULD happen. Nothing is written to produce it.
 type ImportPlan struct {
 	File      string `json:"file"`
@@ -107,8 +152,21 @@ type ImportPlan struct {
 	//
 	// Both are applied only after the records exist, through Annotate, so they
 	// land in this seat's own overlay and nowhere else.
-	Strengths map[int]int    `json:"strengths,omitempty"`
-	Notes     map[int]string `json:"notes,omitempty"`
+	// Blocked, when set, means the file could not be read usefully as it
+	// stands. It is NOT an error: the file is staged anyway so that somebody can
+	// look at it and say how to read it. Refusing outright would send the user
+	// back to their spreadsheet, which is the thing this feature exists to
+	// avoid.
+	Blocked string `json:"blocked,omitempty"`
+	// Header and Samples are the file as it arrived, so a reader can work out
+	// which column is which.
+	Header  []string   `json:"header,omitempty"`
+	Samples [][]string `json:"samples,omitempty"`
+	// Overrides is how this reading was corrected, carried so the current
+	// reading is always visible in one piece.
+	Overrides ImportOverrides `json:"overrides,omitempty"`
+	Strengths map[int]int     `json:"strengths,omitempty"`
+	Notes     map[int]string  `json:"notes,omitempty"`
 	// RowOf maps a proposal back to the line it came from, so a question can be
 	// asked as "第 42 行的王总" and the user can look at their own file.
 	RowOf map[int]int `json:"row_of,omitempty"`
@@ -265,28 +323,52 @@ func cell(row []string, idx int, ok bool) string {
 // ---- planning ----
 
 // PlanImport reads a file and works out what it would do. It writes nothing.
-func (s *Store) PlanImport(v View, fileName string, raw []byte) (ImportPlan, error) {
+func (s *Store) PlanImport(v View, fileName string, raw []byte, ov ImportOverrides) (ImportPlan, error) {
 	if !v.valid() {
 		return ImportPlan{}, ErrViewRequired
+	}
+	if len(raw) > MaxImportBytes {
+		return ImportPlan{}, fmt.Errorf("%w: the file is %d bytes; the limit is %d",
+			ErrBadArguments, len(raw), MaxImportBytes)
 	}
 	t, err := readTable(raw)
 	if err != nil {
 		return ImportPlan{}, err
 	}
 	cols, unmapped := mapColumns(t.header)
-	if _, ok := cols[ColLabel]; !ok {
-		return ImportPlan{}, fmt.Errorf("%w. Columns seen: %s", ErrNoNameColumn, strings.Join(t.header, " | "))
-	}
+	applyColumnOverrides(cols, t.header, ov.Columns)
+	unmapped = unusedHeaders(t.header, cols)
 
 	plan := ImportPlan{
 		File: fileName, Digest: digestOf(string(raw)), Encoding: t.encoding,
 		Delimiter: t.delimiter, Rows: len(t.rows),
 		Mapping: map[string]string{}, Unmapped: unmapped,
 		Skipped: []SkippedRow{}, Strengths: map[int]int{}, Notes: map[int]string{},
-		RowOf: map[int]int{},
+		RowOf: map[int]int{}, Header: t.header, Overrides: ov,
+	}
+	for i, row := range t.rows {
+		if i >= SampleRows {
+			break
+		}
+		plan.Samples = append(plan.Samples, row)
 	}
 	for c, i := range cols {
 		plan.Mapping[string(c)] = t.header[i]
+	}
+	// A file we cannot read is STAGED, not refused: somebody has to be able to
+	// look at it and say which column is the name.
+	if _, ok := cols[ColLabel]; !ok {
+		plan.Blocked = BlockNoNameColumn
+		return plan, nil
+	}
+	if len(t.rows) == 0 {
+		plan.Blocked = BlockNoRows
+		return plan, nil
+	}
+
+	ignored := map[int]bool{}
+	for _, n := range ov.Ignore {
+		ignored[n] = true
 	}
 
 	// One source for the whole file, not one per row: two rows naming the same
@@ -300,25 +382,30 @@ func (s *Store) PlanImport(v View, fileName string, raw []byte) (ImportPlan, err
 	var lines []int
 	for n, row := range t.rows {
 		lineNo := n + 2 // header is line 1
-		label := cell(row, cols[ColLabel], true)
+		if ignored[lineNo] {
+			continue
+		}
+		fixed := ov.Rows[lineNo]
+		pick := func(c Column) string {
+			if v, ok := fixed[c]; ok {
+				return strings.TrimSpace(v)
+			}
+			idx, has := cols[c]
+			return mapValue(ov.Values[c], cell(row, idx, has))
+		}
+		label := pick(ColLabel)
 		if label == "" {
 			plan.Skipped = append(plan.Skipped, SkippedRow{Row: lineNo, Column: plan.Mapping["label"], Reason: SkipNoName})
 			continue
 		}
-		org, _ := cols[ColOrg]
-		unit, hasUnit := cols[ColUnit]
-		role, _ := cols[ColRole]
-		duty, _ := cols[ColDuty]
-		note, _ := cols[ColNote]
-
 		c := Node{
 			Kind: KindPerson, Label: label,
-			Org:       cell(row, org, true),
-			RoleTitle: cell(row, role, true),
-			Duty:      cell(row, duty, true),
-			Note:      cell(row, note, true),
+			Org:       pick(ColOrg),
+			RoleTitle: pick(ColRole),
+			Duty:      pick(ColDuty),
+			Note:      pick(ColNote),
 		}
-		if u := cell(row, unit, hasUnit); u != "" && c.Org != "" {
+		if u := pick(ColUnit); u != "" && c.Org != "" {
 			c.UnitPath = []string{c.Org, u}
 		}
 
@@ -354,8 +441,8 @@ func (s *Store) PlanImport(v View, fileName string, raw []byte) (ImportPlan, err
 		candidates = append(candidates, c)
 
 		st := 0
-		if idx, ok := cols[ColStrength]; ok {
-			if raw := cell(row, idx, true); raw != "" {
+		if _, ok := cols[ColStrength]; ok || fixed[ColStrength] != "" {
+			if raw := pick(ColStrength); raw != "" {
 				n, err := strconv.Atoi(raw)
 				switch {
 				case err != nil || n < 1 || n > 3:
@@ -503,6 +590,11 @@ type ImportSession struct {
 	SeatID   string     `json:"seat_id"`
 	Plan     ImportPlan `json:"plan"`
 	StagedAt time.Time  `json:"staged_at"`
+	// raw is the file as it arrived. Kept so a correction re-reads the original
+	// rather than patching a plan: there is no half-corrected state, and what
+	// the user sees is always one coherent reading.
+	raw      []byte
+	fileName string
 }
 
 // ImportDecision is one row a person has to settle, with the line it came from
@@ -520,7 +612,13 @@ type ImportDecision struct {
 
 // ImportSummary is the plan in the shape somebody can be told about it.
 type ImportSummary struct {
-	ID        string            `json:"id"`
+	ID string `json:"id"`
+	// Blocked names why this file cannot be imported as it stands, so the
+	// answer is "I cannot tell which column is the name" rather than a refusal
+	// the user has to guess at.
+	Blocked   string            `json:"blocked,omitempty"`
+	Header    []string          `json:"header,omitempty"`
+	Samples   [][]string        `json:"samples,omitempty"`
 	File      string            `json:"file"`
 	Rows      int               `json:"rows"`
 	Encoding  string            `json:"encoding"`
@@ -542,7 +640,7 @@ type ImportSummary struct {
 // StageImport reads a file and holds the plan for review. Writes nothing to the
 // graph.
 func (s *Store) StageImport(v View, fileName string, raw []byte) (ImportSession, error) {
-	plan, err := s.PlanImport(v, fileName, raw)
+	plan, err := s.PlanImport(v, fileName, raw, ImportOverrides{})
 	if err != nil {
 		return ImportSession{}, err
 	}
@@ -550,10 +648,31 @@ func (s *Store) StageImport(v View, fileName string, raw []byte) (ImportSession,
 	defer s.mu.Unlock()
 	sess := ImportSession{
 		ID: s.nextID("im"), TeamID: v.TeamID, SeatID: v.SeatID,
-		Plan: plan, StagedAt: s.now(),
+		Plan: plan, StagedAt: s.now(), raw: append([]byte{}, raw...), fileName: fileName,
 	}
 	s.imports[sess.ID] = &sess
 	return sess, nil
+}
+
+// RestageImport re-reads a staged file with the user's corrections applied.
+//
+// The whole file is read again from the original bytes, so the plan that comes
+// back is one coherent reading rather than a base plus amendments - which is
+// what makes it safe to correct something three times.
+func (s *Store) RestageImport(v View, id string, ov ImportOverrides) (ImportSession, error) {
+	sess, ok := s.stagedFor(v, id)
+	if !ok {
+		return ImportSession{}, ErrNotFound
+	}
+	plan, err := s.PlanImport(v, sess.fileName, sess.raw, ov)
+	if err != nil {
+		return ImportSession{}, err
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	held := s.imports[sess.ID]
+	held.Plan = plan
+	return *held, nil
 }
 
 // stagedFor returns a session, or the seat's most recent one when id is empty -
@@ -589,7 +708,8 @@ func (s *Store) ImportSummary(v View, id string) (ImportSummary, bool) {
 	}
 	p := sess.Plan
 	sum := ImportSummary{
-		ID: sess.ID, File: p.File, Rows: p.Rows, Encoding: p.Encoding, Delimiter: p.Delimiter,
+		ID: sess.ID, Blocked: p.Blocked, Header: p.Header, Samples: p.Samples,
+		File: p.File, Rows: p.Rows, Encoding: p.Encoding, Delimiter: p.Delimiter,
 		Mapping: p.Mapping, Unmapped: p.Unmapped, Counts: p.Counts(),
 		Decisions: []ImportDecision{}, SkippedRows: map[string][]int{},
 	}
@@ -623,6 +743,10 @@ func (s *Store) CommitImport(v View, id string, res map[int]Resolution, at time.
 	sess, ok := s.stagedFor(v, id)
 	if !ok {
 		return ImportResult{}, ErrNotFound
+	}
+	if sess.Plan.Blocked != "" {
+		return ImportResult{}, fmt.Errorf("%w: this file cannot be read as it stands (%s); correct the reading first",
+			ErrBadArguments, sess.Plan.Blocked)
 	}
 	out, err := s.ApplyImport(v, sess.Plan, res, at)
 	if err != nil {
@@ -694,4 +818,62 @@ func (s *Store) RatingGap(v View, limit int) RatingGap {
 	}
 	sortPeople(out.Ask)
 	return out
+}
+
+// applyColumnOverrides lets the user say which column is which when the alias
+// table did not know their word for it. A name that matches no header is
+// ignored rather than silently mapping to column zero.
+func applyColumnOverrides(cols map[Column]int, header []string, ov map[Column]string) {
+	for field, want := range ov {
+		want = strings.TrimSpace(want)
+		if want == "" {
+			delete(cols, field)
+			continue
+		}
+		if strings.HasPrefix(want, "#") {
+			if n, err := strconv.Atoi(want[1:]); err == nil && n >= 1 && n <= len(header) {
+				cols[field] = n - 1
+			}
+			continue
+		}
+		for i, h := range header {
+			if normHeader(h) == normHeader(want) {
+				cols[field] = i
+				break
+			}
+		}
+	}
+}
+
+// unusedHeaders recomputes what nothing reads, after the overrides.
+func unusedHeaders(header []string, cols map[Column]int) []string {
+	used := map[int]bool{}
+	for _, i := range cols {
+		used[i] = true
+	}
+	var out []string
+	for i, h := range header {
+		if !used[i] && strings.TrimSpace(h) != "" {
+			out = append(out, h)
+		}
+	}
+	return out
+}
+
+// mapValue translates what a column contains into what this package expects,
+// using the user's own vocabulary. 很熟 is not a defect; it is how they wrote it.
+func mapValue(m map[string]string, raw string) string {
+	raw = strings.TrimSpace(raw)
+	if m == nil || raw == "" {
+		return raw
+	}
+	if v, ok := m[raw]; ok {
+		return strings.TrimSpace(v)
+	}
+	for k, v := range m {
+		if normHeader(k) == normHeader(raw) {
+			return strings.TrimSpace(v)
+		}
+	}
+	return raw
 }

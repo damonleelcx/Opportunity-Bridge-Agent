@@ -220,7 +220,7 @@ footer{border-top:1px solid var(--line-2); background:var(--surface); margin-top
       <p class="deck">组织在变的时候，人才会动。别人拿到的是一份静态人才库；这个产品拿到的是<strong>你自己的关系网</strong>、<strong>组织正在发生的变化</strong>，以及<strong>你离目标还有几步</strong>。</p>
     </div>
     <div class="stamp">
-      <span class="state" style="background:var(--ok-soft);color:var(--ok);border-color:color-mix(in srgb,var(--ok) 30%,transparent)">P1–P9 + 导入与 agent 接线 · 151 用例 · 95 道守卫演练过</span>
+      <span class="state" style="background:var(--ok-soft);color:var(--ok);border-color:color-mix(in srgb,var(--ok) 30%,transparent)">P1–P9 + 导入 · 修复回路 · 163 用例 · 105 道守卫演练过</span>
       <span>定位：<b>独立产品</b></span>
       <span>上游：<b>19-relationship-trail（已冻结）</b></span>
     </div>
@@ -912,11 +912,30 @@ footer{border-top:1px solid var(--line-2); background:var(--surface); margin-top
     <p>每一个派生功能都需要用户还没给我们的数据：<code>path_find</code> 在有人标过关系强度之前返回 <code>NoSeeds</code>；<code>HiringGap</code> 在台账攒够几个月历史之前返回 <code>nil</code>；一条预警既要事件、又要你在那个组里已经认识的人。<strong>空图上这个产品什么都不知道、什么都说不出来</strong> —— 而顾问手上早就有一份表格。</p>
   </div>
 
-  <h4>只有两条硬要求</h4>
-  <ol>
-    <li>第一行必须是表头</li>
-    <li>必须有一列能被认出是「姓名」，否则<strong>整个文件拒收</strong>，报错里会列出它看到的所有列名</li>
-  </ol>
+  <h4>只有一条硬要求</h4>
+  <p><strong>第一行必须是表头。</strong>除此之外，读不懂的文件<strong>不拒收，而是暂存下来让人看</strong>。</p>
+  <div class="why redline">
+    <span class="tag">「整个文件拒收」就是把「先做数据清洗」挪到了失败之后</span>
+    <p>一个读不懂的文件应该是<strong>一次对话</strong>，不是一次拒绝：系统暂存它，连同表头和前 5 行样例，让 agent 看着提议「第 1 列看起来是姓名（前三行是王五 / 张三 / 李四），对吗？」，用户确认之后<strong>整份文件重读一遍</strong>。</p>
+  </div>
+
+  <h4>出问题时 agent 怎么修 <span class="chip c-ok">已实现</span></h4>
+  <p><code>import_remap</code> 一个工具，四种修法 —— <strong>全部是「用户确认之后由 agent 转达」，不是 agent 自己猜</strong>。</p>
+  <div class="tw"><table>
+    <thead><tr><th class="col-n">修法</th><th class="col-n">场景</th><th>例子</th></tr></thead>
+    <tbody>
+      <tr><td>改列映射</td><td>别名表不认识用户的叫法</td><td><code>客户名称</code> → 姓名；表头空白时可以按位置 <code>#1</code></td></tr>
+      <tr><td>翻译取值</td><td>文件用的是用户自己的词汇</td><td><code>很熟</code>→3、<code>一般</code>→2。<strong>这不是缺陷，是他就这么写的</strong></td></tr>
+      <tr><td>补单元格</td><td>某行缺了姓名</td><td>用户说「第 4 行是李四」→ agent 转达。<strong>agent 不许自己编</strong></td></tr>
+      <tr><td>排除行</td><td>用户说这几行不要</td><td>第 3 行忽略</td></tr>
+    </tbody>
+  </table></div>
+  <div class="why">
+    <span class="tag">修改是「整份重读」，不是「打补丁」</span>
+    <p>每一次修改都从<strong>原始字节</strong>重新读一遍全文件 —— 所以不存在「修了一半的计划」，用户看到的永远是一份完整连贯的读法，改三次也不会攒出一个谁也说不清的状态。围栏验证：再发一次空的修改，文件会回到最初的状态。</p>
+    <p>修改仍然过所有闸门：<strong>敏感值补不进来</strong>；指向一个不存在的列名会被<em>忽略</em>而不是悄悄读成第 0 列；只有上传的那个席位能改。</p>
+    <p><strong>为什么 <code>import_remap</code> 是「写」不是「只读」</strong>：它改的是暂存的读法，<em>不写图</em>。所以它不需要审批 —— 审批在后面的 <code>import_commit</code> 上，覆盖的是它产出的那份读法。</p>
+  </div>
 
   <h4>自动处理</h4>
   <div class="tw"><table>

@@ -277,6 +277,17 @@ func argStrs(args map[string]any, k string) []string {
 	return out
 }
 
+func argInts(args map[string]any, k string) []int {
+	xs, _ := args[k].([]any)
+	out := make([]int, 0, len(xs))
+	for _, x := range xs {
+		if n, ok := numberOf(x); ok {
+			out = append(out, int(n))
+		}
+	}
+	return out
+}
+
 func argMaps(args map[string]any, k string) []map[string]any {
 	xs, _ := args[k].([]any)
 	out := make([]map[string]any, 0, len(xs))
@@ -520,6 +531,68 @@ func Tools() *Registry {
 				}
 				n, _ := s.Node(v, id)
 				return n, nil
+			},
+		},
+		Tool{
+			// RiskWrite, not read: it changes the staged reading. It writes
+			// nothing to the graph, which is why it does not need an approval -
+			// the approval comes later, on the commit, and covers the reading
+			// this produced.
+			Name: "import_remap", Risk: RiskWrite,
+			Description: "Correct how a staged file is read, AFTER the user has confirmed the correction: which column is which, what its values mean (很熟 = 3), a value they supplied for a row that was missing one, and rows to leave out. Re-reads the whole file and returns the new plan. Propose first, look at the header and sample rows in import_summary, and never guess on the user's behalf: guessing that column 3 is the company imports two hundred wrong records that all look right.",
+			Schema: Obj("the corrections", map[string]*Schema{
+				"import_id": Str("the staged import; omit for the most recent one"),
+				"columns": Arr("which column holds which field", Obj("one column", map[string]*Schema{
+					"field":  Str("the field", string(ColLabel), string(ColOrg), string(ColUnit), string(ColRole), string(ColDuty), string(ColStrength), string(ColNote)),
+					"header": Str("the column's header text, or #3 for the third column"),
+				}, "field", "header")),
+				"values": Arr("what this column's values mean", Obj("one translation", map[string]*Schema{
+					"field": Str("the field", string(ColLabel), string(ColOrg), string(ColUnit), string(ColRole), string(ColDuty), string(ColStrength), string(ColNote)),
+					"from":  Str("what the file says, e.g. 很熟"),
+					"to":    Str("what it means here, e.g. 3"),
+				}, "field", "from", "to")),
+				"rows": Arr("a cell the USER supplied for a row that was missing one", Obj("one cell", map[string]*Schema{
+					"row":   Int("the line number as reported", 2, 1000000),
+					"field": Str("the field", string(ColLabel), string(ColOrg), string(ColUnit), string(ColRole), string(ColDuty), string(ColStrength), string(ColNote)),
+					"value": Str("what the user said it is - never what you inferred"),
+				}, "row", "field", "value")),
+				"ignore": Arr("line numbers the user said to leave out", Int("a line number", 2, 1000000)),
+			}),
+			Run: func(s *Store, v View, a map[string]any) (any, error) {
+				ov := ImportOverrides{
+					Columns: map[Column]string{},
+					Values:  map[Column]map[string]string{},
+					Rows:    map[int]map[Column]string{},
+				}
+				for _, m := range argMaps(a, "columns") {
+					ov.Columns[Column(argStr(m, "field"))] = argStr(m, "header")
+				}
+				for _, m := range argMaps(a, "values") {
+					f := Column(argStr(m, "field"))
+					if ov.Values[f] == nil {
+						ov.Values[f] = map[string]string{}
+					}
+					ov.Values[f][argStr(m, "from")] = argStr(m, "to")
+				}
+				for _, m := range argMaps(a, "rows") {
+					n := argInt(m, "row")
+					if ov.Rows[n] == nil {
+						ov.Rows[n] = map[Column]string{}
+					}
+					ov.Rows[n][Column(argStr(m, "field"))] = argStr(m, "value")
+				}
+				for _, x := range argInts(a, "ignore") {
+					ov.Ignore = append(ov.Ignore, x)
+				}
+				sess, err := s.RestageImport(v, argStr(a, "import_id"), ov)
+				if err != nil {
+					return nil, err
+				}
+				sum, ok := s.ImportSummary(v, sess.ID)
+				if !ok {
+					return nil, ErrNotFound
+				}
+				return sum, nil
 			},
 		},
 		Tool{
