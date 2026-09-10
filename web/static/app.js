@@ -100,6 +100,7 @@ async function boot() {
   paintWho();
   buildRoleSelect();
   wire();
+  wireImport();
   // Validated against meta.roles rather than trusted: a role removed from
   // domain.Roles() between deploys would otherwise be posted to /api/sessions,
   // which rejects it, and the app would fail to boot on a stale preference.
@@ -903,12 +904,21 @@ function ratingGapCard(r) {
 function importPlanCard(r) {
   const c = r.counts || {};
   const note = `${esc(r.file || "")} · ${r.rows ?? 0} ${t("graph.importRows")}`;
-  const counts = Object.keys(c).map((k) =>
-    `<span class="chip">${esc(tOr("decide." + k, k))} ${esc(String(c[k]))}</span>`).join(" ");
-  const skipped = (r.skipped_rows || []).length
-    ? `<div class="decision-note">${esc(t("graph.importSkipped"))} ${r.skipped_rows.length}</div>` : "";
-  const decisions = r.decisions
-    ? `<span class="chip chip-warn">${esc(t("graph.queued"))} ${esc(String(r.decisions))}</span>` : "";
+  // Zero counts are dropped, not printed: "跳过 0" is four characters saying
+  // nothing happened. What did happen is what the reader needs.
+  const counts = Object.keys(c).filter((k) => c[k]).map((k) =>
+    `<span class="chip">${esc(tOr("count." + k, k))} ${esc(String(c[k]))}</span>`).join(" ");
+  // skipped_rows groups line numbers BY REASON. The count is already a chip
+  // above, so this says the thing the count cannot: WHICH rows and WHY. That is
+  // what the grouping exists for — "第 7、19、23 行没有姓名" is actionable and
+  // "跳过 3" is not.
+  const skipped = Object.entries(r.skipped_rows || {})
+    .filter(([, rows]) => rows?.length)
+    .map(([reason, rows]) => `<div class="decision-note">${esc(tOr("skip." + reason, reason))} ·
+      ${esc(t("skip.rows").replace("{n}", rows.slice(0, 12).join("、")))}</div>`)
+    .join("");
+  const decisions = (r.decisions || []).length
+    ? `<span class="chip chip-warn">${esc(t("graph.queued"))} ${esc(String(r.decisions.length))}</span>` : "";
   return gcard("graph.import", note, `<p>${counts} ${decisions}</p>${skipped}`);
 }
 
@@ -1518,6 +1528,9 @@ function syncGraphLink() {
   const on = state.session?.role === "recruiter";
   el.hidden = !on;
   el.href = on ? `/app/sessions/${state.session.id}/graph/` : "#";
+  // The import control belongs to the same audience and the same graph.
+  const imp = $("#importBtn");
+  if (imp) imp.hidden = !on;
 }
 
 async function renderOverview() {
@@ -2303,4 +2316,69 @@ function renderEmailPanel() {
       line.textContent = String(e?.message || e);
     }
   });
+}
+
+// ── 批量导入 ───────────────────────────────────────────────────────────────
+//
+// A file the model cannot produce, so it does not travel through the model. It
+// is posted to the server, which STAGES it — reads it, works out the encoding,
+// the separator and the columns, and returns a plan. Nothing is written to the
+// graph here. What lands in the conversation is that plan, and the rest of the
+// import happens the way everything else does: by talking about it.
+//
+// See docs/20-lead-graph.zh-CN.md §10.2 for what a file has to look like — the
+// short answer is that the first row must be a header, and everything else is
+// worked out.
+function wireImport() {
+  const btn = $("#importBtn");
+  const input = $("#importFile");
+  if (!btn || !input) return;
+  btn.addEventListener("click", () => input.click());
+  input.addEventListener("change", async () => {
+    const file = input.files?.[0];
+    // Cleared immediately so picking the SAME file twice still fires a change.
+    input.value = "";
+    if (!file || !state.session) return;
+    await stageImport(file);
+  });
+}
+
+async function stageImport(file) {
+  const turn = agentTurn();
+  turn.typing = false;
+  turn.bubble.textContent = t("import.reading");
+  try {
+    const body = new FormData();
+    body.append("file", file);
+    const res = await fetch(`/api/sessions/${state.session.id}/graph/imports`, {
+      method: "POST", body, credentials: "same-origin",
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      turn.bubble.textContent = t("import.failed");
+      // The server's refusals carry a remedy. Showing the code alone would tell
+      // somebody their file is wrong without telling them what to change.
+      notice(turn, "block", data.code || "IMPORT_FAILED", data.message || "", data.remedy);
+      return;
+    }
+    turn.bubble.textContent = t("import.staged");
+    const card = importPlanCard(data.summary || {});
+    show(turn.results);
+    turn.results.append(card);
+    const pic = graphPictureCard();
+    if (pic) turn.results.append(pic);
+    // One chip, because the next move is a conversation: the plan is read,
+    // corrected and applied through the import tools, which is where a bad
+    // column or a mistranslated value actually gets fixed.
+    show(turn.suggest);
+    const b = document.createElement("button");
+    b.type = "button";
+    b.textContent = t("suggest.importReview");
+    b.addEventListener("click", () => send(b.textContent));
+    turn.suggest.append(b);
+  } catch (err) {
+    turn.bubble.textContent = t("import.failed");
+    notice(turn, "block", "IMPORT_FAILED", String(err), "");
+  }
+  scroll();
 }

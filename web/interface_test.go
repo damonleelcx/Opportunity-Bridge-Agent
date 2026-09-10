@@ -12,6 +12,7 @@ package web_test
 import (
 	"fmt"
 	"math"
+	"os"
 	"regexp"
 	"strings"
 	"testing"
@@ -1953,5 +1954,119 @@ func TestTheGraphPictureIsShownOncePerTurn(t *testing.T) {
 	if !strings.Contains(body, "turn.graphShown = true") {
 		t.Error("nothing ever marks the picture as shown, so the guard is false forever — " +
 			"a turn that calls four graph tools would render four graphs")
+	}
+}
+
+// The import control belongs to the same audience as the route behind it.
+//
+// The upload route is recruiter-only and answers 403 to anybody else. A control
+// that is always visible and refuses half the people who press it is worse than
+// no control, so it is hidden with the same rule as 猎源图谱's own entry — and
+// hidden with the attribute, which on an .icon-btn needs the companion rule the
+// sibling fence guards.
+func TestTheImportControlIsRecruiterOnly(t *testing.T) {
+	html := asset(t, "app.html")
+	if !strings.Contains(html, `id="importBtn"`) || !strings.Contains(html, `id="importFile"`) {
+		t.Fatal("the import control is gone; this fence no longer guards anything")
+	}
+	// It ships hidden. A control that starts visible and is hidden by script is
+	// visible for as long as the script takes.
+	i := strings.Index(html, `id="importBtn"`)
+	tagEnd := strings.Index(html[i:], ">")
+	if tagEnd < 0 || !strings.Contains(html[i:i+tagEnd], "hidden") {
+		t.Error("the import control ships visible and is only hidden later")
+	}
+
+	src := stripLineComments(asset(t, "app.js"))
+	start := strings.Index(src, "function syncGraphLink(")
+	if start < 0 {
+		t.Fatal("syncGraphLink is gone; the fence is watching the wrong function")
+	}
+	body := src[start:]
+	if end := strings.Index(body, "\n}\n"); end > 0 {
+		body = body[:end]
+	}
+	if !strings.Contains(body, `#importBtn`) {
+		t.Error("nothing ties the import control to the role, so a resident sees a button " +
+			"whose route answers 403")
+	}
+	if !strings.Contains(body, `role === "recruiter"`) {
+		t.Error("the role rule is gone from the function that shows both controls")
+	}
+}
+
+// Every key the importer can put in an import plan's counts has a word.
+//
+// The card printed "needs_you 0 skipped 0" at a Chinese reader, because the
+// counts were translated through the 对账 namespace, which only has words for
+// create and update. The keys are read out of importer.go so a fifth one turns
+// this red instead of reaching a reader as a Go map key.
+func TestEveryImportCountHasAWord(t *testing.T) {
+	src, err := os.ReadFile("../internal/leadgraph/importer.go")
+	if err != nil {
+		t.Fatalf("read importer.go: %v", err)
+	}
+	i := strings.Index(string(src), `c := map[string]int{`)
+	if i < 0 {
+		t.Fatal("the counts map is gone; the fence is reading the wrong thing")
+	}
+	rest := string(src)[i:]
+	keys := regexp.MustCompile(`"([a-z_]+)":`).FindAllStringSubmatch(rest[:strings.Index(rest, "}")], -1)
+	if len(keys) < 3 {
+		t.Fatalf("found only %d count keys; the fence is not reading the map", len(keys))
+	}
+	table := stringsTable(t)
+	for _, m := range keys {
+		for lang, set := range table {
+			if !set["count."+m[1]] {
+				t.Errorf("the import plan can report %q and %s has no word for it — "+
+					"the reader is shown a Go map key", m[1], lang)
+			}
+		}
+	}
+
+	// And the card has to look the words up in THAT namespace. Checking only
+	// the table left the first version of this fence green while the card was
+	// still translating through 对账's namespace, which has words for two of
+	// the four keys — the exact bug, still on screen.
+	card := stripLineComments(asset(t, "app.js"))
+	start := strings.Index(card, "function importPlanCard(")
+	if start < 0 {
+		t.Fatal("importPlanCard is gone; the fence is watching the wrong function")
+	}
+	if end := strings.Index(card[start:], "\n}\n"); end > 0 {
+		card = card[start : start+end]
+	} else {
+		card = card[start:]
+	}
+	if !strings.Contains(card, `"count." + k`) {
+		t.Error("the import plan card does not translate its counts through the count namespace, " +
+			"so keys with no word there are printed raw")
+	}
+}
+
+// Every reason the importer can give for skipping a row has a word.
+//
+// The reasons are grouped by key on purpose — "第 7、19、23 行没有姓名" is
+// something a person can go and fix, and "跳过 3" is not — which only works if
+// the key is rendered as a sentence rather than as no_name.
+func TestEverySkipReasonHasAWord(t *testing.T) {
+	src, err := os.ReadFile("../internal/leadgraph/importer.go")
+	if err != nil {
+		t.Fatalf("read importer.go: %v", err)
+	}
+	decl := regexp.MustCompile(`Skip[A-Za-z]+\s+=\s+"([a-z_]+)"`)
+	reasons := decl.FindAllStringSubmatch(string(src), -1)
+	if len(reasons) < 2 {
+		t.Fatalf("found only %d skip reasons; the fence is not reading the source", len(reasons))
+	}
+	table := stringsTable(t)
+	for _, m := range reasons {
+		for lang, set := range table {
+			if !set["skip."+m[1]] {
+				t.Errorf("a row can be skipped for %q and %s has no sentence for it — "+
+					"the reader is shown a Go constant", m[1], lang)
+			}
+		}
 	}
 }

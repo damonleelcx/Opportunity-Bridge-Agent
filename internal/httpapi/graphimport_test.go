@@ -15,6 +15,7 @@ import (
 	"mime/multipart"
 	"net/http"
 	"net/http/httptest"
+	"regexp"
 	"strings"
 	"testing"
 
@@ -24,6 +25,7 @@ import (
 	"github.com/damonleelcx/Opportunity-Bridge-Agent/internal/llm"
 	"github.com/damonleelcx/Opportunity-Bridge-Agent/internal/store"
 	"github.com/damonleelcx/Opportunity-Bridge-Agent/internal/tools"
+	"github.com/damonleelcx/Opportunity-Bridge-Agent/web"
 )
 
 const contactsCSV = "姓名,公司,部门,职位,熟悉程度\n" +
@@ -214,3 +216,46 @@ func TestUploadingWithNoGraphSaysSo(t *testing.T) {
 }
 
 var _ = store.NormaliseUsername
+
+// The upload route needs a producer, and the interface is it.
+//
+// The route was registered, fenced and deployed for a release with nothing in
+// web/static able to reach it: there was no file control anywhere, so a
+// recruiter's only way to import a contact list was curl. "批量导入能传" was
+// true of the server and false of the product.
+//
+// The URL is read out of the shipped app.js and driven through the real mux, so
+// the control rotting and the route moving both turn this red.
+func TestTheInterfaceCanActuallyReachTheUploadRoute(t *testing.T) {
+	src, err := web.Files.ReadFile("static/app.js")
+	if err != nil {
+		t.Fatalf("read app.js: %v", err)
+	}
+	re := regexp.MustCompile(`/api/sessions/\$\{state\.session\.id\}(/graph/imports)`)
+	m := re.FindSubmatch(src)
+	if m == nil {
+		t.Fatal("nothing in app.js posts a file: the upload route has no producer")
+	}
+	html, err := web.Files.ReadFile("static/app.html")
+	if err != nil {
+		t.Fatalf("read app.html: %v", err)
+	}
+	if !bytes.Contains(html, []byte(`type="file"`)) {
+		t.Fatal("there is no file control in the interface")
+	}
+
+	ts, graph, _ := graphServer(t)
+	c := signedIn(t, ts, "quinn-recruiter")
+	ses, seat := recruiterSession(t, c, ts, domain.RoleRecruiter)
+
+	res := upload(t, c, ts.URL+"/api/sessions/"+ses+string(m[1]), "contacts.csv", contactsCSV)
+	defer res.Body.Close()
+	if res.StatusCode != http.StatusOK {
+		b, _ := io.ReadAll(res.Body)
+		t.Fatalf("the interface posts to a URL this server does not serve: %d %s", res.StatusCode, b)
+	}
+	// Staged, not written — which is what the card in the conversation says.
+	if n := len(graph.Nodes(seat, leadgraph.NodeFilter{})); n != 0 {
+		t.Errorf("the upload wrote %d records straight into the graph", n)
+	}
+}
