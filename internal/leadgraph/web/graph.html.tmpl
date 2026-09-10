@@ -1,0 +1,109 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>猎源图谱</title>
+<link rel="stylesheet" href="graph.css">
+</head>
+<body>
+<header>
+  <h1>猎源图谱</h1>
+  <div class="counts">
+    <span>人 <b>{{.Counts.People}}</b></span>
+    <span>组织单元 <b>{{.Counts.Units}}</b></span>
+    <span>事件 <b>{{.Counts.Events}}</b></span>
+    <span>关系 <b>{{.Counts.Links}}</b></span>
+    {{if .Counts.Unconfirmed}}<span class="chip warn">待确认 {{.Counts.Unconfirmed}}</span>{{end}}
+    {{if .Counts.Pending}}<span class="chip warn">待你决定 {{.Counts.Pending}}</span>{{end}}
+    {{if .Counts.Alerts}}<span class="chip alert">组织变动 {{.Counts.Alerts}}</span>{{end}}
+  </div>
+</header>
+
+<div id="stage">
+  <div class="filters">
+    <button type="button" data-kind="all" aria-pressed="true">全部</button>
+    <button type="button" data-kind="person" aria-pressed="false">人</button>
+    <button type="button" data-kind="unit" aria-pressed="false">组织单元</button>
+    <button type="button" data-kind="org" aria-pressed="false">公司</button>
+    <button type="button" data-kind="event" aria-pressed="false">事件</button>
+    <button type="button" id="reset">重置</button>
+  </div>
+  <svg id="graph" role="img" aria-label="关系图谱。同样的内容在下方的分组清单里也有一份。"></svg>
+  <p class="hint">拖拽节点 · 滚轮缩放 · 点击查看 · 虚线圈 = 只被提过没有记录 · 虚线 = 未证实</p>
+</div>
+
+<div class="wrap">
+  <main>
+    {{if .Leads}}
+    <section class="board">
+      <h2>线索看板 · 按分数排序</h2>
+      {{$at := .At}}
+      {{range .Leads}}
+      <article class="lead">
+        <h3>{{.Org}} · {{.UnitLabel}}
+          {{if gt (len .Paths) 1}}<span class="note">（这个名字在图上出现在 {{len .Paths}} 个位置，可能是同一个组）</span>{{end}}
+          <span class="score" title="下面每条信号的权重之和">{{.Score}}</span>
+          <span class="window">窗口期约剩 {{.WindowDays $at}} 天<span class="note">（自最近一条信号起算 {{$.WindowDays}} 天）</span></span>
+        </h3>
+        <ul class="signals">
+          {{range .Signals}}
+          <li><span class="bar">{{.Bar}}</span>
+            {{if eq (printf "%s" .Kind) "hiring_stopped"}}已有 {{.Days}} 天没看到这个组发新招聘
+            {{else if eq (printf "%s" .Kind) "hiring_active"}}{{if .Days}}{{.Days}} 天前还在招人{{else}}今天还在招人{{end}}
+            {{else}}{{.Because}}{{end}}
+            <span class="src">{{.Corroboration}}{{if .SourceURL}} · 有出处{{end}}</span></li>
+          {{end}}
+        </ul>
+        {{if .People}}<p class="who">你图上认识：{{range $i, $p := .People}}{{if $i}}、{{end}}{{$p.Label}}{{end}}</p>{{end}}
+        {{if .LastTouch}}<p class="who">团队最近一次联系：{{.LastTouch.At.Format "2006-01-02"}} · {{.LastTouch.Via}}{{if .LastTouch.Outcome}} · {{.LastTouch.Outcome}}{{end}}</p>{{end}}
+      </article>
+      {{end}}
+    </section>
+    {{end}}
+
+    {{if .Alerts}}
+    <ul class="alerts">
+      {{range .Alerts}}
+      <li><strong>{{.Org}} · {{.EventLabel}}</strong>（{{.Corroboration}}）
+        {{if .People}}—— 你图上在这个组的有：{{range $i, $p := .People}}{{if $i}}、{{end}}{{$p.Label}}{{end}}{{else}}—— 你图上这个组还没有人{{end}}
+      </li>
+      {{end}}
+    </ul>
+    {{end}}
+
+    <!-- The text list is the page. The graph above is an enhancement layered
+         over it, and everything here is rendered by the server: with no script,
+         a slow link or a failed render, nothing below is lost. -->
+    <div class="roster">
+      {{if not .Roster}}<p class="empty">这张图还是空的。在对话里提到公司和人，它会自己长出来。</p>{{end}}
+      {{range .Roster}}
+      <section class="grp">
+        <h3>{{.Org}}
+          {{if .Path}}<span class="path">{{range $i, $s := .Path}}{{if $i}} › {{end}}{{$s}}{{end}}</span>{{else}}<span class="path">未归组</span>{{end}}
+          {{if eq (printf "%s" .Presence) "mentioned"}}<span class="chip">只被提过，未记录</span>{{end}}
+        </h3>
+        {{if .People}}
+        <ul>
+          {{range .People}}
+          <li>{{.Label}}
+            {{if .RoleTitle}}<span class="role"> · {{.RoleTitle}}</span>{{end}}
+            {{if .Duty}}<span class="role"> · {{.Duty}}</span>{{end}}
+            {{if .Unconfirmed}}<span class="chip warn">待确认 {{len .Unconfirmed}}</span>{{end}}
+            {{if eq (printf "%s" .Placement) "unit_path"}}<span class="chip">仅凭一句话归组</span>{{end}}
+          </li>
+          {{end}}
+        </ul>
+        {{else}}<p class="empty">这个组还没有人</p>{{end}}
+      </section>
+      {{end}}
+    </div>
+  </main>
+  <aside id="panel"><h2>详情</h2><p class="empty">点图上的节点查看。没有图也不影响：左边的清单是同一份数据。</p></aside>
+</div>
+
+<script id="data" type="application/json">{{.JSON}}</script>
+<script>window.__LEAD_GRAPH__ = JSON.parse(document.getElementById("data").textContent);</script>
+<script src="graph.js"></script>
+</body>
+</html>
