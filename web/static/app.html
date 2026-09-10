@@ -207,17 +207,12 @@
       <div class="head-actions">
         <span id="sampleFlag" class="flag" title="" data-i18n="banner.sampleShort">演示语料</span>
         <span id="liveFlag" class="flag flag-off" title="" hidden data-i18n="banner.liveOffShort">未接全国检索</span>
-        <!-- 猎源图谱. Hidden unless this conversation is in the employer role,
-             because that is the only role the server serves it to — a control
-             that is always visible and refuses half the people who press it is
-             worse than no control. It opens in a new tab on purpose: the screen
-             is something a recruiter reads BESIDE the conversation they are
-             still in the middle of. Its href is set in app.js, from the current
-             session id. -->
-        <a id="graphLink" class="icon-btn" href="#" target="_blank" rel="noopener"
-           data-i18n-title="ctl.graph" data-i18n-aria="ctl.graph" title="猎源图谱" hidden>
-          <span class="ico" data-icon="route"></span>
-        </a>
+        <!-- 猎源图谱 had a control here that opened a screen of its own. That
+             screen is gone (拍板 2026-09-10) and so is the control: the graph,
+             the org chart, the lead board and the roster are all drawn by 阿桥
+             in the conversation. The import control below is the one part of
+             猎源图谱 that still needs a place in the header, because a file is
+             something the reader brings and the model cannot produce. -->
         <button id="techToggle" class="icon-btn" aria-pressed="false"
                 data-i18n-title="ctl.tech" title="显示系统运行详情">
           <span class="ico" data-icon="gear"></span>

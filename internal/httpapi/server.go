@@ -729,10 +729,37 @@ func (s *Server) graphPage(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	prefix := "/app/sessions/" + ses.ID + "/graph"
+	// THE STANDALONE SCREEN IS GONE (拍板 2026-09-10). What survives of this
+	// route is the EMBED the conversation's card loads, plus the assets and the
+	// snapshot that embed needs. Everything a reader can act on now arrives as a
+	// card in the conversation, from 阿桥, which is where they asked for it —
+	// "everything should be within the chat and handled by the agent".
+	//
+	// WHY THE GATE IS HERE AND NOT IN leadgraph: that package is written to be
+	// liftable into its own repository (see its package doc), and its page is a
+	// perfectly good page. Which surfaces THIS product exposes is a routing
+	// decision, so it lives in the routing layer; leadgraph keeps serving the
+	// full page to anybody who mounts it, and its own fences keep passing.
+	// Fence: TestTheStandaloneGraphScreenIsGone
+	if rest := strings.TrimPrefix(r.URL.Path, prefix); rest == "" || rest == "/" {
+		if r.URL.Query().Get("embed") != "1" {
+			writeErr(w, http.StatusNotFound, "GRAPH_SCREEN_REMOVED",
+				"猎源图谱 no longer has a screen of its own.",
+				"Ask 阿桥 about your graph in the conversation - it draws the picture, "+
+					"the org chart, the lead board and the roster there.")
+			return
+		}
+	}
 	// Without this the page's own relative links (graph.css, /data) would be
-	// resolved against /app/sessions/{id}/ and miss.
+	// resolved against /app/sessions/{id}/ and miss. The query is carried across
+	// because it is what says this is the embed - dropping it would redirect the
+	// card straight into the 404 above.
 	if r.URL.Path == prefix {
-		http.Redirect(w, r, prefix+"/", http.StatusMovedPermanently)
+		to := prefix + "/"
+		if q := r.URL.RawQuery; q != "" {
+			to += "?" + q
+		}
+		http.Redirect(w, r, to, http.StatusMovedPermanently)
 		return
 	}
 	v := leadgraph.View{TeamID: s.graphTeam(ses.SubjectID), SeatID: ses.SubjectID}

@@ -111,14 +111,27 @@ func TestNothingOnTheGraphEncodesImportance(t *testing.T) {
 	if err != nil {
 		t.Fatalf("read js: %v", err)
 	}
-	// Radius is set from a constant, once, and never from data.
+	// Radius is set from the constant, and never from anything about the node.
+	//
+	// "R * k" is allowed and nothing else is. k is the CURRENT VIEW's scale —
+	// world units per screen pixel — so it is the same number for every node in
+	// the picture at the moment it is drawn, and a factor every node shares
+	// cannot say anything about any one person. It exists because the radius
+	// used to be constant in WORLD units, which meant that framing the picture
+	// into a card shrank every node with it: 3.8px circles under 6px labels.
+	// See rescale() in graph.js.
+	//
+	// An allowlist rather than a list of forbidden words: a blocklist has to
+	// guess the name of the next judgement somebody derives a size from.
+	ok := regexp.MustCompile(`^R(\s*\*\s*k)?$`)
 	rs := regexp.MustCompile(`setAttribute\("r",\s*([^)]+)\)`).FindAllStringSubmatch(js, -1)
 	if len(rs) == 0 {
 		t.Fatal("no radius is set at all - this test would prove nothing")
 	}
 	for _, m := range rs {
-		if strings.TrimSpace(m[1]) != "R" {
-			t.Errorf("node radius comes from %q, not the constant", m[1])
+		if !ok.MatchString(strings.TrimSpace(m[1])) {
+			t.Errorf("node radius comes from %q; only the constant R, optionally "+
+				"scaled by the view-wide k, may set it", m[1])
 		}
 	}
 	if regexp.MustCompile(`stroke-width[^;\n]*(strength|weight|score|rank)`).MatchString(js) {
@@ -642,5 +655,198 @@ func stripCSSComments(src string) string {
 			return b.String()
 		}
 		src = src[i+j+2:]
+	}
+}
+
+// ── the card had to be readable, pannable, and had to stop stealing the scroll ──
+//
+// All three fences below read graph.js with its comments stripped first. Every
+// rule they check is quoted verbatim in the note that explains it, so a fence
+// reading the raw file passes on the prose alone — this exact trap has now been
+// walked into twice in this package (see stripCSSComments).
+// See docs/bugfix/2026-09-10-the-graph-card-could-not-be-read.md
+
+// The picture is framed to the box the HOST gave it, not to a constant.
+//
+// It used to be drawn at a fixed "0 0 1000 620". On its own page that box is
+// 60vh and the constant is harmless. Inside 阿桥's card the box is a wide, short
+// strip, so xMidYMid meet scaled the drawing down to the STRIP'S HEIGHT:
+// measured on the live deployment, 287px of picture inside a 758px frame with
+// nodes about 2px across. Drawn, and unreadable — which a reader reports, quite
+// correctly, as "the graph did not show".
+func TestThePictureIsFramedToTheBoxItIsGiven(t *testing.T) {
+	js := stripJSComments(asset(t, "graph.js"))
+
+	if !strings.Contains(js, "function fit(") {
+		t.Fatal("graph.js has no fit(); the picture is back on a constant viewBox")
+	}
+	// Framing needs the CONTENT's extent. Without this fit() is just another
+	// constant wearing a function's name.
+	for _, want := range []string{"getBoundingClientRect", "viewBox"} {
+		if !strings.Contains(js, want) {
+			t.Errorf("fit() cannot frame anything without %s", want)
+		}
+	}
+	// It must run after the stage is revealed: a display:none ancestor gives the
+	// svg no measurable box, so a fit() before `on` measures zeros and the
+	// frame-shape half of the calculation is silently skipped.
+	on := strings.Index(js, `stage.classList.add("on")`)
+	if on < 0 {
+		t.Fatal("nothing reveals the stage; this fence no longer guards anything")
+	}
+	// UNCONDITIONALLY, at the top level of the module — "\n\tfit();" at this
+	// indent, not the guarded `if (!touched) fit();` inside the ResizeObserver.
+	// Matching a bare "fit();" anywhere after the reveal is satisfied by that
+	// guarded call, so deleting the real one left this fence green: the first
+	// drill of it was vacuous, and this is what it took to make it measure.
+	after := js[on:]
+	if i := strings.Index(after, "ResizeObserver"); i > 0 {
+		after = after[:i]
+	}
+	if !strings.Contains(after, "\n  fit();") {
+		t.Error("fit() never runs unconditionally after the stage is revealed, so it " +
+			"measures a hidden element and cannot frame the picture to its box")
+	}
+	// 重置 means "frame it for me again", not "put back the constant".
+	if strings.Contains(js, `svg.setAttribute("viewBox", "0 0 " + W + " " + H)`) {
+		t.Error("something restores the constant viewBox; in a card that is a control " +
+			"whose only effect is to return the reader to the unreadable state")
+	}
+}
+
+// A bare wheel belongs to the PAGE.
+//
+// This handler used to preventDefault() every wheel event over the picture.
+// Inside the conversation the card is something a reader scrolls past, so
+// scrolling with the pointer over it moved nothing and zoomed the graph
+// instead — and with no way to pan, that was a one-way trip into a magnified
+// corner.
+func TestABareWheelDoesNotStealThePagesScroll(t *testing.T) {
+	js := stripJSComments(asset(t, "graph.js"))
+	i := strings.Index(js, `addEventListener("wheel"`)
+	if i < 0 {
+		t.Fatal("there is no wheel handler; this fence no longer guards anything")
+	}
+	body := js[i:]
+	if end := strings.Index(body, "\n  }, {"); end > 0 {
+		body = body[:end]
+	}
+	guard := strings.Index(body, "e.ctrlKey")
+	stop := strings.Index(body, "e.preventDefault()")
+	if guard < 0 {
+		t.Fatal("the wheel handler does not look for a modifier, so it takes every " +
+			"scroll that passes over the card")
+	}
+	if stop < 0 {
+		t.Fatal("the wheel handler never calls preventDefault, so zoom cannot work at all")
+	}
+	if guard > stop {
+		t.Error("preventDefault runs before the modifier is checked, so the page still " +
+			"loses its scroll — the guard has to come first, not merely exist")
+	}
+	if !strings.Contains(body[:guard+40], "return") {
+		t.Error("the modifier check does not RETURN, so an unmodified wheel still " +
+			"reaches the zoom")
+	}
+}
+
+// The background pans. Zoom without pan is a viewport you can enter and cannot
+// leave; the reader who reported this had zoomed by accident (see the wheel
+// fence above) and had no way back.
+func TestTheBackgroundOfThePictureCanBePanned(t *testing.T) {
+	js := stripJSComments(asset(t, "graph.js"))
+	if !strings.Contains(js, `svg.addEventListener("pointerdown"`) {
+		t.Fatal("nothing starts a drag on the background, so the picture cannot be panned")
+	}
+	// Panning moves the VIEWBOX. A pan that moved nodes would quietly rewrite the
+	// layout instead of the view.
+	i := strings.Index(js, `svg.addEventListener("pointermove"`)
+	if i < 0 {
+		t.Fatal("there is no pointermove handler; this fence no longer guards anything")
+	}
+	move := js[i:]
+	if end := strings.Index(move, "\n  });"); end > 0 {
+		move = move[:end]
+	}
+	if !strings.Contains(move, `svg.setAttribute("viewBox"`) {
+		t.Error("dragging the background does not move the viewBox, so it does not pan")
+	}
+	// A node press must win. Both handlers see the same event — the node's own
+	// listener fires first and the background's has to stand down, or dragging a
+	// person pans the picture out from under them.
+	if !strings.Contains(js, "if (drag) return;") {
+		t.Error("the background handler does not stand down when a node took the press")
+	}
+}
+
+// asset reads one of the files this package serves, so a fence measures what
+// ships rather than a copy of it kept beside the test.
+func asset(t *testing.T, name string) string {
+	t.Helper()
+	src, err := leadgraph.WebAsset(name)
+	if err != nil {
+		t.Fatalf("read %s: %v", name, err)
+	}
+	return src
+}
+
+// stripJSComments removes // … and /* … */ so a fence reads code, not notes.
+// Deliberately not a JS parser: it is only ever pointed at this one file, and a
+// parser would be a second thing to get wrong.
+func stripJSComments(src string) string {
+	var b strings.Builder
+	for i := 0; i < len(src); i++ {
+		if src[i] == '/' && i+1 < len(src) {
+			if src[i+1] == '/' {
+				for i < len(src) && src[i] != '\n' {
+					i++
+				}
+				b.WriteByte('\n')
+				continue
+			}
+			if src[i+1] == '*' {
+				if j := strings.Index(src[i+2:], "*/"); j >= 0 {
+					i += 2 + j + 1
+					continue
+				}
+				return b.String()
+			}
+		}
+		b.WriteByte(src[i])
+	}
+	return b.String()
+}
+
+// A viewBox can only ever hold numbers.
+//
+// point() divides by the svg's measured width. An svg that has just been
+// revealed, one whose frame the browser has not laid out yet, and one in a
+// hidden tab all measure 0×0 while being perfectly real, so that division
+// returns Infinity — and the zoom's `p.x - (p.x - vb.x) * k` then evaluates
+// Infinity - Infinity = NaN. "NaN NaN 483 392" in the viewBox attribute takes
+// the picture off screen for good, because every later pan and zoom reads the
+// NaN back out and produces another one. Found by dispatching a single wheel
+// event at a freshly reloaded card, not by reading the code.
+func TestAnUnmeasurableFrameCannotPoisonTheViewBox(t *testing.T) {
+	js := stripJSComments(asset(t, "graph.js"))
+	i := strings.Index(js, "function point(e)")
+	if i < 0 {
+		t.Fatal("point() is gone; this fence no longer guards anything")
+	}
+	body := js[i:]
+	if end := strings.Index(body, "\n  }\n"); end > 0 {
+		body = body[:end]
+	}
+	if !strings.Contains(body, "r.width") || !strings.Contains(body, "return") {
+		t.Fatal("point() no longer divides by a measured width; re-read this fence")
+	}
+	// The guard has to come before the division, not merely exist somewhere.
+	guard := strings.Index(body, "if (!r.width")
+	div := strings.Index(body, "/ r.width)")
+	if guard < 0 {
+		t.Error("point() divides by a width it never checks, so an unlaid-out frame " +
+			"puts Infinity into the zoom and NaN into the viewBox")
+	} else if div >= 0 && guard > div {
+		t.Error("point() checks the width only after dividing by it")
 	}
 }

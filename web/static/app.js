@@ -431,7 +431,14 @@ async function openSession(id) {
       if (!node) continue;
       show(t2.results);
       t2.results.append(node);
+      if (node.classList.contains("gcard")) t2.graphTouched = true;
     }
+    // The picture too, by the SAME rule a live turn uses, from the same
+    // function. A reopened conversation used to show every graph card and no
+    // picture, because this loop knew about cardFor and nothing else — the
+    // reader was left with a receipt saying 新建 9 and nothing to look at.
+    // Fence: TestAReopenedConversationRedrawsTheGraphPicture
+    showGraphPicture(t2);
   }
   crumb(d.session.intent || null);
   await loadIntents();
@@ -691,7 +698,6 @@ function graphPictureCard() {
       <div class="ocard-top"><h3 class="ocard-title">${esc(t("graph.picture"))}</h3></div>
       <iframe class="gstage" title="${esc(t("graph.picture"))}" loading="lazy"
         src="/app/sessions/${esc(state.session.id)}/graph/?embed=1&theme=${esc(themeChoice())}"></iframe>
-      ${graphLinkRow()}
     </div>
   </article>`);
 }
@@ -753,18 +759,15 @@ function gcard(titleKey, note, inner) {
         ${note ? `<span class="pill">${esc(note)}</span>` : ""}
       </div>
       ${inner}
-      ${graphLinkRow()}
     </div>
   </article>`);
 }
 
-// Every card offers the way to the whole book. Without it a card is a dead end:
-// the reader has just been shown a fragment and given no way to see the rest.
-function graphLinkRow() {
-  if (state.session?.role !== "recruiter" || !state.session?.id) return "";
-  return `<div class="gcard-foot"><a class="link" target="_blank" rel="noopener"
-    href="/app/sessions/${esc(state.session.id)}/graph/">${esc(t("graph.open"))} →</a></div>`;
-}
+// There is no longer a "whole book" to link to: the screen a card used to point
+// at has been removed, and every card a reader can act on is drawn here, in the
+// conversation, by 阿桥 (拍板 2026-09-10). A card that still carried that link
+// would be offering a 404.
+// Fence: TestNothingLinksToTheStandaloneGraphScreen
 
 function gDone(key, note) { return gcard(key, note, ""); }
 
@@ -1547,21 +1550,16 @@ function reflectDeliverySettings(session) {
   state.syncingA11y = false;
 }
 
-// syncGraphLink points the 猎源图谱 control at the current conversation, and
-// hides it outside the employer role.
+// syncRecruiterControls shows the controls that belong to the employer role and
+// hides them for everybody else.
 //
-// WHY THE LINK CARRIES A SESSION ID FOR A SCREEN THAT IS NOT PER-SESSION
-//   The graph belongs to the seat, not to the conversation. But the ROLE lives
-//   on the session, and the server derives the seat from the same session — see
-//   Server.graphPage. One id in the URL is what keeps the screen and the tools
-//   reading the same book.
-function syncGraphLink() {
-  const el = $("#graphLink");
-  if (!el) return;
+// It used to also point a 猎源图谱 link at the current conversation. That screen
+// is gone (拍板 2026-09-10): the graph is drawn in the conversation by 阿桥, so
+// the only header control left in this group is the file import — which is
+// here rather than beside the graph cards because a file is something the
+// reader brings, not something the model can produce.
+function syncRecruiterControls() {
   const on = state.session?.role === "recruiter";
-  el.hidden = !on;
-  el.href = on ? `/app/sessions/${state.session.id}/graph/` : "#";
-  // The import control belongs to the same audience and the same graph.
   const imp = $("#importBtn");
   if (imp) imp.hidden = !on;
 }
@@ -1570,7 +1568,7 @@ async function renderOverview() {
   if (!state.session) return;
   const d = await api("GET", `/api/sessions/${state.session.id}`);
   state.session = d.session;
-  syncGraphLink();
+  syncRecruiterControls();
 
   const open = (d.tasks || []).filter((x) => x.status !== "done" && x.status !== "cancelled");
   $("#taskCount").textContent = d.tasks?.length ? `${open.length}/${d.tasks.length}` : "";

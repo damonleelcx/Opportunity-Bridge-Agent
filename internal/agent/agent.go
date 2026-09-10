@@ -721,15 +721,33 @@ func needStrings(ns []domain.AccessNeed) []string {
 // It must stay in step with cardFor() in web/static/app.js. A tool listed here
 // with no renderer wastes space; a renderer with no entry here draws on a live
 // turn and vanishes on reload, which is the bug this exists to fix.
-var cardBearingTools = map[string]bool{
-	"opportunity_search":   true,
-	"criteria_explain":     true,
-	"gap_analysis":         true,
-	"handoff_to_human":     true,
-	"document_prepare":     true,
-	"candidate_search":     true,
-	"external_talent_scan": true,
-}
+//
+// THE 猎源图谱 HALF IS DERIVED, NOT LISTED. Those seventeen tools shipped a
+// renderer each in cardFor() and not one entry here, so every graph card a
+// recruiter saw disappeared the moment they reloaded — the exact failure the
+// paragraph above names, three lines above the list it happened in. A
+// hand-kept register on each side of a boundary rots on whichever side nobody
+// is looking at, and the client side already had a fence
+// (TestEveryLeadGraphToolIsPresentedInTheConversation) while this side had
+// none. Reading the same source of truth that fence reads removes the second
+// list rather than adding a second fence to watch it.
+// See docs/bugfix/2026-09-10-the-graph-card-could-not-be-read.md
+// Fence: TestEveryGraphToolTheModelCanCallSurvivesAReload
+var cardBearingTools = func() map[string]bool {
+	m := map[string]bool{
+		"opportunity_search":   true,
+		"criteria_explain":     true,
+		"gap_analysis":         true,
+		"handoff_to_human":     true,
+		"document_prepare":     true,
+		"candidate_search":     true,
+		"external_talent_scan": true,
+	}
+	for _, n := range tools.LeadGraphToolNames() {
+		m[n] = true
+	}
+	return m
+}()
 
 func mustJSON(v any) string {
 	b, err := json.Marshal(v)

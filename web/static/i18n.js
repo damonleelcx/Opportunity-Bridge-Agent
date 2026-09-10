@@ -15,7 +15,6 @@ const STRINGS = {
     "ctl.intent": "意图",
     "intent.auto": "自动判定",
     "ctl.tech": "显示系统运行详情",
-    "ctl.graph": "猎源图谱",
     "ctl.import": "导入名单（CSV / TSV）",
     "import.reading": "正在读你的文件……",
     "import.failed": "这个文件没读进去",
@@ -25,7 +24,6 @@ const STRINGS = {
     // The vocabulary here is the 名词字典 in docs/20-lead-graph.zh-CN.md §3 and
     // must match the graph page word for word: the same fact seen in the
     // conversation and on the page cannot use two different words for itself.
-    "graph.open": "打开完整图谱",
     "graph.picture": "关系图谱",
     "graph.receipt": "已记下",
     "graph.created": "新建",
@@ -453,13 +451,11 @@ const STRINGS = {
     "ctl.intent": "Intent",
     "intent.auto": "Route automatically",
     "ctl.tech": "Show system detail",
-    "ctl.graph": "Lead graph",
     "ctl.import": "Import a contact list (CSV / TSV)",
     "import.reading": "Reading your file…",
     "import.failed": "That file could not be read",
     "import.staged": "Read, and nothing written yet. Here is what importing it would do.",
     "suggest.importReview": "Is anything wrong with this import plan?",
-    "graph.open": "Open the full graph",
     "graph.picture": "Relationship graph",
     "graph.receipt": "Recorded",
     "graph.created": "new",
