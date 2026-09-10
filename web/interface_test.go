@@ -1926,34 +1926,58 @@ func stripLineComments(src string) string {
 	return b.String()
 }
 
-// The picture is appended once per turn, not once per tool call.
+// The picture is drawn once per turn, and only after the turn has finished.
 //
-// A turn that calls four graph tools would otherwise embed the same graph four
-// times — four iframes, four layouts, one conversation pushed off the screen.
-// The rule is turn-scoped state rather than a list of which tools deserve it,
-// because a list is a register and registers rot towards showing nothing.
-func TestTheGraphPictureIsShownOncePerTurn(t *testing.T) {
+// TWO GUARANTEES, AND THE SECOND ONE COST A PRODUCTION WALKTHROUGH TO FIND:
+//
+//  1. once per turn — a turn that calls four graph tools would otherwise embed
+//     four graphs, four layouts, one conversation pushed off the screen;
+//  2. at the END of the turn — the embedded page renders a snapshot taken when
+//     its iframe loads. Inserted on the first graph card it loaded after
+//     graph_reconcile, which writes nothing by design, so the reader got an
+//     empty picture beside a receipt saying 新建 9.
+//
+// The rule stays turn-scoped state rather than a list of which tools deserve
+// the picture, because a list is a register and registers rot towards nothing.
+func TestTheGraphPictureIsShownOncePerTurnAndAfterItEnds(t *testing.T) {
 	src := stripLineComments(asset(t, "app.js"))
-	start := strings.Index(src, "function renderToolResult(")
-	if start < 0 {
-		t.Fatal("renderToolResult is gone; this fence no longer guards anything")
+	fn := func(name string) string {
+		i := strings.Index(src, "function "+name+"(")
+		if i < 0 {
+			t.Fatalf("%s is gone; this fence no longer guards anything", name)
+		}
+		body := src[i:]
+		if end := strings.Index(body, "\n}\n"); end > 0 {
+			body = body[:end]
+		}
+		return body
 	}
-	body := src[start:]
-	if end := strings.Index(body, "\n}\n"); end > 0 {
-		body = body[:end]
+
+	// Marked while the turn runs, never drawn there.
+	during := fn("renderToolResult")
+	if !strings.Contains(during, "turn.graphTouched = true") {
+		t.Error("nothing records that this turn touched the graph")
 	}
-	if !strings.Contains(body, "graphPictureCard()") {
-		t.Fatal("the conversation never embeds the picture")
+	if strings.Contains(during, "graphPictureCard()") {
+		t.Error("the picture is embedded DURING the turn, so it renders a snapshot " +
+			"taken before the turn's writes have landed")
 	}
-	// BOTH halves. Checking for the name alone let the assignment be deleted
-	// while the `!turn.graphShown` test stayed — a guard that is read and never
-	// set is false forever, which is the bug, and the fence stayed green.
-	if !strings.Contains(body, "!turn.graphShown") {
-		t.Error("the picture is embedded without checking whether this turn already showed it")
+
+	// Drawn once, at the end.
+	at := fn("showGraphPicture")
+	if !strings.Contains(at, "turn.graphTouched") {
+		t.Error("the picture is drawn without checking whether this turn touched the graph")
 	}
-	if !strings.Contains(body, "turn.graphShown = true") {
-		t.Error("nothing ever marks the picture as shown, so the guard is false forever — " +
-			"a turn that calls four graph tools would render four graphs")
+	if !strings.Contains(at, "turn.graphShown") || !strings.Contains(at, "turn.graphShown = true") {
+		t.Error("the once-per-turn guard is not both read and set, so it is false forever")
+	}
+	if !strings.Contains(at, "graphPictureCard()") {
+		t.Error("the conversation never embeds the picture")
+	}
+
+	// And something has to call it when the turn ends.
+	if !strings.Contains(fn("finalise"), "showGraphPicture(turn)") {
+		t.Error("nothing draws the picture when the turn finishes: it would never appear")
 	}
 }
 
@@ -2065,6 +2089,32 @@ func TestEverySkipReasonHasAWord(t *testing.T) {
 		for lang, set := range table {
 			if !set["skip."+m[1]] {
 				t.Errorf("a row can be skipped for %q and %s has no sentence for it — "+
+					"the reader is shown a Go constant", m[1], lang)
+			}
+		}
+	}
+}
+
+// Every reason a relationship line could not be drawn has a sentence.
+//
+// A line the user described and the graph could not attach is reported, never
+// dropped — only a refusal the reader can see is one they can correct. Which
+// only works if the reason renders as words rather than as endpoint_missing.
+func TestEveryUnlinkReasonHasAWord(t *testing.T) {
+	src, err := os.ReadFile("../internal/leadgraph/turn.go")
+	if err != nil {
+		t.Fatalf("read turn.go: %v", err)
+	}
+	decl := regexp.MustCompile(`Link[A-Za-z]+\s+=\s+"([a-z_]+)"`)
+	reasons := decl.FindAllStringSubmatch(string(src), -1)
+	if len(reasons) < 2 {
+		t.Fatalf("found only %d unlink reasons; the fence is not reading the source", len(reasons))
+	}
+	table := stringsTable(t)
+	for _, m := range reasons {
+		for lang, set := range table {
+			if !set["unlink."+m[1]] {
+				t.Errorf("a line can fail with %q and %s has no sentence for it — "+
 					"the reader is shown a Go constant", m[1], lang)
 			}
 		}

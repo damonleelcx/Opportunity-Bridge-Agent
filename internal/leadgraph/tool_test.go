@@ -251,3 +251,57 @@ func TestTouchpointThroughTheToolsSplitsFactFromImpression(t *testing.T) {
 		t.Errorf("the date was mangled: %v", mine[0].At)
 	}
 }
+
+// The MODEL must be able to draw a line, through the real schema.
+//
+// The store could always draw one; nothing the model could say ever did.
+// record_turn took only node candidates, so an agent that heard "他俩是前同事"
+// had no field to put it in. This drives the tool exactly as a model would —
+// schema validation and all — and then asks the graph whether a line exists.
+func TestTheModelCanDrawARelationshipThroughRecordTurn(t *testing.T) {
+	s := newStore(t)
+	_, err := call(t, s, amy, "record_turn", map[string]any{
+		"turn_ref": "t1",
+		"candidates": []any{
+			map[string]any{"kind": "person", "label": "张三", "org": "鲸峰科技",
+				"intel": []any{map[string]any{"kind": "user_said", "excerpt": "张三在鲸峰"}}},
+			map[string]any{"kind": "person", "label": "赵六", "org": "星轨智能",
+				"intel": []any{map[string]any{"kind": "user_said", "excerpt": "赵六在星轨"}}},
+		},
+		"links": []any{
+			map[string]any{
+				"kind":    "colleague_of",
+				"from":    map[string]any{"label": "张三", "org": "鲸峰科技"},
+				"to":      map[string]any{"label": "赵六", "org": "星轨智能"},
+				"context": "前同事",
+				"intel":   []any{map[string]any{"kind": "user_said", "excerpt": "他俩是前同事"}},
+			},
+		},
+	})
+	if err != nil {
+		t.Fatalf("record_turn: %v", err)
+	}
+	if n := len(s.Edges(amy, leadgraph.EdgeFilter{})); n != 1 {
+		t.Fatalf("the model's call left %d lines in the graph", n)
+	}
+}
+
+// And it still cannot smuggle a strength in through the link.
+func TestTheModelCannotRateARelationshipThroughALink(t *testing.T) {
+	s := newStore(t)
+	_, err := call(t, s, amy, "record_turn", map[string]any{
+		"turn_ref": "t1",
+		"links": []any{
+			map[string]any{
+				"kind":     "knows",
+				"from":     map[string]any{"label": "张三"},
+				"to":       map[string]any{"label": "赵六"},
+				"strength": 3,
+				"intel":    []any{map[string]any{"kind": "user_said", "excerpt": "很熟"}},
+			},
+		},
+	})
+	if err == nil {
+		t.Fatal("a link carried a relationship strength the model decided on")
+	}
+}

@@ -337,6 +337,28 @@ func nodeFromArgs(m map[string]any) Node {
 	return n
 }
 
+func linkFromArgs(m map[string]any) LinkInput {
+	end := func(k string) Endpoint {
+		em, _ := m[k].(map[string]any)
+		if em == nil {
+			return Endpoint{}
+		}
+		return Endpoint{Label: argStr(em, "label"), Org: argStr(em, "org")}
+	}
+	l := LinkInput{
+		Kind: EdgeKind(argStr(m, "kind")), From: end("from"), To: end("to"),
+		Context: argStr(m, "context"),
+	}
+	for _, im := range argMaps(m, "intel") {
+		announced, _ := im["announced"].(bool)
+		l.Intel = append(l.Intel, Intel{
+			Kind: IntelKind(argStr(im, "kind")), SourceURL: argStr(im, "source_url"),
+			TurnRef: argStr(im, "turn_ref"), Excerpt: argStr(im, "excerpt"), Announced: announced,
+		})
+	}
+	return l
+}
+
 var intelSchema = Obj("where this fact came from; a record without one is refused",
 	map[string]*Schema{
 		"kind":       Str("who is speaking", string(IntelUserSaid), string(IntelPublicSource), string(IntelTeamShared)),
@@ -359,6 +381,29 @@ var candidateSchema = Obj("one fact extracted from what was said",
 		"contacts":    Arr("how to reach them, if they said", contactSchema),
 		"intel":       Arr("the evidence", intelSchema),
 	}, "kind", "label", "intel")
+
+// linkSchema is a relationship line. Its ends are named by company and person,
+// because the model cannot know the id of somebody it is describing for the
+// first time — and the line and the two people almost always arrive in one
+// sentence, so needing ids would mean needing a second turn.
+//
+// There is no strength field, on purpose: how well two people know each other
+// is a judgement only a person may record. See Endpoint.
+var linkSchema = Obj("one relationship between two people",
+	map[string]*Schema{
+		"kind": Str("what kind of line", string(EdgeBelongsTo), string(EdgeReportsTo),
+			string(EdgeColleague), string(EdgeKnows), string(EdgeReferredBy), string(EdgeInfluences)),
+		"from":    endpointSchema,
+		"to":      endpointSchema,
+		"context": Str("what makes them connected, in the user's own words"),
+		"intel":   Arr("the evidence", intelSchema),
+	}, "kind", "from", "to", "intel")
+
+var endpointSchema = Obj("one end of a relationship",
+	map[string]*Schema{
+		"label": Str("the person's name, exactly as you recorded them this turn"),
+		"org":   Str("their company, which is what tells two people of the same name apart"),
+	}, "label")
 
 var contactSchema = Obj("one way to reach somebody",
 	map[string]*Schema{
@@ -391,11 +436,16 @@ func Tools() *Registry {
 			Schema: Obj("this turn's facts", map[string]*Schema{
 				"turn_ref":   Str("identifier of this conversation turn"),
 				"candidates": Arr("what you heard", candidateSchema),
+				"links": Arr("who is connected to whom, when they said so. Both ends must be "+
+					"among the candidates above or already recorded", linkSchema),
 			}, "turn_ref"),
 			Run: func(s *Store, v View, a map[string]any) (any, error) {
 				in := TurnInput{TurnRef: argStr(a, "turn_ref")}
 				for _, m := range argMaps(a, "candidates") {
 					in.Nodes = append(in.Nodes, nodeFromArgs(m))
+				}
+				for _, m := range argMaps(a, "links") {
+					in.Links = append(in.Links, linkFromArgs(m))
 				}
 				return s.RecordTurn(v, ActorAgent, in)
 			},
