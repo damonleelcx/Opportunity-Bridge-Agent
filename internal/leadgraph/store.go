@@ -144,10 +144,20 @@ func (s *Store) UpsertNode(v View, actor Actor, in Node) (Node, error) {
 			return Node{}, err
 		}
 	}
-	if err := scanSensitive(map[string]string{
+	fields := map[string]string{
 		"label": in.Label, "role_title": in.RoleTitle, "duty": in.Duty, "note": in.Note,
 		"unit_path": strings.Join(in.UnitPath, ">"),
-	}); err != nil {
+	}
+	for i, c := range in.Contacts {
+		if !c.Kind.valid() || strings.TrimSpace(c.Value) == "" {
+			return Node{}, ErrContactInvalid
+		}
+		// A contact column is where an ID number gets pasted, so it is scanned
+		// like every other free-text field: 身份证号 is sensitive under PIPL 28,
+		// a phone number is not.
+		fields["contacts["+itoa(i)+"]"] = c.Value
+	}
+	if err := scanSensitive(fields); err != nil {
 		return Node{}, err
 	}
 	in.TeamID = v.TeamID
@@ -168,6 +178,9 @@ func (s *Store) UpsertNode(v View, actor Actor, in Node) (Node, error) {
 			return Node{}, err
 		}
 		cur.Intel = mergeIntel(cur.Intel, in.Intel)
+		if added := mergeContacts(&cur.Contacts, in.Contacts, now); added > 0 {
+			cur.UpdatedAt = now
+		}
 		cur.History = append(cur.History, changes...)
 		if len(changes) > 0 {
 			cur.UpdatedAt = now
@@ -180,6 +193,8 @@ func (s *Store) UpsertNode(v View, actor Actor, in Node) (Node, error) {
 		n.CreatedAt, n.UpdatedAt = now, now
 		n.History = nil
 		n.Intel = mergeIntel(nil, in.Intel)
+		n.Contacts = nil
+		mergeContacts(&n.Contacts, in.Contacts, now)
 		normaliseNode(&n)
 		s.nodes[n.ID] = &n
 		s.byKey[key] = n.ID
@@ -686,4 +701,76 @@ func (s *Store) ForgetTeam(teamID string) int {
 		}
 	}
 	return gone
+}
+
+// mergeContacts unions a set of ways to reach somebody, keeping the first
+// sighting of each. Returns how many were new.
+//
+// Nothing is ever replaced: a second number is not a contradiction of the
+// first, which is why the "the agent may not overwrite" rule never applies here
+// and why the agent is allowed to add one at all.
+func mergeContacts(cur *[]ContactPoint, add []ContactPoint, now time.Time) int {
+	seen := map[string]bool{}
+	for _, c := range *cur {
+		seen[c.key()] = true
+	}
+	n := 0
+	for _, c := range add {
+		c.Value = strings.TrimSpace(c.Value)
+		if c.Value == "" || !c.Kind.valid() || seen[c.key()] {
+			continue
+		}
+		seen[c.key()] = true
+		if c.AddedAt.IsZero() {
+			c.AddedAt = now
+		}
+		*cur = append(*cur, c)
+		n++
+	}
+	sort.Slice(*cur, func(i, j int) bool { return (*cur)[i].key() < (*cur)[j].key() })
+	return n
+}
+
+// RemoveContact deletes one way of reaching somebody, and leaves a trail.
+//
+// Only a person may: adding a wrong number is additive and visible, removing
+// the right one is how a team loses its only way to reach somebody, quietly.
+func (s *Store) RemoveContact(v View, actor Actor, nodeID string, kind ContactKind, value string, because Intel) error {
+	if !v.valid() {
+		return ErrViewRequired
+	}
+	if actor != ActorUser {
+		return ErrResolutionRequired
+	}
+	if err := because.validate(); err != nil {
+		return err
+	}
+	want := ContactPoint{Kind: kind, Value: value}.key()
+
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	n, ok := s.nodes[nodeID]
+	if !ok || n.TeamID != v.TeamID {
+		return ErrNotFound
+	}
+	kept := n.Contacts[:0]
+	var gone *ContactPoint
+	for _, c := range n.Contacts {
+		if c.key() == want && gone == nil {
+			g := c
+			gone = &g
+			continue
+		}
+		kept = append(kept, c)
+	}
+	if gone == nil {
+		return ErrNotFound
+	}
+	n.Contacts = kept
+	now := s.now()
+	n.History = append(n.History, FieldChange{
+		At: now, Field: "contact:" + string(kind), From: gone.Value, By: actor, Why: because,
+	})
+	n.UpdatedAt = now
+	return nil
 }

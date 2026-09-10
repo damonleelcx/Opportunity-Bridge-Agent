@@ -51,7 +51,18 @@ const (
 	ColDuty     Column = "duty"
 	ColStrength Column = "strength"
 	ColNote     Column = "note"
+	ColPhone    Column = "phone"
+	ColEmail    Column = "email"
+	ColWeChat   Column = "wechat"
 )
+
+// contactColumns maps the contact-bearing columns to what they produce. A table
+// rather than three branches, so adding a channel is a row.
+var contactColumns = map[Column]ContactKind{
+	ColPhone:  ContactPhone,
+	ColEmail:  ContactEmail,
+	ColWeChat: ContactWeChat,
+}
 
 // columnAliases is a table, not a chain of conditions: a new spelling is a new
 // entry and every import gets it at once. Lower-cased and space-stripped before
@@ -64,6 +75,9 @@ var columnAliases = map[Column][]string{
 	ColDuty:     {"职责", "负责", "分管", "工作内容", "responsibility", "scope", "duties"},
 	ColStrength: {"熟悉程度", "关系强度", "亲密度", "熟悉度", "关系", "strength", "closeness", "rapport"},
 	ColNote:     {"备注", "说明", "补充", "note", "notes", "comment", "remark"},
+	ColPhone:    {"手机", "电话", "手机号", "联系电话", "联系方式", "phone", "mobile", "tel", "telephone", "cell"},
+	ColEmail:    {"邮箱", "邮件", "电子邮箱", "email", "mail", "e-mail"},
+	ColWeChat:   {"微信", "微信号", "wechat", "weixin", "wx"},
 }
 
 // SkippedRow is one thing the import did not take, with the row number. Silence
@@ -408,10 +422,33 @@ func (s *Store) PlanImport(v View, fileName string, raw []byte, ov ImportOverrid
 		if u := pick(ColUnit); u != "" && c.Org != "" {
 			c.UnitPath = []string{c.Org, u}
 		}
+		for _, col := range []Column{ColPhone, ColEmail, ColWeChat} {
+			if val := pick(col); val != "" {
+				c.Contacts = append(c.Contacts, ContactPoint{
+					Kind: contactColumns[col], Value: val, Source: fileRef,
+				})
+			}
+		}
 
 		// A field carrying sensitive information is dropped; the row is not, and
 		// the file certainly is not. Refusing the whole import over one cell
 		// would mean the user deletes a column blindly and tries again.
+		kept := c.Contacts[:0]
+		for _, cp := range c.Contacts {
+			if err := scanSensitive(map[string]string{string(cp.Kind): cp.Value}); err != nil {
+				var hit SensitiveHit
+				if asSensitive(err, &hit) {
+					plan.Skipped = append(plan.Skipped, SkippedRow{
+						Row: lineNo, Column: plan.Mapping[hit.Field], Reason: SkipSensitive,
+						Detail: hit.Term + " (" + string(hit.Category) + ")",
+					})
+				}
+				continue
+			}
+			kept = append(kept, cp)
+		}
+		c.Contacts = kept
+
 		for name, ptr := range map[string]*string{
 			"label": &c.Label, "role_title": &c.RoleTitle, "duty": &c.Duty, "note": &c.Note,
 		} {

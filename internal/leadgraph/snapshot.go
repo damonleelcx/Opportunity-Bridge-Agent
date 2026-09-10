@@ -35,6 +35,10 @@ type SnapshotNode struct {
 	UnitPath      []string      `json:"unit_path,omitempty"`
 	RoleTitle     string        `json:"role_title,omitempty"`
 	Duty          string        `json:"duty,omitempty"`
+	// Contacts travel to the screen because the point of the screen is to make
+	// the call. They are the team's, so a teammate sees them too - unlike Note
+	// below, which is the reader's alone.
+	Contacts []ContactPoint `json:"contacts,omitempty"`
 	// Note is the reader's OWN note, already projected by the store.
 	Note string `json:"note,omitempty"`
 }
@@ -140,6 +144,7 @@ func (s *Store) Snapshot(v View, at time.Time) Snapshot {
 			ID: n.ID, Label: n.Label, Kind: n.Kind, Org: n.Org,
 			Corroboration: n.Corroboration(), Unconfirmed: n.Unconfirmed,
 			UnitPath: n.UnitPath, RoleTitle: n.RoleTitle, Duty: n.Duty, Note: n.Note,
+			Contacts: n.Contacts,
 			Presence: presence[n.ID],
 		}
 		if sn.Unconfirmed == nil {

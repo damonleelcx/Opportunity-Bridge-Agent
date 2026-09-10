@@ -160,6 +160,9 @@
     row("证实", d.corroboration);
     if (d.unconfirmed && d.unconfirmed.length) row("待确认", d.unconfirmed.join("、"));
     if (d.presence === "mentioned") row("状态", "只被提过，没有记录");
+    if (d.contacts && d.contacts.length) {
+      row("联系方式", d.contacts.map(function (c) { return c.kind + " " + c.value; }).join("、"));
+    }
     row("我的备注", d.note);
     var mine = data.links.filter(function (l) {
       return (l.from === d.id || l.to === d.id) && l.mine;

@@ -327,9 +327,16 @@ func (s *Store) Export(v View, at time.Time) (ExportBundle, error) {
 			b.Touchpoints = append(b.Touchpoints, s.Touchpoints(v, n.ID)...)
 		}
 	}
+	// Contacts are counted separately in the audit trail. "Who took a copy" is
+	// the first question after a leak; "and how many ways to reach people were
+	// in it" is the second, and a count of nodes does not answer it.
+	contacts := 0
+	for _, n := range b.Nodes {
+		contacts += len(n.Contacts)
+	}
 	s.audit(v, AuditExport, map[string]string{
 		"nodes": itoa(len(b.Nodes)), "edges": itoa(len(b.Edges)),
-		"touchpoints": itoa(len(b.Touchpoints)),
+		"touchpoints": itoa(len(b.Touchpoints)), "contacts": itoa(contacts),
 	}, at)
 	return b, nil
 }

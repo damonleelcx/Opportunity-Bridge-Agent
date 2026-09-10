@@ -114,7 +114,10 @@ func TestAFileWithNoNameColumnIsStagedNotRefused(t *testing.T) {
 // was told about.
 func TestUnusedColumnsAreReported(t *testing.T) {
 	s := newStore(t)
-	plan, err := s.PlanImport(amy, "x.csv", []byte("姓名,手机,邮箱\n王五,13800000000,a@b.com\n"), leadgraph.ImportOverrides{})
+	// 手机 and 邮箱 ARE read now (拍板 2026-09-10). These two are not.
+	plan, err := s.PlanImport(amy, "x.csv",
+		[]byte("姓名,手机,邮箱,上次面试评分,内部编号\n王五,13800000000,a@b.com,7,X-91\n"),
+		leadgraph.ImportOverrides{})
 	if err != nil {
 		t.Fatalf("plan: %v", err)
 	}
@@ -122,8 +125,11 @@ func TestUnusedColumnsAreReported(t *testing.T) {
 		t.Fatalf("want both unused columns reported, got %v", plan.Unmapped)
 	}
 	joined := strings.Join(plan.Unmapped, ",")
-	if !strings.Contains(joined, "手机") || !strings.Contains(joined, "邮箱") {
+	if !strings.Contains(joined, "上次面试评分") || !strings.Contains(joined, "内部编号") {
 		t.Errorf("unmapped columns are wrong: %v", plan.Unmapped)
+	}
+	if strings.Contains(joined, "手机") || strings.Contains(joined, "邮箱") {
+		t.Errorf("contact columns are still being ignored: %v", plan.Unmapped)
 	}
 }
 

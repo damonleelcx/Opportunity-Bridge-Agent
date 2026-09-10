@@ -322,6 +322,11 @@ func nodeFromArgs(m map[string]any) Node {
 		UnitPath: argStrs(m, "unit_path"), RoleTitle: argStr(m, "role_title"),
 		Duty: argStr(m, "duty"), Note: argStr(m, "note"), OccurredAt: argTime(m, "occurred_at"),
 	}
+	for _, cm := range argMaps(m, "contacts") {
+		n.Contacts = append(n.Contacts, ContactPoint{
+			Kind: ContactKind(argStr(cm, "kind")), Value: argStr(cm, "value"),
+		})
+	}
 	for _, im := range argMaps(m, "intel") {
 		announced, _ := im["announced"].(bool)
 		n.Intel = append(n.Intel, Intel{
@@ -351,8 +356,15 @@ var candidateSchema = Obj("one fact extracted from what was said",
 		"duty":        Str("what they actually look after, if stated"),
 		"occurred_at": Str("when an event happened, RFC3339 or YYYY-MM-DD"),
 		"note":        Str("your own private note; never shared with teammates"),
+		"contacts":    Arr("how to reach them, if they said", contactSchema),
 		"intel":       Arr("the evidence", intelSchema),
 	}, "kind", "label", "intel")
+
+var contactSchema = Obj("one way to reach somebody",
+	map[string]*Schema{
+		"kind":  Str("the channel", string(ContactPhone), string(ContactEmail), string(ContactWeChat), string(ContactOther)),
+		"value": Str("the number, address or id as they gave it"),
+	}, "kind", "value")
 
 // Tools is the action surface. Deliberately closed and deliberately small:
 // every entry is something the model can be held to, and there is no
@@ -618,6 +630,29 @@ func Tools() *Registry {
 					}
 				}
 				return s.CommitImport(v, argStr(a, "import_id"), res, time.Now().UTC())
+			},
+		},
+		Tool{
+			// Adding a contact is additive and visible; REMOVING one is how a
+			// team quietly loses its only way to reach somebody. So removal is
+			// a person's decision, relayed, and it leaves a trail.
+			Name: "contact_remove", Risk: RiskWrite,
+			Description: "Remove one way of reaching somebody, when the USER says it is wrong or out of date. Adding a contact needs no tool - it travels with the fact. Removing one does, because it is the half that loses something.",
+			Schema: Obj("which contact", map[string]*Schema{
+				"node_id": Str("whose"),
+				"kind":    Str("the channel", string(ContactPhone), string(ContactEmail), string(ContactWeChat), string(ContactOther)),
+				"value":   Str("the value to remove"),
+				"why":     Str("what the user said, e.g. 这个号码停机了"),
+			}, "node_id", "kind", "value", "why"),
+			Run: func(s *Store, v View, a map[string]any) (any, error) {
+				err := s.RemoveContact(v, ActorUser, argStr(a, "node_id"),
+					ContactKind(argStr(a, "kind")), argStr(a, "value"),
+					Intel{Kind: IntelUserSaid, Excerpt: argStr(a, "why")})
+				if err != nil {
+					return nil, err
+				}
+				n, _ := s.Node(v, argStr(a, "node_id"))
+				return n, nil
 			},
 		},
 		Tool{

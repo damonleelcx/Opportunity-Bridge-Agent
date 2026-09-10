@@ -195,6 +195,9 @@ var (
 	// ErrSensitiveField refuses sensitive personal information at the write.
 	// See sensitive.go for the two reasons and the false-positive trade.
 	ErrSensitiveField = errors.New("SENSITIVE_FIELD: sensitive personal information cannot enter this graph")
+	// ErrContactInvalid refuses a contact with no value or an unknown kind. An
+	// empty one is worse than none: it looks like a way to reach somebody.
+	ErrContactInvalid = errors.New("CONTACT_INVALID: a contact needs a known kind and a value")
 )
 
 // NodeKind is the closed set of things this graph holds. Closed rather than a
@@ -245,6 +248,71 @@ func (k EdgeKind) valid() bool {
 	return false
 }
 
+// ContactKind is how you actually reach somebody. Closed, because each kind
+// normalises differently for de-duplication and displays differently.
+type ContactKind string
+
+const (
+	ContactPhone  ContactKind = "phone"
+	ContactEmail  ContactKind = "email"
+	ContactWeChat ContactKind = "wechat"
+	ContactOther  ContactKind = "other"
+)
+
+func (k ContactKind) valid() bool {
+	switch k {
+	case ContactPhone, ContactEmail, ContactWeChat, ContactOther:
+		return true
+	}
+	return false
+}
+
+// ContactPoint is one way to reach a person.
+//
+// WHOSE IS IT (拍板 2026-09-10)
+//
+//	The TEAM's, like every other fact. The whole reason team mode exists is
+//	"somebody already called him last week", and you cannot call anybody without
+//	a number - contact details held per-seat would let a teammate see the call
+//	and not the way to make the next one.
+//
+// WHY IT IS A SET AND NOTHING IS EVER OVERWRITTEN
+//
+//	People have two numbers. A second phone is not a contradiction of the first,
+//	so contacts union rather than replace, and the agent-may-not-overwrite rule
+//	never comes up: the agent can only ever ADD. Removing one is a person's
+//	decision, because the removal is the destructive half.
+//
+// WHY IT CARRIES ITS OWN Source
+//
+//	A wrong number means calling a stranger. "Which of these three came from
+//	the spreadsheet and which from the call last week" has to be answerable, and
+//	the node's own Intel cannot say it once there is more than one contact.
+type ContactPoint struct {
+	Kind  ContactKind `json:"kind"`
+	Value string      `json:"value"`
+	// Source is where this one came from, in the same shape as Intel: a turn
+	// reference, an import reference, or a URL.
+	Source  string    `json:"source,omitempty"`
+	AddedAt time.Time `json:"added_at"`
+}
+
+// key is what makes the same number arriving twice one contact. Phones lose
+// their punctuation and email its case, because 138-0000-1111 and 13800001111
+// are one number however the spreadsheet wrote it.
+func (c ContactPoint) key() string {
+	v := strings.TrimSpace(c.Value)
+	switch c.Kind {
+	case ContactPhone:
+		v = strings.NewReplacer(" ", "", "-", "", "(", "", ")", "", "+", "").Replace(v)
+	case ContactEmail:
+		v = strings.ToLower(v)
+	default:
+		v = strings.ToLower(v)
+	}
+	return string(c.Kind) + "|" + v
+}
+
 // FieldChange is the trail left by every change to a value that was already
 // there. Without it a user can act, weeks later, on a fact that was quietly
 // edited, with nothing on screen that would let them notice.
@@ -289,11 +357,14 @@ type Node struct {
 	// Unconfirmed lists the fields that have no value yet. It is a state, not an
 	// absence: "not asked" and "asked, nobody said" both read as empty otherwise.
 	// Serialised as [] and never null - the interface counts it.
-	Unconfirmed []string      `json:"unconfirmed"`
-	Intel       []Intel       `json:"intel"`
-	History     []FieldChange `json:"history,omitempty"`
-	CreatedAt   time.Time     `json:"created_at"`
-	UpdatedAt   time.Time     `json:"updated_at"`
+	Unconfirmed []string `json:"unconfirmed"`
+	// Contacts are how to reach this person. A team fact, a set, never
+	// overwritten. See ContactPoint.
+	Contacts  []ContactPoint `json:"contacts,omitempty"`
+	Intel     []Intel        `json:"intel"`
+	History   []FieldChange  `json:"history,omitempty"`
+	CreatedAt time.Time      `json:"created_at"`
+	UpdatedAt time.Time      `json:"updated_at"`
 }
 
 // Corroboration is derived, never stored: one official source outranks any

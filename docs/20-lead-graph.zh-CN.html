@@ -220,7 +220,7 @@ footer{border-top:1px solid var(--line-2); background:var(--surface); margin-top
       <p class="deck">组织在变的时候，人才会动。别人拿到的是一份静态人才库；这个产品拿到的是<strong>你自己的关系网</strong>、<strong>组织正在发生的变化</strong>，以及<strong>你离目标还有几步</strong>。</p>
     </div>
     <div class="stamp">
-      <span class="state" style="background:var(--ok-soft);color:var(--ok);border-color:color-mix(in srgb,var(--ok) 30%,transparent)">P1–P9 + 导入 · 修复回路 · 163 用例 · 105 道守卫演练过</span>
+      <span class="state" style="background:var(--ok-soft);color:var(--ok);border-color:color-mix(in srgb,var(--ok) 30%,transparent)">P1–P9 + 导入 · 联系方式 · 174 用例 · 114 道守卫演练过</span>
       <span>定位：<b>独立产品</b></span>
       <span>上游：<b>19-relationship-trail（已冻结）</b></span>
     </div>
@@ -1012,11 +1012,18 @@ footer{border-top:1px solid var(--line-2); background:var(--surface); margin-top
     <p><strong>名字按姓名排序，不按任何别的东西排。</strong>那个看起来很贴心的排法——「谁连着的边最多、谁能打开最多路径」——<em>就是换了顶帽子的给人排名</em>，而且用户比图更清楚自己跟谁熟。</p>
   </div>
 
-  <div class="why redline">
-    <span class="tag">‼️ 已知缺口：联系方式没有进来，需要拍板</span>
-    <p>猎头的表里<strong>最主要的东西是手机号和邮箱</strong>，但 <code>Node</code> 目前<strong>没有联系方式字段</strong>，我没有偷偷加。理由：加字段是扩接口表面积，而且「存不存、加不加密、导出时怎么处理」是一组独立的产品 + 安全决策，不该顺手塞进导入里。</p>
-    <p><strong>当前行为</strong>：这些列会出现在「未识别列」里被报出来 —— 你看得到它们被忽略了，但没有被存下来。<strong>要不要存，请拍板。</strong></p>
-  </div>
+  <h4>联系方式 <span class="chip c-ok">已拍板 2026-09-10：存</span></h4>
+  <p><strong>归团队。</strong>它是事实不是判断，按 Q1 的口径就归团队。而且这条本身就是团队模式的意义所在 —— 「上周有人已经打过他电话了」，<strong>而没有号码谁也打不了下一个</strong>。</p>
+  <div class="tw"><table>
+    <thead><tr><th class="col-n">规则</th><th>为什么</th></tr></thead>
+    <tbody>
+      <tr><td><strong>只增不改</strong></td><td>人有两个号码 —— 第二个不是对第一个的否定，所以是<strong>集合、并集合并</strong>。于是「Agent 不能覆盖已有值」在这里根本不会触发：Agent 只可能新增。<code>138-0000-0000</code> 和 <code>13800000000</code> 是同一个</td></tr>
+      <tr><td><strong>删除只有人能做，且留痕</strong></td><td>加一个错号码是「多了一条、看得见」；<strong>删掉唯一对的那个，是团队悄无声息地失去联系方式</strong></td></tr>
+      <tr><td>仍然过敏感词闸门</td><td>手机号在 PIPL 下是<em>普通</em>个人信息，<code>身份证号</code> 是<em>敏感</em>的 —— 而联系方式列正是它最容易被粘进来的地方。命中时<strong>只丢那一条联系方式</strong>，不丢整行</td></tr>
+      <tr><td>导出要数它</td><td>泄漏后第一个问题是「谁拷走了」，第二个是「里面有多少个能打通的号码」 —— 节点数回答不了第二个</td></tr>
+    </tbody>
+  </table></div>
+  <p><strong>主体权利自动覆盖</strong>：号码会交给本人（他有权知道我们存了），删除时连带清掉。<strong>没有新建表</strong>：存在 <code>lead_nodes.doc</code> 的 JSONB 里，零迁移。</p>
 </section>
 
 <section id="s10b">
