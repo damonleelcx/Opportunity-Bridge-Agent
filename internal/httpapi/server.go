@@ -49,6 +49,13 @@ type Server struct {
 	// memory rather than in the store.
 	limiterOnce sync.Once
 	lim         *attemptLimiter
+
+	// 猎源图谱's screen, built once around the graph this server was started
+	// with. Bound lazily rather than in a constructor because Agent.Graph is
+	// wired after the Server value exists, and nil at all in a deployment
+	// without a graph database.
+	graphOnce sync.Once
+	graphUI   http.Handler
 }
 
 func (s *Server) Routes() http.Handler {
@@ -67,6 +74,13 @@ func (s *Server) Routes() http.Handler {
 	// written to the graph until somebody has looked at the plan and confirmed
 	// it, which happens through the import tools in the conversation.
 	mux.HandleFunc("POST /api/sessions/{id}/graph/imports", s.stageGraphImport)
+	// 猎源图谱's own screen: the roster, the org chart and the draggable graph.
+	// Bound twice for the same reason /app is - Go's mux treats the two as
+	// different patterns, and a URL somebody typed without the slash should not
+	// be a 404. Everything under it (graph.css, graph.js, /data) is served by
+	// the same handler.
+	mux.HandleFunc("GET /app/sessions/{id}/graph", s.graphPage)
+	mux.HandleFunc("GET /app/sessions/{id}/graph/{rest...}", s.graphPage)
 	mux.HandleFunc("POST /api/tts", s.speak)
 	mux.HandleFunc("POST /api/auth/signup", s.signUp)
 	mux.HandleFunc("POST /api/auth/signin", s.signIn)
@@ -666,4 +680,72 @@ func (s *Server) stageGraphImport(w http.ResponseWriter, r *http.Request) {
 // another.
 func (s *Server) graphTeam(subjectID string) string {
 	return tools.GraphTeamFor(s.Store, subjectID)
+}
+
+// graphViewKey carries the resolved View from this handler to leadgraph's.
+//
+// WHY THE VIEW TRAVELS IN THE CONTEXT
+//
+//	leadgraph.Handler takes a resolve function precisely so that the graph
+//	package never learns what a cookie or an account is. Answering it from the
+//	request context keeps that seam: the identity decision is made here, once,
+//	beside the identical decision the upload route makes.
+type graphViewKey struct{}
+
+// graphPage serves 猎源图谱's screen.
+//
+// WHY THE URL CARRIES A SESSION ID FOR A SCREEN THAT IS NOT PER-SESSION
+//
+//	The graph belongs to a seat, not to a conversation. But the ROLE lives on
+//	the session - an account is not "a recruiter", it is a person who opened a
+//	conversation as one - and the seat and the team are derived from exactly the
+//	two lines the upload route uses. Keying the page on anything else would mean
+//	a second way of working out whose book this is, and two ways is how a page
+//	ends up reading one book while the conversation writes another.
+//
+// The screen is refused rather than emptied when the caller is wrong: an empty
+// roster and a roster somebody may not see look identical, and only one of them
+// is a mistake worth telling them about.
+//
+// This route exists because the screen shipped without one: leadgraph.Handler
+// had a single caller in the whole tree and it was a test.
+// See docs/bugfix/2026-09-10-the-graph-screen-had-no-url.md
+// Fences: internal/httpapi/graphpage_test.go
+func (s *Server) graphPage(w http.ResponseWriter, r *http.Request) {
+	ses, ok := s.ownedSession(w, r, r.PathValue("id"))
+	if !ok {
+		return
+	}
+	if s.Agent == nil || s.Agent.Graph == nil {
+		writeErr(w, http.StatusServiceUnavailable, "GRAPH_UNAVAILABLE",
+			"This deployment has no graph database configured, so there is no graph to show.",
+			"Set OBA_DATABASE_URL on the server and restart.")
+		return
+	}
+	if ses.Role != domain.RoleRecruiter {
+		writeErr(w, http.StatusForbidden, "ROLE_NOT_PERMITTED",
+			"猎源图谱 is part of the employer workflow.",
+			"Start a session as the employer role and open it from there.")
+		return
+	}
+	prefix := "/app/sessions/" + ses.ID + "/graph"
+	// Without this the page's own relative links (graph.css, /data) would be
+	// resolved against /app/sessions/{id}/ and miss.
+	if r.URL.Path == prefix {
+		http.Redirect(w, r, prefix+"/", http.StatusMovedPermanently)
+		return
+	}
+	v := leadgraph.View{TeamID: s.graphTeam(ses.SubjectID), SeatID: ses.SubjectID}
+	r = r.WithContext(context.WithValue(r.Context(), graphViewKey{}, v))
+	http.StripPrefix(prefix, s.graphHandler()).ServeHTTP(w, r)
+}
+
+func (s *Server) graphHandler() http.Handler {
+	s.graphOnce.Do(func() {
+		s.graphUI = leadgraph.Handler(s.Agent.Graph, func(r *http.Request) (leadgraph.View, bool) {
+			v, ok := r.Context().Value(graphViewKey{}).(leadgraph.View)
+			return v, ok
+		})
+	})
+	return s.graphUI
 }

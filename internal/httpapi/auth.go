@@ -82,6 +82,20 @@ func isOpenPath(method, path string) bool {
 		// that the confirm endpoint needs a single-use token nobody can guess.
 		return method == http.MethodPost
 	}
+	// Under /app/ everything is the static shell EXCEPT 猎源图谱's screen, which
+	// serves one team's roster and one seat's private notes. The fallback below
+	// says "not /api/ means public" — a rule that was written when the only
+	// things outside /api/ were files in web/static, and that would otherwise
+	// have published a graph page the moment it was mounted.
+	//
+	// The page checks ownership and role for itself (see Server.graphPage).
+	// This is the second, independent check: if that one is ever weakened, the
+	// screen still needs an account to reach at all.
+	// See docs/bugfix/2026-09-10-the-graph-screen-had-no-url.md
+	// Fence: TestTheGraphScreenNeedsAnAccount
+	if strings.HasPrefix(path, "/app/sessions/") {
+		return false
+	}
 	// The static shell is public. It has to be, to render the sign-in form at
 	// all, and it is already published in an open-source repository — there is
 	// nothing in it that a sign-in would be protecting.

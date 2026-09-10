@@ -1670,3 +1670,66 @@ func TestTheVoiceFigureRuleCannotReachTheBadge(t *testing.T) {
 			"deliberate, this fence and docs/13-name-and-voice.md go with it")
 	}
 }
+
+// An element that sets its own display beats the UA stylesheet's rule for
+// [hidden], so `el.hidden = true` quietly stops working on it.
+//
+// This is not hypothetical: 猎源图谱's entry in the chat header is toggled that
+// way, and because .icon-btn sets display:inline-flex it was on screen for
+// every role — including the ones the server refuses. The DOM said hidden:true
+// and the control had a 34×34 box. Nothing in Go could see it; it took opening
+// the page.
+//
+// So the rule is stated as a fence over the shipped CSS: any element that ships
+// with the hidden attribute and whose class or id sets a display must have a
+// [hidden] companion for that selector.
+// See docs/bugfix/2026-09-10-the-graph-screen-had-no-url.md
+func TestEveryHiddenToggledControlCanActuallyBeHidden(t *testing.T) {
+	html := asset(t, "app.html")
+	css := asset(t, "styles.css")
+
+	tag := regexp.MustCompile(`<\w+[^>]*>`)
+	// `hidden`, but not `aria-hidden`, and only as a whole attribute.
+	isHidden := regexp.MustCompile(`(^|[^-\w])hidden([\s>/])`)
+	idOf := regexp.MustCompile(`id="([^"]+)"`)
+	classOf := regexp.MustCompile(`class="([^"]+)"`)
+
+	checked := 0
+	for _, el := range tag.FindAllString(html, -1) {
+		if !isHidden.MatchString(el) {
+			continue
+		}
+		var sels []string
+		if m := idOf.FindStringSubmatch(el); m != nil {
+			sels = append(sels, "#"+m[1])
+		}
+		if m := classOf.FindStringSubmatch(el); m != nil {
+			for _, c := range strings.Fields(m[1]) {
+				sels = append(sels, "."+c)
+			}
+		}
+		for _, sel := range sels {
+			// Does any rule for this exact selector set a display other than none?
+			rule := regexp.MustCompile(regexp.QuoteMeta(sel) + `\s*(?:,[^{]*)?\{([^}]*)\}`)
+			sets := false
+			for _, m := range rule.FindAllStringSubmatch(css, -1) {
+				if regexp.MustCompile(`display\s*:\s*(?:[^n]|n(?:[^o]|o[^n]))`).MatchString(m[1]) {
+					sets = true
+					break
+				}
+			}
+			if !sets {
+				continue
+			}
+			checked++
+			if !strings.Contains(css, sel+"[hidden]") {
+				t.Errorf("%s sets a display and is toggled with the hidden attribute, "+
+					"but styles.css has no %s[hidden] rule — el.hidden = true will "+
+					"leave it on screen (%s)", sel, sel, strings.TrimSpace(el))
+			}
+		}
+	}
+	if checked == 0 {
+		t.Fatal("no hidden-toggled control sets a display — this test would prove nothing")
+	}
+}
