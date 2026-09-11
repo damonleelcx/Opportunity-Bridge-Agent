@@ -144,6 +144,26 @@ at 50 rows and says how many older ones are not shown, rather than truncating
 silently. Clicking a row while an answer is streaming aborts that turn; the
 server still finishes and persists it, so the answer is there when you go back.
 
+## Thinking tier
+
+Under the message box, beside 大白话 / 大字号 / 读给我听: **思考** with 关闭 / 快速 /
+均衡 / 深入 (2026-09-11).
+
+- **Why here, not in the settings drawer.** It is about the next answer: speed
+  against care. That decision belongs where the person is about to send, next to
+  the other switches that change how an answer comes back.
+- **Where the options come from.** `/api/meta` sends `thinking_tiers` and
+  `thinking_tier_default`; the page keeps no list of its own. A tier the server
+  stops accepting cannot stay on offer and turn every message into a 400.
+- **Remembered in the browser** (`oba.thinking`) and **sent with every message**
+  as `thinking`, the same way the answer language is. The server stores nothing,
+  so there is no endpoint and no migration. It does not follow the person to
+  another device.
+- **The default is 深入**, which is what every turn did before: every intent asks
+  for high effort with thinking on.
+- With 关闭 the status line reads 正在回答… instead of 正在思考….
+- **⚠️ The speed gain is not measured yet.** See `docs/03-model-and-prompt.md`.
+
 ## Theme
 
 **Light unless somebody says otherwise.** Three states — light, dark, and

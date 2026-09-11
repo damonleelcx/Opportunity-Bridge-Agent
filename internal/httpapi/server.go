@@ -356,6 +356,10 @@ func (s *Server) meta(w http.ResponseWriter, r *http.Request) {
 		// See docs/bugfix/2026-08-31-read-aloud-needs-consent.md
 		"consent_scopes": consentScopeNames(),
 		"roles":          roleStrings(),
+		// The interface draws the thinking-tier options from this, so it can only
+		// offer tiers postMessage accepts. See agent/tier.go.
+		"thinking_tiers":        agent.ThinkingTierNames(),
+		"thinking_tier_default": agent.DefaultThinkingTier,
 	}
 	for k, v := range s.deploymentFacts() {
 		out[k] = v
@@ -481,6 +485,11 @@ func (s *Server) postMessage(w http.ResponseWriter, r *http.Request) {
 		// second round trip to change a language is the kind of friction this
 		// product exists to remove.
 		Locale string `json:"locale"`
+		// Thinking is the thinking tier for this turn (agent.ThinkingTiers), or
+		// empty for the default. It rides on the message for the same reason as
+		// Locale: the browser keeps the person's choice and sends it every time,
+		// so the server holds no state for it and there is no second endpoint.
+		Thinking string `json:"thinking"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
 		writeErr(w, http.StatusBadRequest, "BODY_INVALID", "The request body was not valid JSON.",
@@ -499,6 +508,16 @@ func (s *Server) postMessage(w http.ResponseWriter, r *http.Request) {
 	// rather than an error event inside a half-started answer.
 	if !s.spendAllowed(w, r) {
 		return
+	}
+	// Refused before anything is written or streamed, and before Locale below
+	// changes the session: a message the server will not run leaves no trace.
+	if body.Thinking != "" {
+		if _, ok := agent.LookupThinkingTier(body.Thinking); !ok {
+			writeErr(w, http.StatusBadRequest, "THINKING_TIER_INVALID",
+				fmt.Sprintf("%q is not a thinking tier this service offers.", body.Thinking),
+				"Use one of "+strings.Join(agent.ThinkingTierNames(), ", ")+", or leave it out for the default.")
+			return
+		}
 	}
 	if body.Locale != "" {
 		if !validLocale(body.Locale) {
@@ -541,7 +560,7 @@ func (s *Server) postMessage(w http.ResponseWriter, r *http.Request) {
 
 	res, err := s.Agent.Run(ctx, agent.Input{
 		SessionID: id, Message: body.Message,
-		Intent: intent.ID(body.Intent), Sink: send,
+		Intent: intent.ID(body.Intent), Tier: body.Thinking, Sink: send,
 	})
 	if err != nil {
 		send(agent.Event{Kind: agent.EvError, Text: err.Error()})

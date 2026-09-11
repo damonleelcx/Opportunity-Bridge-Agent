@@ -420,6 +420,19 @@ body.has-expanded-card { overflow: hidden; }
 .check:hover span { color: var(--ink-700); }
 .status { margin-left: auto; }
 .status.is-busy::before { content: "● "; color: var(--brand); }
+/* 思考档位 among the composer's toggles: the sidebar's borderless select (see
+   .setting select), so it reads as one of the switches beside it rather than as
+   a form field. */
+.tier-pick select {
+  border: 0; background: transparent; color: var(--ink-700);
+  padding: 2px 0; cursor: pointer; font: inherit;
+}
+.tier-pick select:focus-visible { outline: 2px solid var(--brand); border-radius: 4px; }
+/* .check sets a display, which beats the UA stylesheet's [hidden] rule, so a
+   .check toggled with el.hidden - the thinking tier, until meta lists the tiers -
+   needs this to disappear. Same trap as .icon-btn[hidden] and .gate[hidden].
+   Fence: TestEveryHiddenToggledControlCanActuallyBeHidden */
+.check[hidden] { display: none; }
 
 /* ── overview ──────────────────────────────────────────────────────────── */
 .overview {

@@ -32,7 +32,24 @@ differences that fail silently, are in [12-qwen.md](12-qwen.md).
 > answers `deepseek-v4-pro` with a **200**, so a leftover value would keep the
 > service looking healthy while billing for a model nobody selected.
 
-**Effort** defaults to `high` and is set per intent. **Thinking** is on, and a
+**Thinking tier (2026-09-11).** The person picks how long the model may think,
+under the message box: 关闭 / 快速 / 均衡 / 深入 (`off` / `fast` / `balanced` /
+`thorough`). One table, `agent.ThinkingTiers`, maps each to thinking on/off and an
+effort (`low` / `medium` / `high`). The choice rides on every message as
+`thinking`, like `locale`, and wins over the intent's effort. `thorough` is the
+default and changes nothing: every intent already asks for `high`. `off` is
+thinking OFF with no effort — never an effort of its own, because on Qwen an
+unknown effort with thinking on sends no budget at all. **Why it exists:** a
+person who only wants a quick answer should not wait for the model to think.
+**⚠️ Unmeasured:** the choice was built (damon's decision) before the latency
+measurement finished. The only numbers are one question, one or two runs each:
+`off` answered in 7s against about 28s for `thorough`, but did so by skipping its
+lookups, and `fast` was the slowest at 46s because a draft was sent back. Whether
+a lower tier is meaningfully faster on real turns, and what it costs in answer
+quality, is still to be measured.
+
+**Effort** defaults to `high` and is set per intent, unless the person picked a
+tier. **Thinking** is on unless they picked 关闭, and a
 long think still must not read as a hang: somebody waiting on an answer about
 their own income deserves to see that something is happening. That job belongs
 to the status line (正在思考… / 正在查询…) and the typing indicator in the
