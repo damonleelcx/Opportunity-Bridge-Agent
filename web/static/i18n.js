@@ -24,6 +24,7 @@ const STRINGS = {
     // The vendor and model are filled in from /api/health, never written here:
     // a privacy statement in copy is true only where it was written.
     "import.readingShot": "正在识别截图，大约要一分钟……",
+    "import.shotAsk": "发送之前，先问你一句。",
     "import.shotConfirmTitle": "这张截图要发给模型识别",
     "import.shotConfirmBody": "截图会发给 {host} 上的模型 {model} 做文字识别，截图里别人的姓名、职务、年龄等信息会一起发过去。识别出来的每一行都要你核对，确认后才会写进图谱。",
     "import.shotConfirmUnknown": "截图会发给这个部署配置的模型厂商做文字识别，截图里别人的姓名、职务、年龄等信息会一起发过去。这个部署没有说明是哪一家。识别出来的每一行都要你核对，确认后才会写进图谱。",
@@ -487,6 +488,7 @@ const STRINGS = {
     "import.staged": "Read, and nothing written yet. Here is what importing it would do.",
     "suggest.importReview": "Is anything wrong with this import plan?",
     "import.readingShot": "Reading the screenshot; this takes about a minute…",
+    "import.shotAsk": "One question before anything is sent.",
     "import.shotConfirmTitle": "This screenshot will be sent to a model to be read",
     "import.shotConfirmBody": "The screenshot will be sent to the model {model} at {host} to read its text, with every name, title, age and other detail about the people in it. Every row it reads is yours to check before anything is written to the graph.",
     "import.shotConfirmUnknown": "The screenshot will be sent to this deployment's model vendor to read its text, with every name, title, age and other detail about the people in it. This deployment does not say which vendor that is. Every row it reads is yours to check before anything is written to the graph.",

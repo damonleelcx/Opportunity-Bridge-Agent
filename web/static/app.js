@@ -2496,7 +2496,9 @@ function confirmScreenshot(file) {
   const body = m.vision_endpoint_host && m.vision_model
     ? t("import.shotConfirmBody").replace("{host}", m.vision_endpoint_host).replace("{model}", m.vision_model)
     : t("import.shotConfirmUnknown");
-  turn.bubble.textContent = t("import.shotConfirmTitle");
+  // Not the card's own title: the same sentence twice, one above the other, was
+  // what the first live run showed.
+  turn.bubble.textContent = t("import.shotAsk");
   show(turn.decides);
   const card = el(`<div class="decide">
     <h3></h3><p class="plain"></p>
