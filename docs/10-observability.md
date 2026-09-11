@@ -32,6 +32,52 @@ be mistaken for a live one.
 call and the finish are not all recorded — a trace with a hole in it is worse
 than no trace, because it invites a confident wrong conclusion.
 
+## The server log
+
+The trace panel is one audience. The operator reading `kubectl logs` is the
+other, and until 2026-09-11 they got nothing: a run's events went **only** to the
+browser tab that ran the turn — gone on reload — so the log held one
+`http request` line per turn and could not say which tools had run. See
+[the bugfix note](bugfix/2026-09-11-agent-events-never-reached-the-logs.md).
+
+`obs.LogSink` now writes a run's events to the process log **as they happen**, so
+a turn that hangs or is killed still shows the tool it was in. What reaches the
+log is a table, `loggedEvents` in `internal/obs/logsink.go`, and nothing else:
+
+| Logged | Fields that may appear |
+|---|---|
+| `agent.run.started` / `finished` / `failed` | role, backend, message_chars · stop_reason, iterations, tool_calls, redrafted, output_tokens, elapsed_ms, **cards_kept** |
+| `agent.tool.requested` / `succeeded` / `failed` / `rejected` | tool, **args_hash**, result_bytes |
+| `agent.budget.exceeded`, `agent.model.retried`, `agent.route.rejected` | iterations, tool_calls, tool · attempt · intent |
+| `agent.approval.*` | tool, approval_id |
+| `agent.candidate.searched`, `agent.outreach.requested` / `decided`, `agent.talent.external_scanned` | counts · **outreach_id**, status · vendor counts |
+
+Every line also carries `event.name`, `run_id`, `session_id`, `intent`, `step`,
+and `error.code` when there is one **shaped like a code** (`UPPER_SNAKE`).
+
+**Never logged** (拍板 2026-09-11): an event's message — on several events it is
+the person's words, a route rationale, a verifier quoting the answer, or an
+upstream error body; tool arguments (`args_hash` stands in); and `candidate_ref`
+(`outreach_id` joins to it in the store). High-volume events with no bearing on
+"what ran" — model requests and responses, verifier and guardrail passes — stay
+in the trace panel only.
+
+**Every exit says the turn is over.** Each run ends in exactly one
+`agent.run.finished` or `agent.run.failed`, including the paths that used to end
+silently: a rollout-disabled intent, a routing failure, a model failure.
+`cards_kept` names the tools whose results were kept for replay — so "a tool ran
+but its card was not kept" is answerable from one line.
+
+**Joining a request to its run.** Every request is given an id, minted by the
+server and never taken from the client (an inbound value would be written into
+every line). It is returned as `X-Request-Id` and added to every line logged
+with that request's context. A message turn's `http request` line also carries
+the `run_id` it drove:
+
+```
+kubectl -n opportunity-bridge logs deploy/opportunity-bridge | grep run_1789096804305058063
+```
+
 ## Reading a turn
 
 The `final` event carries the whole run: route decision and method, answer, stop
@@ -39,5 +85,3 @@ reason, every finding, every tool call with its arguments and declared `Meta`,
 approvals raised, token usage, iteration count, whether it was redrafted, and
 elapsed time. `GET /api/sessions/{id}` returns the durable side — profile,
 tasks, consent, approvals.
-
-Set `OBA_TRANSCRIPT_LOG` to mirror events as JSON lines for shipping elsewhere.

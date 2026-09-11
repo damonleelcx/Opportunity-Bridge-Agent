@@ -42,7 +42,7 @@ func (s *Server) spendAllowed(w http.ResponseWriter, r *http.Request) bool {
 	// have used your allowance", which would send them away believing they did
 	// something wrong and that another account would fix it.
 	if s.Cfg.DeploymentDailyTokens > 0 && deploymentSpent >= s.Cfg.DeploymentDailyTokens {
-		s.Log.Warn("turn refused: the deployment's daily model budget is spent",
+		s.Log.WarnContext(r.Context(), "turn refused: the deployment's daily model budget is spent",
 			"code", "SERVICE_BUDGET_REACHED", "username", acct.Username,
 			"spent_tokens", deploymentSpent, "ceiling_tokens", s.Cfg.DeploymentDailyTokens)
 		writeErr(w, http.StatusServiceUnavailable, "SERVICE_BUDGET_REACHED",
@@ -103,7 +103,7 @@ func (s *Server) recordSpend(r *http.Request, u llm.Usage) {
 	// simply set too low. One account reaching its allowance is ordinary and
 	// expected: INFO.
 	if crossed(deploymentNow, total, s.Cfg.DeploymentDailyTokens) {
-		s.Log.Error("the deployment's daily model budget is now spent; every turn is refused until "+resetsAt(),
+		s.Log.ErrorContext(r.Context(), "the deployment's daily model budget is now spent; every turn is refused until "+resetsAt(),
 			"code", "SERVICE_BUDGET_REACHED", "spent_tokens", deploymentNow,
 			"ceiling_tokens", s.Cfg.DeploymentDailyTokens)
 	}

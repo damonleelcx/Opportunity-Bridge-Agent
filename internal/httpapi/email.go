@@ -146,7 +146,7 @@ func (s *Server) verifyEmail(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err := s.Store.MarkEmailVerified(t.Username, t.Email); err != nil {
-		s.Log.Warn("verification token was valid but could not be applied",
+		s.Log.WarnContext(r.Context(), "verification token was valid but could not be applied",
 			"code", "VERIFY_NOT_APPLIED", "error", err.Error())
 		s.verifyRedirect(w, r, "stale")
 		return
@@ -201,7 +201,7 @@ func (s *Server) requestReset(w http.ResponseWriter, r *http.Request) {
 	// Rate-limited by ADDRESS, so one address cannot be used to post mail at
 	// somebody repeatedly. Keyed through the same limiter as sign-in attempts.
 	if !s.attemptAllowed("reset:" + addr) {
-		s.Log.Warn("reset requests throttled", "code", "RESET_THROTTLED")
+		s.Log.WarnContext(r.Context(), "reset requests throttled", "code", "RESET_THROTTLED")
 		return
 	}
 	s.attemptFailed("reset:" + addr)
@@ -216,12 +216,12 @@ func (s *Server) requestReset(w http.ResponseWriter, r *http.Request) {
 	}
 	token, err := s.Store.IssueEmailToken(acct.Username, store.PurposeResetPassword, addr, store.ResetTokenTTL)
 	if err != nil {
-		s.Log.Error("could not mint a reset token", "code", "RESET_TOKEN_FAILED", "error", err.Error())
+		s.Log.ErrorContext(r.Context(), "could not mint a reset token", "code", "RESET_TOKEN_FAILED", "error", err.Error())
 		return
 	}
 	link := s.Cfg.PublicOrigin + "/app?reset=" + url.QueryEscape(token)
 	if err := s.mail(r, acct.Email, resetSubject(s.locale()), resetBody(s.locale(), acct.Username, link)); err != nil {
-		s.Log.Error("reset mail failed", "code", "RESET_MAIL_FAILED", "error", err.Error())
+		s.Log.ErrorContext(r.Context(), "reset mail failed", "code", "RESET_MAIL_FAILED", "error", err.Error())
 	}
 }
 

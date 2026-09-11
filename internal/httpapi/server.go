@@ -22,6 +22,7 @@ import (
 	"github.com/damonleelcx/Opportunity-Bridge-Agent/internal/intent"
 	"github.com/damonleelcx/Opportunity-Bridge-Agent/internal/leadgraph"
 	"github.com/damonleelcx/Opportunity-Bridge-Agent/internal/mailer"
+	"github.com/damonleelcx/Opportunity-Bridge-Agent/internal/obs"
 	"github.com/damonleelcx/Opportunity-Bridge-Agent/internal/store"
 	"github.com/damonleelcx/Opportunity-Bridge-Agent/internal/tools"
 	"github.com/damonleelcx/Opportunity-Bridge-Agent/internal/tts"
@@ -117,7 +118,7 @@ func (s *Server) Routes() http.Handler {
 func (s *Server) appShell(w http.ResponseWriter, r *http.Request) {
 	b, err := fs.ReadFile(s.Web, "app.html")
 	if err != nil {
-		s.Log.Error("app shell missing", "error", err)
+		s.Log.ErrorContext(r.Context(), "app shell missing", "error", err)
 		http.Error(w, "interface unavailable", http.StatusInternalServerError)
 		return
 	}
@@ -128,6 +129,15 @@ func (s *Server) appShell(w http.ResponseWriter, r *http.Request) {
 func logging(log *slog.Logger, next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		start := time.Now()
+		// Every request gets an id: on the response, on this line, and on every
+		// line logged with its context (obs.ContextHandler). A message turn also
+		// gets its run_id onto this line - Agent.Run records it on the request -
+		// so one grep joins the request to the agent's events. Before this the
+		// line carried neither, and nothing else logged the turn at all.
+		// See docs/bugfix/2026-09-11-agent-events-never-reached-the-logs.md
+		ctx, req := obs.WithRequest(r.Context())
+		w.Header().Set("X-Request-Id", req.ID)
+		r = r.WithContext(ctx)
 		rw := &statusWriter{ResponseWriter: w, status: 200}
 		next.ServeHTTP(rw, r)
 		if rw.status >= 400 || strings.HasPrefix(r.URL.Path, "/api/") {
@@ -137,9 +147,17 @@ func logging(log *slog.Logger, next http.Handler) http.Handler {
 			} else if rw.status >= 400 {
 				level = slog.LevelWarn
 			}
-			log.Log(r.Context(), level, "http request",
-				"method", r.Method, "path", r.URL.Path, "status", rw.status,
-				"duration_ms", time.Since(start).Milliseconds())
+			attrs := []slog.Attr{
+				slog.String("event.name", string(obs.HTTPRequestServed)),
+				slog.String("request_id", req.ID),
+				slog.String("method", r.Method), slog.String("path", r.URL.Path),
+				slog.Int("status", rw.status),
+				slog.Int64("duration_ms", time.Since(start).Milliseconds()),
+			}
+			if id := req.RunID(); id != "" {
+				attrs = append(attrs, slog.String("run_id", id))
+			}
+			log.LogAttrs(ctx, level, "http request", attrs...)
 		}
 	})
 }
