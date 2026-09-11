@@ -116,4 +116,18 @@ time=2026-09-11T03:20:13.517Z level=INFO msg="http request" method=POST path=/ap
 ## 验收
 
 - `GOWORK=off go test ./...` 全绿，演练结束后在恢复的代码上复跑仍全绿。
-- **生产环境尚未验证**：需要合并并部署后，发一轮真实对话，用 run id grep `kubectl logs`。
+- **生产环境活体**（2026-09-11，`jobs.heros-agent.space`，镜像 `e4ec3cb-012119`，pod `opportunity-bridge-99cb9bcd4-rn6ll`）：新会话 `ses_0107` 发一轮需要查图谱的问题，拿到 `run_1789104268488849084`，按 run id 读 pod 日志：
+
+  | 日志行（共 7 行，全部带同一个 `request_id=req_40542f754ed03b86`） | 关键字段 |
+  |---|---|
+  | `agent.run.started` | role=recruiter，backend=qwen，message_chars=51 |
+  | `agent.tool.requested` / `succeeded` | tool=org_chart，args_hash，result_bytes=735 |
+  | `agent.tool.requested` / `succeeded` | tool=graph_query，args_hash，result_bytes=2091 |
+  | `agent.run.finished` | stop_reason=answered，tool_calls=2，**`cards_kept="[org_chart graph_query]"`**——与服务端存下的卡片一致 |
+  | `http request`（`http.request.served`） | request_id、status=200，**run_id** |
+
+  这一轮日志里：「鲸峰」0 次、「组织架构」0 次、`candidate_ref` 0 次——参数和用户原文都没有进日志。任意 `/api/*` 响应都带 `X-Request-Id`。
+
+  两个工具的 `args_hash` 相同：hash 只覆盖参数、不含工具名，这一轮两次调用参数相同，符合预期。
+
+- **构建来源陷阱**：第一次上线尝试在 `~/Downloads/repos` 下的 git worktree 里构建，二进制里**没有 `vcs.revision`、且 `vcs.modified=true`**（worktree 本身是干净的）。发布脚本里的核对因此在**部署之前**中止，线上未受影响。同一提交在外层仓库之外的干净克隆里构建，版本信息正确，随后才部署。
