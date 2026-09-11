@@ -126,6 +126,12 @@ vision-probe: ## Prove a model reads images before adding it to llm.QwenVisionMo
 	@set -a; . ./.env; set +a; \
 	OBA_VISION_PROBE_MODEL="$(MODEL)" go test ./internal/vision/ -run 'TestLiveVisionProbe' -count=1 -v
 
+.PHONY: vision-record
+vision-record: ## Re-record the screenshot reading fixture through the real vision path: make vision-record MODEL=<id> (needs .env)
+	@test -n "$(MODEL)" || { echo "usage: make vision-record MODEL=<model id>"; exit 2; }
+	@set -a; . ./.env; set +a; \
+	OBA_VISION_RECORD_MODEL="$(MODEL)" go test ./internal/vision/ -run 'TestLiveRecordScreenshotReading' -count=1 -v
+
 .PHONY: fmt
 fmt: ## Format everything
 	gofmt -w .

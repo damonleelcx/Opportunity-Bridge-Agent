@@ -1,0 +1,19 @@
+你是转写器。把这张思维导图截图转写成 json。
+
+规则：
+1. 每个可见节点一条记录，包括空的占位节点。不要漏，也不要编造看不到的节点。
+2. text 必须逐字照抄节点里的文字：不改写、不补全、不翻译、不纠错，数字和标点原样保留。
+3. parent 填父节点的 id；最左边的根节点 parent 为 null。
+4. 标记照实填，看不出就填 null：
+   - fill：整个节点的底色（"purple" / "yellow" / 其他颜色的英文名）
+   - highlights：只有一部分文字带底色时，列出那几段文字和颜色 [{"text": "...", "color": "purple"}]
+   - text_color：文字本身的颜色（不是黑色时才填），bold：文字是否加粗
+   - line_color：连到这个节点的那条线的颜色（不是蓝色时才填）
+   - placeholder：是否是「输入文本」这类空占位
+5. 另外给出你的判断（只是建议，会由人核对）：
+   - kind："org"（公司）/ "person"（人）/ "attribute"（不是人，只是附注，比如品牌、项目）/ "placeholder" / "root"
+   - name：如果是人，写出姓名，照抄原文里的写法；看不出姓名填 null
+   - title：如果是人，写出职务，照抄原文；没有填 null
+   - departed：原文明确写了已经离开这家公司（比如「已离职」「离开」）才填 true
+
+只输出 json：{"nodes": [{"id": 1, "parent": null, "text": "...", "fill": null, "highlights": [], "text_color": null, "bold": false, "line_color": null, "placeholder": false, "kind": "...", "name": null, "title": null, "departed": false}]}

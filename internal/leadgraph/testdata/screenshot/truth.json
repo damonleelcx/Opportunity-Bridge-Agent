@@ -1,0 +1,45 @@
+{
+  "_note": "Synthetic mind map. Every name is invented. Structure and quirks copied from the owner's real screenshot: ambiguous leading numbers, name in varying positions, English names, a non-person child, departures, a placeholder, whole-node and inline highlights, orange bold text, a green branch line.",
+  "text": "设计人才地图", "kind": "root",
+  "children": [
+    {"text": "星河互联 NOVA", "kind": "org", "name": "星河互联 NOVA", "children": [
+      {"text": "林默然，设计总监、视觉、包装（已离职去Brightly）", "kind": "person", "name": "林默然", "title": "设计总监", "departed": true, "line_color": "green"},
+      {"text": "韩子墨 高级视觉", "kind": "person", "name": "韩子墨", "title": "高级视觉", "fill": "purple", "children": [
+        {"text": "qmx 品牌", "kind": "attribute"}
+      ]},
+      {"text": "Leo Chen UED 用户体验设计负责人 字节、网易、创业", "kind": "person", "name": "Leo Chen", "title": "UED 用户体验设计负责人", "children": [
+        {"text": "苏晓棠 高级ux", "kind": "person", "name": "苏晓棠", "title": "高级ux"},
+        {"text": "顾一鸣 高级ux 同济背景", "kind": "person", "name": "顾一鸣", "title": "高级ux"}
+      ]},
+      {"text": "何思远 三维", "kind": "person", "name": "何思远", "title": "三维"}
+    ]},
+    {"text": "远航科技", "kind": "org", "name": "远航科技", "children": [
+      {"text": "41 女 沈若溪 穿戴设计负责人，华为背景", "kind": "person", "name": "沈若溪", "title": "穿戴设计负责人"},
+      {"text": "30左右 女 叶知秋 品牌总监 vivo 工业背景", "kind": "person", "name": "叶知秋", "title": "品牌总监"},
+      {"text": "36 陆行舟（25年2月进的） 资深设计专家 版本 UI 设计规划", "kind": "person", "name": "陆行舟", "title": "资深设计专家", "children": [
+        {"segments": [{"text": "34", "highlight": "purple"}, {"text": " 周予安 资深ux，oppo，微软 "}, {"text": "海硕", "highlight": "purple"}], "kind": "person", "name": "周予安", "title": "资深ux"},
+        {"segments": [{"text": "31", "highlight": "purple"}, {"text": " 江北辰 UI，百度阿里小鹏"}], "kind": "person", "name": "江北辰", "title": "UI"},
+        {"text": "8 秦朗 uiux，视觉（不看创业团队）", "kind": "person", "name": "秦朗", "title": "uiux", "text_color": "orange", "bold": true},
+        {"text": "Mika ui 华为，海硕", "kind": "person", "name": "Mika", "title": "ui"},
+        {"text": "36 许南风 ux", "kind": "person", "name": "许南风", "title": "ux"}
+      ]},
+      {"text": "39 创新设计部 负责人 程昱，ID设计 美图", "kind": "person", "name": "程昱", "title": "创新设计部 负责人"},
+      {"text": "12 创意设计主管 东南亚 WANG oppo", "kind": "person", "name": "WANG", "title": "创意设计主管"},
+      {"text": "7 陈望舒 （24年离开）追觅品牌视觉", "kind": "person", "name": "陈望舒", "title": "品牌视觉", "departed": true, "children": [
+        {"text": "10 孟川 平面主管", "kind": "person", "name": "孟川", "title": "平面主管"}
+      ]},
+      {"text": "33 Ivan 48w 15 ai平板 海本海硕", "kind": "person", "name": "Ivan", "title": "ai平板"}
+    ]},
+    {"text": "青岩智能", "kind": "org", "name": "青岩智能", "children": [
+      {"segments": [{"text": "视觉总 中台负责人（2023-10-01至今） "}, {"text": "白砚秋 （上海）tcl、欧莱雅", "highlight": "yellow"}], "kind": "person", "name": "白砚秋", "title": "视觉总 中台负责人", "children": [
+        {"text": "Creative Team Leader Marcus", "kind": "person", "name": "Marcus", "title": "Creative Team Leader", "fill": "purple"},
+        {"text": "37 UX总 杜明远 阿里、蔚来（北京）", "kind": "person", "name": "杜明远", "title": "UX总", "children": [
+          {"text": "输入文本", "kind": "placeholder", "placeholder": true},
+          {"text": "32 UX专家 宋清和 深圳 小米", "kind": "person", "name": "宋清和", "title": "UX专家", "fill": "purple"}
+        ]}
+      ]},
+      {"text": "45 罗子衿 （杭州）设计中心负责人", "kind": "person", "name": "罗子衿", "title": "设计中心负责人"},
+      {"text": "19 Audio 首席体验官 冯时雨", "kind": "person", "name": "冯时雨", "title": "Audio 首席体验官"}
+    ]}
+  ]
+}
