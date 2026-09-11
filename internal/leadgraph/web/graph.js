@@ -352,8 +352,15 @@
   function rescale() {
     var vb = svg.viewBox.baseVal;
     var box = svg.getBoundingClientRect();
-    if (!vb.width || !box.width) return;
-    var k = vb.width / box.width;          // world units per CSS pixel
+    if (!vb.width || !vb.height || !box.width || !box.height) return;
+    // World units per CSS pixel, from the axis that actually limits the picture.
+    // The svg is drawn with xMidYMid meet, so when the frame's shape differs from
+    // the viewBox's the drawing is scaled by the TIGHTER axis. Width alone was
+    // right only while the two shapes matched: once the reader had moved the
+    // view and the 详情 panel then made the frame shorter, nodes came out at
+    // 12.8px - 9.9px under a taller panel - instead of 14px.
+    // See docs/bugfix/2026-09-11-nodes-shrank-after-the-reader-touched-the-graph.md
+    var k = Math.max(vb.width / box.width, vb.height / box.height);
     nodeEls.forEach(function (g) {
       var c = g.firstChild, t = g.lastChild;
       c.setAttribute("r", R * k);
@@ -377,6 +384,11 @@
   // card is laid out while its iframe is still sizing, and readers resize
   // windows. Re-framing stays automatic only until the reader frames it.
   if (window.ResizeObserver) {
-    new ResizeObserver(function () { if (!touched) fit(); }).observe(svg);
+    // Before the reader has framed the view, a resize re-frames it. After, the
+    // view is theirs and is left alone - but the node size is still re-applied,
+    // because the frame it was computed for is gone. Not rescaling here is what
+    // let the 详情 panel shrink every node once the reader had touched the picture.
+    // See docs/bugfix/2026-09-11-nodes-shrank-after-the-reader-touched-the-graph.md
+    new ResizeObserver(function () { if (!touched) fit(); else rescale(); }).observe(svg);
   }
 })();

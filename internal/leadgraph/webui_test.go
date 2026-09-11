@@ -850,3 +850,69 @@ func TestAnUnmeasurableFrameCannotPoisonTheViewBox(t *testing.T) {
 		t.Error("point() checks the width only after dividing by it")
 	}
 }
+
+// ── node size when the frame's shape stops matching the view ────────────────
+//
+// Found 2026-09-11 by re-running the production end-to-end: after the reader had
+// moved the view, opening the 详情 panel made the frame shorter and every node
+// shrank - 12.8px, and 9.9px under a taller panel, against 14px. Two things had
+// to be true for it and both were: rescale() took its scale from the WIDTH only,
+// and a resize after the reader touched the view did not rescale at all.
+// See docs/bugfix/2026-09-11-nodes-shrank-after-the-reader-touched-the-graph.md
+
+// The svg is drawn with xMidYMid meet, which scales by the tighter axis. A size
+// computed from one axis is right only while the frame and the view have the
+// same shape, and the 详情 panel changes the frame's shape every time it opens.
+func TestNodeSizeFollowsTheAxisThatLimitsTheFrame(t *testing.T) {
+	js := stripJSComments(asset(t, "graph.js"))
+	i := strings.Index(js, "function rescale()")
+	if i < 0 {
+		t.Fatal("rescale() is gone; this fence no longer guards anything")
+	}
+	body := js[i:]
+	if end := strings.Index(body, "\n  }\n"); end > 0 {
+		body = body[:end]
+	}
+	kAt := strings.Index(body, "var k =")
+	if kAt < 0 {
+		t.Fatal("rescale() no longer computes k; re-read this fence")
+	}
+	kExpr := body[kAt:]
+	if semi := strings.Index(kExpr, ";"); semi > 0 {
+		kExpr = kExpr[:semi]
+	}
+	for _, want := range []string{"Math.max(", "vb.width / box.width", "vb.height / box.height"} {
+		if !strings.Contains(kExpr, want) {
+			t.Errorf("k is not taken from the tighter axis (missing %q): %s", want, kExpr)
+		}
+	}
+	// Dividing by a height means checking the height first - an unlaid-out frame
+	// measures 0 on both axes (TestAnUnmeasurableFrameCannotPoisonTheViewBox).
+	guard := body[:kAt]
+	if !strings.Contains(guard, "!vb.height") || !strings.Contains(guard, "!box.height") {
+		t.Error("rescale divides by a height it never checks, so a frame measuring 0 " +
+			"tall puts Infinity into every node's radius")
+	}
+}
+
+// Once the reader has moved the view, a resize must not re-frame it behind their
+// back - but it must still re-apply the node size, because the frame that size
+// was computed for no longer exists.
+func TestAResizeAfterTheReaderMovedTheViewStillRescales(t *testing.T) {
+	js := stripJSComments(asset(t, "graph.js"))
+	i := strings.Index(js, "new ResizeObserver(")
+	if i < 0 {
+		t.Fatal("there is no ResizeObserver; this fence no longer guards anything")
+	}
+	cb := js[i:]
+	if end := strings.Index(cb, ".observe(svg)"); end > 0 {
+		cb = cb[:end]
+	}
+	if !strings.Contains(cb, "if (!touched) fit()") {
+		t.Error("a resize re-frames a view the reader has already moved")
+	}
+	if !strings.Contains(cb, "rescale()") {
+		t.Error("after the reader has moved the view, a resize no longer re-applies the " +
+			"node size, so opening the 详情 panel shrinks every node")
+	}
+}
