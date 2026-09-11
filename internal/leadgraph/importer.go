@@ -125,6 +125,10 @@ type ImportOverrides struct {
 	Rows map[int]map[Column]string `json:"rows,omitempty"`
 	// Ignore are line numbers the user said to leave out.
 	Ignore []int `json:"ignore,omitempty"`
+	// Include are held rows the user said to import after all - in a
+	// screenshot, somebody the picture says has left. The opposite of Ignore,
+	// and like it only ever relayed from the person, never assumed.
+	Include []int `json:"include,omitempty"`
 }
 
 // Why a plan can be unusable as it stands.
@@ -184,6 +188,27 @@ type ImportPlan struct {
 	// RowOf maps a proposal back to the line it came from, so a question can be
 	// asked as "第 42 行的王总" and the user can look at their own file.
 	RowOf map[int]int `json:"row_of,omitempty"`
+
+	// ---- a screenshot's reading adds these; a spreadsheet leaves them empty,
+	// so no plan that existed before screenshots changes shape. ----
+
+	// Source says what was read.
+	Source ImportSource `json:"source,omitempty"`
+	// Topics is each row's topic verbatim, by row number, so every name and
+	// title the model proposed can be checked against what the picture says.
+	Topics map[int]string `json:"topics,omitempty"`
+	// Held are people the reading says have left, kept out until Include.
+	Held []HeldRow `json:"held,omitempty"`
+	// Checks are rows worth a closer look that do not stop the import.
+	Checks []RowCheck `json:"checks,omitempty"`
+	// Links are the reporting lines the map's shape implies, between people
+	// who are both in the import, named as they will be after corrections.
+	// Drawn at commit through applyLinks, the same path a conversation uses.
+	Links []LinkInput `json:"links,omitempty"`
+	// LinkRow maps a line to the row of the person who reports.
+	LinkRow map[int]int `json:"link_row,omitempty"`
+	// UnlinkedRows are imported people whose manager is not in the import.
+	UnlinkedRows []SkippedRow `json:"unlinked_rows,omitempty"`
 }
 
 // Counts summarises the plan for the confirmation screen. Computed from the
@@ -227,6 +252,21 @@ type table struct {
 	rows      [][]string
 	encoding  string
 	delimiter string
+
+	// A table built from a screenshot's reading carries what only a picture
+	// has; a spreadsheet leaves all of it empty. See tableFromTranscript.
+	source ImportSource
+	// lines is the row number each row is reported by (its topic's place in
+	// the reading). Nil means a file, numbered from line 2.
+	lines []int
+	// text is each row's topic verbatim, by row number.
+	text map[int]string
+	// held are rows kept out until included, with the reason.
+	held map[int]string
+	// parent maps a row to the row of the person it hangs under.
+	parent map[int]int
+	// skipped are topics that are not rows, reported with the plan.
+	skipped []SkippedRow
 }
 
 // decode handles the encoding trap that produces most "import worked, output is
@@ -349,16 +389,33 @@ func (s *Store) PlanImport(v View, fileName string, raw []byte, ov ImportOverrid
 	if err != nil {
 		return ImportPlan{}, err
 	}
+	return s.planTable(v, fileName, digestOf(string(raw)), t, ov), nil
+}
+
+// planTable works out what a table of people would do. It writes nothing.
+//
+// WHY A SCREENSHOT PLANS THROUGH HERE TOO
+//
+//	A screenshot arrives as a table built from its reading (tableFromTranscript),
+//	so every rule about a row - a sensitive field is dropped, a likely duplicate
+//	is asked about, a correction re-reads the whole thing - holds for both
+//	without being written twice, and cannot hold for one and not the other.
+//	What a screenshot adds rides on the table and is empty for a spreadsheet:
+//	which topic each row was, who hangs under whom, who is held back, and the
+//	text each row was read from. TestASpreadsheetIsPlannedExactlyAsBefore pins
+//	that moving this out of PlanImport changed nothing for a spreadsheet.
+func (s *Store) planTable(v View, fileName, digest string, t *table, ov ImportOverrides) ImportPlan {
 	cols, unmapped := mapColumns(t.header)
 	applyColumnOverrides(cols, t.header, ov.Columns)
 	unmapped = unusedHeaders(t.header, cols)
 
 	plan := ImportPlan{
-		File: fileName, Digest: digestOf(string(raw)), Encoding: t.encoding,
+		File: fileName, Digest: digest, Encoding: t.encoding,
 		Delimiter: t.delimiter, Rows: len(t.rows),
 		Mapping: map[string]string{}, Unmapped: unmapped,
-		Skipped: []SkippedRow{}, Strengths: map[int]int{}, Notes: map[int]string{},
+		Skipped: append([]SkippedRow{}, t.skipped...), Strengths: map[int]int{}, Notes: map[int]string{},
 		RowOf: map[int]int{}, Header: t.header, Overrides: ov,
+		Source: t.source, Topics: t.text,
 	}
 	for i, row := range t.rows {
 		if i >= SampleRows {
@@ -373,16 +430,20 @@ func (s *Store) PlanImport(v View, fileName string, raw []byte, ov ImportOverrid
 	// look at it and say which column is the name.
 	if _, ok := cols[ColLabel]; !ok {
 		plan.Blocked = BlockNoNameColumn
-		return plan, nil
+		return plan
 	}
 	if len(t.rows) == 0 {
 		plan.Blocked = BlockNoRows
-		return plan, nil
+		return plan
 	}
 
 	ignored := map[int]bool{}
 	for _, n := range ov.Ignore {
 		ignored[n] = true
+	}
+	included := map[int]bool{}
+	for _, n := range ov.Include {
+		included[n] = true
 	}
 
 	// One source for the whole file, not one per row: two rows naming the same
@@ -394,9 +455,21 @@ func (s *Store) PlanImport(v View, fileName string, raw []byte, ov ImportOverrid
 	var strengths []int
 	var notes []string
 	var lines []int
+	// placed is every row that became a candidate, by its row number, with the
+	// name and company it will carry after corrections - which is what a
+	// reporting line has to name.
+	placed := map[int]Node{}
 	for n, row := range t.rows {
-		lineNo := n + 2 // header is line 1
+		lineNo := t.lineOf(n)
 		if ignored[lineNo] {
+			continue
+		}
+		if reason, held := t.held[lineNo]; held && !included[lineNo] {
+			// Somebody the picture says has left is not imported as if they had
+			// not: the graph would put them in a company they are no longer at.
+			// Held, shown with the text that says so, and imported only when a
+			// person says to. Owner's decision, 2026-09-11.
+			plan.Held = append(plan.Held, HeldRow{Row: lineNo, Reason: reason, Text: t.text[lineNo]})
 			continue
 		}
 		fixed := ov.Rows[lineNo]
@@ -468,10 +541,14 @@ func (s *Store) PlanImport(v View, fileName string, raw []byte, ov ImportOverrid
 			continue
 		}
 
-		c.Intel = []Intel{{
-			Kind: IntelImported, TurnRef: fileRef,
-			Excerpt: fmt.Sprintf("%s 第 %d 行：%s", fileName, lineNo, strings.Join(compact(row), " / ")),
-		}}
+		c.Intel = []Intel{{Kind: IntelImported, TurnRef: fileRef, Excerpt: t.excerpt(fileName, lineNo, row)}}
+		if text, ok := t.text[lineNo]; ok && !standsAlone(c.Label, text) {
+			// A proposed name the topic does not actually say - read wrongly,
+			// or corrected to something else. Flagged for a second look, not
+			// refused. See standsAlone.
+			plan.Checks = append(plan.Checks, RowCheck{Row: lineNo, Check: CheckNameNotInText, Detail: c.Label})
+		}
+		placed[lineNo] = c
 		lines = append(lines, lineNo)
 		notes = append(notes, c.Note)
 		c.Note = "" // travels beside the proposal; see ImportPlan.Notes
@@ -507,7 +584,26 @@ func (s *Store) PlanImport(v View, fileName string, raw []byte, ov ImportOverrid
 			plan.RowOf[i] = lines[i]
 		}
 	}
-	return plan, nil
+	planLinks(&plan, t, placed, fileName, fileRef)
+	return plan
+}
+
+// lineOf is the number a row is reported by: its line in a file (the header is
+// line 1), or its topic's place in a screenshot's reading.
+func (t *table) lineOf(n int) int {
+	if t.lines != nil {
+		return t.lines[n]
+	}
+	return n + 2
+}
+
+// excerpt is the evidence a row carries, naming where it came from the way the
+// person holding the file or the picture would find it.
+func (t *table) excerpt(fileName string, line int, row []string) string {
+	if text, ok := t.text[line]; ok {
+		return fmt.Sprintf("%s 第 %d 个主题：%s", fileName, line, text)
+	}
+	return fmt.Sprintf("%s 第 %d 行：%s", fileName, line, strings.Join(compact(row), " / "))
 }
 
 func compact(row []string) []string {
