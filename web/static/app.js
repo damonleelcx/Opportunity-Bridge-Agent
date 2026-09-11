@@ -703,14 +703,75 @@ function showGraphPicture(turn) {
 // prefers-color-scheme, the same as this page.
 function graphPictureCard() {
   if (state.session?.role !== "recruiter" || !state.session?.id) return null;
-  return el(`<article class="ocard gcard">
+  const label = t("graph.fullscreen");
+  const card = el(`<article class="ocard gcard">
     <div class="ocard-body">
-      <div class="ocard-top"><h3 class="ocard-title">${esc(t("graph.picture"))}</h3></div>
+      <div class="ocard-top"><h3 class="ocard-title">${esc(t("graph.picture"))}</h3>
+        <button type="button" class="icon-btn gfull" aria-pressed="false"
+          title="${esc(label)}" aria-label="${esc(label)}">${icon("expand")}</button></div>
       <iframe class="gstage" title="${esc(t("graph.picture"))}" loading="lazy"
         src="/app/sessions/${esc(state.session.id)}/graph/?embed=1&theme=${esc(themeChoice())}"></iframe>
     </div>
   </article>`);
+  card.querySelector(".gfull").addEventListener("click", () => toggleGraphFullscreen(card));
+  return card;
 }
+
+// ── the graph card, full screen ──────────────────────────────────────────────
+//
+// WHY IN PLACE AND NOT A NEW TAB
+//
+//   The standalone graph screen was removed (拍板 2026-09-10) and nothing may
+//   link to it (TestNothingLinksToTheStandaloneGraphScreen). A "full screen"
+//   that opened the graph somewhere else would be that screen back under a new
+//   name. So the card itself covers the screen. Only a class changes: the
+//   iframe is never moved in the DOM, because re-parenting an iframe reloads
+//   it, and the reader would lose the pan and zoom they came to enlarge.
+//
+// WHY TWO LEGS
+//
+//   The class alone covers the screen in every browser, which is what an
+//   iPhone gets: Safari there cannot put an element in full screen. Where the
+//   browser can, the Fullscreen API is used on top, to take the browser chrome
+//   away too. Sizing comes from the class in both cases, so there is one layout
+//   to get right, not two. The picture re-fits itself to its new box: graph.js
+//   watches its own size (ResizeObserver).
+function setGraphExpanded(card, on) {
+  card.classList.toggle("is-expanded", on);
+  document.body.classList.toggle("has-expanded-card", on);
+  const btn = card.querySelector(".gfull");
+  const label = t(on ? "graph.exitFullscreen" : "graph.fullscreen");
+  btn.setAttribute("aria-pressed", String(on));
+  btn.title = label;
+  btn.setAttribute("aria-label", label);
+  btn.innerHTML = icon(on ? "shrink" : "expand");
+}
+
+async function toggleGraphFullscreen(card) {
+  if (card.classList.contains("is-expanded")) {
+    if (document.fullscreenElement === card) await document.exitFullscreen().catch(() => {});
+    setGraphExpanded(card, false);
+    return;
+  }
+  setGraphExpanded(card, true);
+  // A refusal (no user gesture, a policy, an iPhone) is not an error: the class
+  // has already covered the screen.
+  if (card.requestFullscreen) await card.requestFullscreen().catch(() => {});
+}
+
+function collapseExpandedGraphs() {
+  for (const c of document.querySelectorAll(".gcard.is-expanded")) setGraphExpanded(c, false);
+}
+
+// Leaving real full screen with the browser's own Esc fires fullscreenchange,
+// not the button; without this the card would stay stretched over the page.
+document.addEventListener("fullscreenchange", () => {
+  if (!document.fullscreenElement) collapseExpandedGraphs();
+});
+// Where there is no real full screen (the iPhone leg), Esc is still the way out.
+document.addEventListener("keydown", (e) => {
+  if (e.key === "Escape") collapseExpandedGraphs();
+});
 
 function cardFor(tool, r) {
   switch (tool) {

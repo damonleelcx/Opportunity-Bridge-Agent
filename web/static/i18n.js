@@ -56,6 +56,8 @@ const STRINGS = {
     // must match the graph page word for word: the same fact seen in the
     // conversation and on the page cannot use two different words for itself.
     "graph.picture": "关系图谱",
+    "graph.fullscreen": "全屏",
+    "graph.exitFullscreen": "退出全屏",
     "graph.receipt": "已记下",
     "graph.created": "新建",
     "graph.updated": "更新",
@@ -514,6 +516,8 @@ const STRINGS = {
     "skip.unrecognised_topic": "could not tell what this is",
     "skip.manager_not_imported": "their manager is not imported",
     "graph.picture": "Relationship graph",
+    "graph.fullscreen": "Full screen",
+    "graph.exitFullscreen": "Exit full screen",
     "graph.receipt": "Recorded",
     "graph.created": "new",
     "graph.updated": "updated",
