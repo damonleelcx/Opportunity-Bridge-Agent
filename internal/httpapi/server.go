@@ -21,6 +21,7 @@ import (
 	"github.com/damonleelcx/Opportunity-Bridge-Agent/internal/domain"
 	"github.com/damonleelcx/Opportunity-Bridge-Agent/internal/intent"
 	"github.com/damonleelcx/Opportunity-Bridge-Agent/internal/leadgraph"
+	"github.com/damonleelcx/Opportunity-Bridge-Agent/internal/llm"
 	"github.com/damonleelcx/Opportunity-Bridge-Agent/internal/mailer"
 	"github.com/damonleelcx/Opportunity-Bridge-Agent/internal/obs"
 	"github.com/damonleelcx/Opportunity-Bridge-Agent/internal/store"
@@ -51,6 +52,12 @@ type Server struct {
 	// MEANS OFF: a picture upload is answered "not available here", and the page
 	// knows beforehand from /api/health. See screenshot.go.
 	Vision *vision.Reader
+
+	// Model records every model call, and on a real backend checks the model
+	// when that record is stale, so /api/health can say whether it answers. NIL
+	// MEANS NOT WATCHED, and health then reports the model as unknown - never
+	// as ok. See docs/bugfix/2026-09-11-quota-429-retried-and-health-always-ok.md
+	Model *llm.Health
 
 	// Failed sign-in attempts, per username. See auth.go for why this is in
 	// memory rather than in the store.
@@ -261,8 +268,21 @@ func (s *Server) deploymentFacts() map[string]any {
 
 func (s *Server) health(w http.ResponseWriter, r *http.Request) {
 	_, deploymentSpent := s.Store.SpentToday("")
+	// The headline status is the model's state. It used to be the literal "ok",
+	// which is what it still said on 2026-09-11 while every model call was
+	// refused for a used-up quota.
+	//
+	// The HTTP status stays 200 whatever the state. The k8s probes read only the
+	// status code, and a model outage must not get the pod killed - that would
+	// take the contact-list import, sign-in and every page that needs no model
+	// down with it. A monitor reads "status" / "model" instead.
+	// See docs/bugfix/2026-09-11-quota-429-retried-and-health-always-ok.md
+	model := llm.HealthSnapshot{State: llm.HealthUnknown}
+	if s.Model != nil {
+		model = s.Model.Snapshot()
+	}
 	out := map[string]any{
-		"status": "ok", "backend": s.Agent.LLM.Name(),
+		"status": string(model.State), "model": model, "backend": s.Agent.LLM.Name(),
 		"agent_model": s.Cfg.AgentModel, "classifier_model": s.Cfg.ClassifierModel,
 		"corpus_records": len(s.Agent.Corpus.Opportunities), "cities": s.Agent.Corpus.Cities(),
 		// The day's model spending against the ceiling that stops it. Reported

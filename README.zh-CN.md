@@ -236,7 +236,8 @@ Go 1.25+（postgres 驱动要求）。单个二进制，界面已内嵌。Linux 
 | `EVIDENCE_REQUIRED` | 仅凭口头汇报不能把任务标记为完成 |
 | `OPPORTUNITY_NOT_FOUND` | 编号不在语料库里——先检索，不要猜 |
 | `MODEL_AUTH_FAILED` / `MODEL_RATE_LIMITED` / `MODEL_UNAVAILABLE` | 均附修复办法 |
-| `MODEL_BILLING` | 阿里云账户余额或免费额度用尽——这是永久性失败，不会重试 |
+| `MODEL_BILLING` | 阿里云账户余额用尽或欠费（402、400 `Arrearage`）——永久性失败，不会重试 |
+| `MODEL_QUOTA_EXHAUSTED` | 模型额度用完（429 `Throttling.AllocationQuota` / `insufficient_quota`、token plan 周额度、403 `AllocationQuota.FreeTierOnly`）——不会重试，`/api/health` 变为 `degraded` |
 | `SCRIPT_EXHAUSTED` | 脚本后端拒绝即兴发挥 |
 | `LOCALE_INVALID` | 不支持的回答语言 |
 | `ENV_FILE_INVALID` | `.env` 里某一行有问题，会指出行号 |

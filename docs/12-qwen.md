@@ -178,3 +178,20 @@ proof of no credential and the failure is certain rather than possible.
 `402` is translated on its own as `MODEL_BILLING` and is never retried — an
 exhausted balance or free quota otherwise reads as a generic outage and costs
 somebody an hour.
+
+**An account that cannot be served is read from the vendor's own error code,
+not only from the HTTP status** (2026-09-11). The status alone misleads three
+ways, each sending somebody to the wrong fix:
+
+| Vendor says | Status | Used to be read as | Now |
+|---|---|---|---|
+| `Throttling.AllocationQuota` / `insufficient_quota`, or the token plan's "quota has been exhausted" (no documented code) | 429 | `MODEL_RATE_LIMITED`, retried three times, "will be retried" | `MODEL_QUOTA_EXHAUSTED`, tried once |
+| `AllocationQuota.FreeTierOnly` | 403 | `MODEL_AUTH_FAILED` — prompts reissuing a working key | `MODEL_QUOTA_EXHAUSTED` |
+| `Arrearage` | 400 | `MODEL_REQUEST_INVALID` — "a bug in request assembly" | `MODEL_BILLING` |
+
+A real rate limit (`Throttling.RateQuota`, `limit_burst_rate`,
+`Throttling.Concurrency`) is still `MODEL_RATE_LIMITED` and still retried. Codes
+from [the Model Studio error-code list](https://help.aliyun.com/zh/model-studio/error-code).
+The token plan's weekly-quota refusal carries no code in that list, so a 429 whose
+message mentions a quota is read as one too; rate-limit messages do not mention
+it. See `docs/bugfix/2026-09-11-quota-429-retried-and-health-always-ok.md`.

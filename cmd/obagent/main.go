@@ -149,6 +149,12 @@ func run(addrOverride string, log *slog.Logger) error {
 	if err != nil {
 		return err
 	}
+	// Every model call - the agent's, the router's, the screenshot reader's -
+	// goes through health, so /api/health can say whether the model answers.
+	// It wraps the bare client, below the agent's retry layer, so each attempt
+	// is recorded on its own. See model_health.go.
+	health := modelHealth(cfg, client)
+	client = health
 
 	live, err := buildLiveSource(cfg, log)
 	if err != nil {
@@ -205,7 +211,7 @@ func run(addrOverride string, log *slog.Logger) error {
 	}
 	srv := &httpapi.Server{Agent: ag, Store: st, Cfg: cfg, Web: webFS, Log: log,
 		TTS: speechProvider(cfg, log), Mail: mailSender(cfg, log),
-		Vision: visionReader(cfg, client, graph, log)}
+		Vision: visionReader(cfg, client, graph, log), Model: health}
 
 	httpSrv := &http.Server{
 		Addr:              cfg.Addr,
