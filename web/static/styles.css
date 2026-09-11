@@ -163,6 +163,21 @@ button, select, textarea, input { font: inherit; color: inherit; }
    document — and a card that grows with the data would push the conversation
    off the screen the moment somebody imported a contact list. */
 .gstage { width: 100%; height: 480px; border: 1px solid var(--line); border-radius: var(--r-xs); display: block; }
+/* The same card over the whole screen: the full-screen control on 关系图谱.
+   In place, so the iframe never moves and never reloads (see setGraphExpanded
+   in app.js). The class does the sizing whether or not the browser also grants
+   real full screen, so an iPhone, which cannot, gets the same layout.
+   z-index 48: above the drawers (45), below the sign-in gate (50), so a gate
+   that opens while the graph is enlarged is still the thing on top. */
+.gcard .gfull { flex: 0 0 auto; margin: -7px -8px 0 0; }
+.gcard.is-expanded {
+  position: fixed; inset: 0; z-index: 48;
+  display: flex; flex-direction: column;
+  border: 0; border-radius: 0; box-shadow: none;
+}
+.gcard.is-expanded .ocard-body { flex: 1 1 auto; display: flex; flex-direction: column; min-height: 0; padding: 10px 14px 14px; }
+.gcard.is-expanded .gstage { flex: 1 1 auto; height: auto; min-height: 0; }
+body.has-expanded-card { overflow: hidden; }
 .chip {
   display: inline-block; padding: 1px 7px; border-radius: 999px; margin-left: 4px;
   font-size: .72em; line-height: 1.7; border: 1px solid var(--line);
