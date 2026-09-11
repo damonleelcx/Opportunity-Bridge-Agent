@@ -31,7 +31,7 @@ func TestASpreadsheetIsPlannedExactlyAsBefore(t *testing.T) {
 		{name: "plain", file: "contacts.csv", raw: []byte(plainCSV)},
 		{name: "gbk", file: "从Excel导出.csv", raw: gbk(t, plainCSV)},
 		{name: "tabs and bom", file: "crm.tsv",
-			raw: []byte("﻿Name\tCompany\tTeam\tTitle\tPhone\tEmail\n王五\tA司\tc业务组\t组长\t13800000000\twang@example.com\n\t\t\t\t\t\n")},
+			raw: []byte("\ufeffName\tCompany\tTeam\tTitle\tPhone\tEmail\n王五\tA司\tc业务组\t组长\t13800000000\twang@example.com\n\t\t\t\t\t\n")},
 		{name: "skipped and sensitive", file: "messy.csv",
 			raw: []byte("姓名,公司,职位,熟悉程度,备注\n,A司,组长,3,\n张三,A司,工程师,很熟,\n李四,B司,经理,2,他在做化疗\n")},
 		{name: "corrected", file: "messy.csv",
