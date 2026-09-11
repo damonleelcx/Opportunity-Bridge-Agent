@@ -469,7 +469,6 @@ function agentTurn() {
   g.className = "turn-group";
   g.innerHTML = `
     <div class="route-pill" hidden></div>
-    <div class="thinking" hidden></div>
     <div class="turn">
       <div class="turn-avatar"></div>
       <div class="turn-body"><div class="bubble bubble-agent"></div></div>
@@ -482,7 +481,6 @@ function agentTurn() {
   const turn = {
     root: g,
     pill: g.querySelector(".route-pill"),
-    thinking: g.querySelector(".thinking"),
     slot: g.querySelector(".turn-avatar"),
     bubble: g.querySelector(".bubble"),
     results: g.querySelector(".results"),
@@ -492,6 +490,9 @@ function agentTurn() {
     tech: g.querySelector("details.tech"),
     techBody: g.querySelector(".tech-body"),
     techCount: 0,
+    // The <pre> the current model call is writing its reasoning into, or null
+    // between calls. See reasoningDelta.
+    reasoning: null,
   };
   turn.slot.innerHTML = avatar("calm", t("a11y.avatar"));
   awaitingText(turn);
@@ -558,7 +559,18 @@ async function send(text) {
     for await (const ev of sse(res.body)) {
       switch (ev.kind) {
         case "routed": routePill(turn, ev.route); crumb(ev.route.intent); break;
-        case "thinking": show(turn.thinking); turn.thinking.textContent = clip(turn.thinking.textContent + ev.text, 320); scroll(); break;
+        // Reasoning goes into the folded 系统运行详情, never above the answer.
+        //
+        // WHY: it used to be written into a block over the bubble that nothing
+        // ever took down, so the model's raw chain of thought - in English on a
+        // Chinese screen, and free to say "I need to call that function" in a
+        // turn that then called nothing - stayed under every finished answer.
+        // It was meant as a sign of life during a long think, back when the
+        // provider sent a SUMMARY (display: "summarized"); since the move to
+        // Qwen it is raw reasoning_content. The sign of life is the status line
+        // and the typing dots, which are there from the first instant anyway.
+        // See docs/bugfix/2026-09-11-the-reasoning-was-left-on-screen.md
+        case "thinking": reasoningDelta(turn, ev.text); break;
         case "text":
           // reset means the attempt that wrote this text failed and is being
           // retried. What is on screen came from a run that is not happening any
@@ -567,7 +579,7 @@ async function send(text) {
           // See docs/bugfix/2026-08-28-answers-never-streamed.md
           if (ev.reset) {
             streamed = "";
-            turn.thinking.textContent = "";
+            dropReasoning(turn);
             awaitingText(turn);
             if (!ev.text) { scroll(); break; }
           }
@@ -578,6 +590,7 @@ async function send(text) {
           break;
         case "tool_start":
           status(t("status.working"), "busy");
+          turn.reasoning = null; // this model call is over; its successor gets its own row
           // Rendered unconditionally. This used to be guarded on ev.args, which
           // worked only because the stream carried a second, argument-less
           // tool_start for every call and this was how they were told apart.
@@ -631,11 +644,8 @@ function finalise(turn, final, streamed) {
     turn.bubble.classList.add("is-blocked");
     setMood(turn.slot, "serious", t("a11y.avatar"));
   }
-  if (turn.techCount) {
-    show(turn.tech);
-    turn.tech.querySelector("summary").textContent =
-      `${t("tech.title")} · ${turn.techCount} ${t("tech.steps")}`;
-  }
+  if (turn.techCount) show(turn.tech);
+  if (!turn.tech.hidden) techSummary(turn);
   showGraphPicture(turn);
   renderSuggestions(turn, final.tool_calls || []);
   if (state.speak && final.answer) speak(final.answer, turn);
@@ -1427,8 +1437,58 @@ function techItem(turn, label, payload, isError) {
   d.append(s, pre);
   turn.techBody.append(d);
   show(turn.tech);
-  turn.tech.querySelector("summary").textContent =
-    `${t("tech.title")} · ${turn.techCount} ${t("tech.steps")}`;
+  techSummary(turn);
+}
+
+// techSummary is the ONE place the drawer's heading is written.
+//
+// It used to be built in two places (techItem and finalise), and neither handled
+// a drawer with no steps in it: a turn whose only entries were trace rows showed
+// a bare "›" with no words next to it. Reasoning rows make that turn common - a
+// model answering straight from context thinks without calling anything - so the
+// zero case now says what the section is instead of printing nothing.
+// See docs/bugfix/2026-09-11-the-reasoning-was-left-on-screen.md
+function techSummary(turn) {
+  turn.tech.querySelector("summary").textContent = turn.techCount
+    ? `${t("tech.title")} · ${turn.techCount} ${t("tech.steps")}`
+    : t("tech.title");
+}
+
+// reasoningDelta appends the model's reasoning to the current model call's row
+// in the drawer, opening that row on the first delta.
+//
+// It is NOT a step and does not touch techCount. "N 步" counts what the agent
+// did; reasoning is what it considered, and counting it would print "5 步" over
+// four steps - the same gap between claim and fact this row was moved to
+// stop putting in front of the reader. One row per model call, so the drawer
+// reads in the order things happened: reasoning, the tools it led to, the
+// reasoning after their results. Not clipped: the old block kept only the first
+// 320 characters, which froze a minute-long think a few seconds in.
+function reasoningDelta(turn, text) {
+  if (!text) return;
+  if (!turn.reasoning) {
+    const d = document.createElement("details");
+    d.className = "tech-item tech-reasoning";
+    const s = document.createElement("summary");
+    s.textContent = t("tech.reasoning");
+    const pre = document.createElement("pre");
+    d.append(s, pre);
+    turn.techBody.append(d);
+    turn.reasoning = pre;
+    show(turn.tech);
+    techSummary(turn);
+  }
+  turn.reasoning.textContent += text;
+}
+
+// dropReasoning removes the row a failed model call was writing. Rows from
+// earlier calls stay: those calls succeeded, and the tools after them really ran.
+// A drawer left with nothing in it is hidden again rather than shown empty.
+function dropReasoning(turn) {
+  if (!turn.reasoning) return;
+  turn.reasoning.closest(".tech-item").remove();
+  turn.reasoning = null;
+  if (!turn.techBody.children.length) turn.tech.hidden = true;
 }
 
 // Trace rows are rendered for a reader, with the raw event name kept as the

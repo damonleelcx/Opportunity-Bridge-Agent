@@ -32,10 +32,21 @@ differences that fail silently, are in [12-qwen.md](12-qwen.md).
 > answers `deepseek-v4-pro` with a **200**, so a leftover value would keep the
 > service looking healthy while billing for a model nobody selected.
 
-**Effort** defaults to `high` and is set per intent. **Adaptive thinking** is on,
-with `display: "summarized"` — the API default is `omitted`, which in a chat
-interface reads as a long unexplained pause. Somebody waiting on an answer about
-their own income deserves to see that something is happening.
+**Effort** defaults to `high` and is set per intent. **Thinking** is on, and a
+long think still must not read as a hang: somebody waiting on an answer about
+their own income deserves to see that something is happening. That job belongs
+to the status line (正在思考… / 正在查询…) and the typing indicator in the
+answer bubble, both there from the first instant of a turn.
+
+The reasoning text itself is **not** that signal and is **not** shown above the
+answer. This paragraph used to say thinking ran with `display: "summarized"`, so
+what the interface showed was a summary. Qwen has no summarized mode — it
+streams raw `reasoning_content` — and when the provider changed (`ff28be0`,
+2026-09-03) the display carried on unchanged: the model's raw chain of thought,
+in English, sat above Chinese answers and could claim a tool call the turn never
+made. It now goes into the folded 系统运行详情, one row per model call, not
+counted as a step (拍板 2026-09-11). See
+[the bugfix note](bugfix/2026-09-11-the-reasoning-was-left-on-screen.md).
 
 Most turns never call the router at all: an analyst can reach exactly one intent,
 and a person who tapped an intent chip has already answered the question. When

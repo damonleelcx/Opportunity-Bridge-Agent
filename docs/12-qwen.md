@@ -65,7 +65,7 @@ move is to reissue a key that already works.
 | routing model | `qwen3.8-flash` | default; ~1/14 the rate on both axes |
 | `Request.Thinking` | `enable_thinking: true｜false` | a plain bool, always sent — see below |
 | `Request.Effort` | `thinking_budget` (tokens) | five levels onto a token count, clamped — see below |
-| streamed `reasoning_content` | → `EventThinkingDelta` | the interface shows it working |
+| streamed `reasoning_content` | → `EventThinkingDelta` | **raw**, not a summary — goes into the folded 系统运行详情, never above the answer; see [03](03-model-and-prompt.md) |
 | `usage.prompt_tokens_details.cached_tokens` | → `Usage.CacheReadTokens` | **nested**, see below |
 | `finish_reason` | → our stop reasons | `tool_calls`→`tool_use`, `content_filter`→`refusal` |
 

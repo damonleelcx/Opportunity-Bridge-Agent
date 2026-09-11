@@ -2154,3 +2154,125 @@ func TestAReopenedConversationRedrawsTheGraphPicture(t *testing.T) {
 			"picture call can never fire")
 	}
 }
+
+// ── the model's reasoning lives in the folded drawer (拍板 2026-09-11) ──────────
+//
+// It used to be written into a block above the answer that nothing took down,
+// so every finished turn kept the model's raw chain of thought on screen - in
+// English under a Chinese answer, and in one production turn claiming "I need to
+// call that function" in a turn that called nothing. The decision it came from
+// (docs/03-model-and-prompt.md) was to show a SUMMARY as a sign of life; the move
+// to Qwen made it raw reasoning_content and nobody re-decided.
+// See docs/bugfix/2026-09-11-the-reasoning-was-left-on-screen.md
+//
+// All four fences read app.js with line comments stripped: the notes above the
+// new code quote the old code they replaced.
+
+// fnBody returns one top-level function from app.js, comments already stripped.
+func fnBody(t *testing.T, src, name string) string {
+	t.Helper()
+	i := strings.Index(src, "function "+name+"(")
+	if i < 0 {
+		t.Fatalf("%s is gone; this fence no longer guards anything", name)
+	}
+	body := src[i:]
+	if end := strings.Index(body, "\n}\n"); end > 0 {
+		body = body[:end]
+	}
+	return body
+}
+
+// caseBody returns the stream-switch branch from `case "<from>":` up to the next
+// named case, so a fence reads exactly one branch.
+func caseBody(t *testing.T, src, from, to string) string {
+	t.Helper()
+	i := strings.Index(src, `case "`+from+`":`)
+	if i < 0 {
+		t.Fatalf(`the "%s" branch is gone; this fence no longer guards anything`, from)
+	}
+	j := strings.Index(src[i:], `case "`+to+`":`)
+	if j < 0 {
+		t.Fatalf(`could not find the "%s" branch that ends "%s"`, to, from)
+	}
+	return src[i : i+j]
+}
+
+func TestTheModelsReasoningIsNotShownAboveTheAnswer(t *testing.T) {
+	src := stripLineComments(asset(t, "app.js"))
+
+	if strings.Contains(fnBody(t, src, "agentTurn"), `class="thinking"`) {
+		t.Error("the turn template still has a reasoning block above the answer")
+	}
+	branch := caseBody(t, src, "thinking", "text")
+	if !strings.Contains(branch, "reasoningDelta(") {
+		t.Error("the thinking branch no longer hands reasoning to the drawer")
+	}
+	if strings.Contains(branch, "show(") || strings.Contains(branch, "textContent") {
+		t.Error("the thinking branch writes reasoning onto the page itself instead of " +
+			"into the folded drawer")
+	}
+	rd := fnBody(t, src, "reasoningDelta")
+	if !strings.Contains(rd, "turn.techBody.append(") {
+		t.Error("reasoningDelta does not put its row inside 系统运行详情")
+	}
+	// The old block kept only the first 320 characters, so a minute-long think
+	// froze on screen a few seconds in. Inside a folded, scrolling row there is
+	// no reason to cut it, and a cut row is a row that looks finished when it is not.
+	if strings.Contains(rd, "clip(") {
+		t.Error("reasoning is clipped again; the drawer row shows a fraction of what " +
+			"the model considered")
+	}
+}
+
+// "N 步" counts what the agent did. Reasoning is what it considered; counting it
+// would print "5 步" over four steps. And a drawer holding only reasoning
+// must still have a heading, not the bare "›" trace-only turns used to get.
+func TestReasoningIsNotCountedAsAStep(t *testing.T) {
+	src := stripLineComments(asset(t, "app.js"))
+
+	rd := fnBody(t, src, "reasoningDelta")
+	if strings.Contains(rd, "techCount") {
+		t.Error("reasoning changes the step count, so the heading claims steps that " +
+			"were never taken")
+	}
+	if !strings.Contains(rd, "techSummary(") {
+		t.Error("a drawer opened by reasoning alone is left without a heading")
+	}
+	if !strings.Contains(fnBody(t, src, "techSummary"), `: t("tech.title")`) {
+		t.Error("the heading has no wording for a drawer with no steps in it")
+	}
+	// One writer for the heading, or the zero case gets fixed in one place and
+	// stays blank in the other - which is how the bare "›" happened.
+	if n := strings.Count(src, `t("tech.steps")`); n != 1 {
+		t.Errorf(`the step heading is built in %d places; it must be built only in techSummary`, n)
+	}
+	if !strings.Contains(fnBody(t, src, "finalise"), "techSummary(") {
+		t.Error("finalise no longer writes the drawer heading, so a turn with no " +
+			"steps ends with a blank one")
+	}
+}
+
+// A failed model call's text is taken back on reset (TestClientClearsTheScreenOnReset).
+// Its reasoning must go with it: it belongs to an attempt that did not happen.
+func TestAFailedAttemptTakesItsReasoningWithIt(t *testing.T) {
+	src := stripLineComments(asset(t, "app.js"))
+
+	if !strings.Contains(caseBody(t, src, "text", "tool_start"), "dropReasoning(turn)") {
+		t.Error("reset clears the failed attempt's text but leaves its reasoning in the drawer")
+	}
+	drop := fnBody(t, src, "dropReasoning")
+	if !strings.Contains(drop, ".remove()") || !strings.Contains(drop, "turn.reasoning = null") {
+		t.Error("dropReasoning does not remove the row and forget it")
+	}
+}
+
+// One reasoning row per model call, so the drawer reads in the order things
+// happened: reasoning, the tools it led to, the reasoning after their results.
+func TestEachModelCallGetsItsOwnReasoningRow(t *testing.T) {
+	src := stripLineComments(asset(t, "app.js"))
+
+	if !strings.Contains(caseBody(t, src, "tool_start", "tool_result"), "turn.reasoning = null") {
+		t.Error("a tool step does not close the reasoning row, so the next model call's " +
+			"reasoning is appended above tools it had not yet asked for")
+	}
+}
