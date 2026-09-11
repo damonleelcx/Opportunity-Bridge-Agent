@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"log/slog"
 	"strings"
 	"time"
 
@@ -43,6 +44,11 @@ type Agent struct {
 	// and means this deployment has no graph database; the tools that need it
 	// say so rather than failing obscurely. See internal/tools/leadgraph.go.
 	Graph *leadgraph.Store
+	// Log receives the run's allowlisted events (obs.LogSink). Nil means none,
+	// which is what every test that does not ask for logs gets - and what the
+	// production binary had by omission until 2026-09-11.
+	// See docs/bugfix/2026-09-11-agent-events-never-reached-the-logs.md
+	Log *slog.Logger
 }
 
 // Input is one turn.
@@ -129,6 +135,15 @@ func (a *Agent) Run(ctx context.Context, in Input) (Result, error) {
 		e := ev
 		emit(Event{Kind: EvTrace, Trace: &e})
 	})
+	// The same events, allowlisted, into the process log. Until this the browser
+	// tab that ran the turn was the only place a run's events went, so the server
+	// could not say which tools a turn had run. SetRunID lets the HTTP line for
+	// this request carry the run id too.
+	// See docs/bugfix/2026-09-11-agent-events-never-reached-the-logs.md
+	obs.SetRunID(ctx, runID)
+	if a.Log != nil {
+		rec.Subscribe(obs.LogSink(ctx, a.Log))
+	}
 	start := time.Now()
 
 	ses, ok := a.Store.Session(in.SessionID)
@@ -168,13 +183,20 @@ func (a *Agent) Run(ctx context.Context, in Input) (Result, error) {
 	dec, err := intent.Route(ctx, a.LLM, a.Cfg.ClassifierModel, ses.Role, in.Intent, in.Message, intent.ID(ses.Intent))
 	if err != nil {
 		rec.Error(obs.RouteRejected, "ROUTE_FAILED", err.Error(), nil)
-		return a.fail(rec, runID, start, err)
+		return a.fail(rec, runID, start, "ROUTE_FAILED", err)
 	}
 	if !a.Cfg.IntentEnabled(string(dec.ID)) {
 		// The rollout gate refuses visibly. A staged rollout that silently
 		// answers with something else is worse than one that says "not yet".
 		msg := sysMsg(replyLanguage(a.Cfg, ses), msgIntentDisabled, dec.ID)
 		rec.Warn(obs.RouteRejected, "INTENT_DISABLED", msg, map[string]any{"intent": string(dec.ID)})
+		// Every exit emits exactly one terminal event. This one used to emit none,
+		// so a refused turn never said it was over. Nothing is persisted on this
+		// path, so no card was kept.
+		rec.Info(obs.RunFinished, "turn finished", map[string]any{
+			"stop_reason": string(StopRefused), "elapsed_ms": time.Since(start).Milliseconds(),
+			"cards_kept": []string{},
+		})
 		emit(Event{Kind: EvFinal, Final: &Result{RunID: runID, Intent: string(dec.ID), Answer: msg, StopReason: StopRefused}})
 		return Result{RunID: runID, Intent: string(dec.ID), Route: dec, Answer: msg,
 			StopReason: StopRefused, Events: rec.Events()}, nil
@@ -314,8 +336,7 @@ func (a *Agent) Run(ctx context.Context, in Input) (Result, error) {
 			}
 		})
 		if err != nil {
-			rec.Error(obs.RunFailed, "MODEL_CALL_FAILED", err.Error(), nil)
-			return a.fail(rec, runID, start, err)
+			return a.fail(rec, runID, start, "MODEL_CALL_FAILED", err)
 		}
 		usage.InputTokens += resp.Usage.InputTokens
 		usage.OutputTokens += resp.Usage.OutputTokens
@@ -506,6 +527,9 @@ func (a *Agent) Run(ctx context.Context, in Input) (Result, error) {
 		"stop_reason": string(stop), "iterations": budget.Iterations(),
 		"tool_calls": budget.ToolCalls(), "redrafted": redrafts > 0,
 		"output_tokens": usage.OutputTokens, "elapsed_ms": time.Since(start).Milliseconds(),
+		// What was kept for replay, beside what ran: "a tool ran but its card was
+		// not kept" is answerable from this one line.
+		"cards_kept": cardTools(turnCards),
 	})
 
 	result := Result{
@@ -654,11 +678,29 @@ func (a *Agent) approvedForSession(sessionID string) []store.PendingApproval {
 	return out
 }
 
-func (a *Agent) fail(rec *obs.Recorder, runID string, start time.Time, err error) (Result, error) {
+// fail is the one exit for a turn that could not finish, and it emits the
+// terminal event itself. Of its two callers, the route failure emitted none, so
+// that turn never said it was over - in the browser trace or anywhere else.
+// Message keeps err.Error() for the browser trace; obs.LogSink never logs messages.
+// Nothing is persisted on a failed turn, so no card was kept.
+func (a *Agent) fail(rec *obs.Recorder, runID string, start time.Time, code string, err error) (Result, error) {
+	elapsed := time.Since(start).Milliseconds()
+	rec.Error(obs.RunFailed, code, err.Error(), map[string]any{
+		"stop_reason": string(StopFailed), "elapsed_ms": elapsed, "cards_kept": []string{},
+	})
 	return Result{
-		RunID: runID, StopReason: StopFailed, ElapsedMS: time.Since(start).Milliseconds(),
+		RunID: runID, StopReason: StopFailed, ElapsedMS: elapsed,
 		Events: rec.Events(),
 	}, err
+}
+
+// cardTools names the tools whose results this turn kept for replay.
+func cardTools(cards []store.TurnCard) []string {
+	out := make([]string, 0, len(cards))
+	for _, c := range cards {
+		out = append(out, c.Tool)
+	}
+	return out
 }
 
 // buildHistory replays the conversation as plain text turns.

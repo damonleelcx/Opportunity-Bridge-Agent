@@ -202,7 +202,7 @@ func (s *Server) signUp(w http.ResponseWriter, r *http.Request) {
 	// they sort the address out.
 	emailErr := s.Store.SetEmail(acct.Username, body.Email)
 	if emailErr != nil {
-		s.Log.Warn("account created without its address",
+		s.Log.WarnContext(r.Context(), "account created without its address",
 			"code", "SIGNUP_EMAIL_NOT_SET", "username", acct.Username, "error", emailErr.Error())
 	}
 	s.Log.Info("account created", "code", "ACCOUNT_CREATED", "username", acct.Username)
@@ -214,7 +214,7 @@ func (s *Server) signUp(w http.ResponseWriter, r *http.Request) {
 	} else if sent, err := s.sendVerification(r, acct.Username, body.Email); err != nil {
 		// Never fatal. A relay outage must not stop somebody signing up; the
 		// resend control is in the settings panel.
-		s.Log.Warn("confirmation mail failed at sign-up",
+		s.Log.WarnContext(r.Context(), "confirmation mail failed at sign-up",
 			"code", "VERIFY_MAIL_FAILED", "error", err.Error())
 		out["verification_sent"] = false
 	} else {

@@ -10,9 +10,6 @@
 package obs
 
 import (
-	"encoding/json"
-	"fmt"
-	"io"
 	"sync"
 	"time"
 )
@@ -56,6 +53,9 @@ const (
 	// Separate from CandidateSearched because an operator auditing what left the
 	// building needs to see vendor lookups distinctly from first-party ones.
 	ExternalTalentScanned Name = "agent.talent.external_scanned"
+	// HTTPRequestServed is the one line the HTTP middleware writes per API
+	// request. It carries request_id, and run_id when the request drove a turn.
+	HTTPRequestServed Name = "http.request.served"
 )
 
 // Level is coarse on purpose - the event name carries the detail.
@@ -91,7 +91,6 @@ type Recorder struct {
 	step    int
 	events  []Event
 	sinks   []func(Event)
-	writer  io.Writer
 }
 
 func NewRecorder(runID, sessionID string) *Recorder {
@@ -104,14 +103,6 @@ func (r *Recorder) Subscribe(fn func(Event)) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	r.sinks = append(r.sinks, fn)
-}
-
-// MirrorTo mirrors every event as one JSON object per line.
-// (Named MirrorTo rather than WriteTo so it is not mistaken for io.WriterTo.)
-func (r *Recorder) MirrorTo(w io.Writer) {
-	r.mu.Lock()
-	defer r.mu.Unlock()
-	r.writer = w
 }
 
 func (r *Recorder) SetIntent(id string) {
@@ -142,11 +133,6 @@ func (r *Recorder) Emit(level Level, name Name, code, msg string, fields map[str
 		Fields:  fields,
 	}
 	r.events = append(r.events, ev)
-	if r.writer != nil {
-		if b, err := json.Marshal(ev); err == nil {
-			fmt.Fprintf(r.writer, "%s\n", b)
-		}
-	}
 	for _, s := range r.sinks {
 		s(ev)
 	}

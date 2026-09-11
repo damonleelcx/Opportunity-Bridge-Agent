@@ -60,11 +60,10 @@ type Config struct {
 	// there is no combination of settings whose meaning has to be worked out.
 	// Which one is in use is logged at startup, because "I thought it was
 	// writing to postgres" is the belief this must never leave intact.
-	DatabaseURL   string
-	DataDir       string
-	StatePath     string
-	CorpusDir     string
-	TranscriptLog string
+	DatabaseURL string
+	DataDir     string
+	StatePath   string
+	CorpusDir   string
 
 	// LLM backend selection. See backends.go for the per-provider table.
 	Backend    Backend
@@ -212,7 +211,6 @@ func Load() (Config, error) {
 		DataDir:               env("OBA_DATA_DIR", "data"),
 		StatePath:             env("OBA_STATE_PATH", ""),
 		CorpusDir:             env("OBA_CORPUS_DIR", ""),
-		TranscriptLog:         env("OBA_TRANSCRIPT_LOG", ""),
 		Backend:               backend,
 		ScriptPath:            env("OBA_SCRIPT", ""),
 		QwenBaseURL:           env("OBA_QWEN_BASE_URL", ""),

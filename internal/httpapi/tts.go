@@ -106,7 +106,7 @@ func (s *Server) speak(w http.ResponseWriter, r *http.Request) {
 		// and is about to hear it in the browser's voice. It is a degraded side
 		// channel, not a broken turn — but it is logged, because a read-aloud
 		// that has quietly stopped working sounds exactly like one nobody used.
-		s.Log.Warn("speech synthesis failed; the browser will fall back to its own voice",
+		s.Log.WarnContext(r.Context(), "speech synthesis failed; the browser will fall back to its own voice",
 			"code", "TTS_FAILED", "provider", s.TTS.Name(), "error", err)
 		writeErr(w, http.StatusBadGateway, "TTS_FAILED",
 			"The speech service could not render this answer: "+err.Error(),
@@ -120,7 +120,7 @@ func (s *Server) speak(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Cache-Control", "no-store")
 	w.Header().Set("X-Content-Type-Options", "nosniff")
 	if _, err := w.Write(speech.Audio); err != nil {
-		s.Log.Warn("audio was rendered but not delivered",
+		s.Log.WarnContext(r.Context(), "audio was rendered but not delivered",
 			"code", "TTS_NOT_DELIVERED", "bytes", len(speech.Audio), "error", err)
 	}
 }

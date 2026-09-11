@@ -31,6 +31,7 @@ import (
 	"github.com/damonleelcx/Opportunity-Bridge-Agent/internal/livesource"
 	"github.com/damonleelcx/Opportunity-Bridge-Agent/internal/llm"
 	"github.com/damonleelcx/Opportunity-Bridge-Agent/internal/mailer"
+	"github.com/damonleelcx/Opportunity-Bridge-Agent/internal/obs"
 	"github.com/damonleelcx/Opportunity-Bridge-Agent/internal/retrieval"
 	"github.com/damonleelcx/Opportunity-Bridge-Agent/internal/store"
 	"github.com/damonleelcx/Opportunity-Bridge-Agent/internal/talentsource"
@@ -105,7 +106,9 @@ func main() {
 			"Refuses if the database already holds records.")
 	flag.Parse()
 
-	log := slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: slog.LevelInfo}))
+	// ContextHandler adds request_id (and run_id, for a message turn) to every line
+	// logged with a request's context. See internal/obs/logsink.go.
+	log := slog.New(obs.NewContextHandler(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: slog.LevelInfo})))
 	slog.SetDefault(log)
 
 	if *importState != "" {
@@ -187,7 +190,7 @@ func run(addrOverride string, log *slog.Logger) error {
 	ag := &agent.Agent{
 		Cfg: cfg, LLM: client, Store: st, Corpus: c,
 		Index: retrieval.NewIndex(c), Tools: toolsRegistry(), Live: live,
-		Talent: buildTalentSource(cfg, log), Graph: graph,
+		Talent: buildTalentSource(cfg, log), Graph: graph, Log: log,
 	}
 	// 猎源图谱's daily pass. Every organisational change a recruiter recorded
 	// should carry an alert, and 阿桥 tells them about it the next time they
