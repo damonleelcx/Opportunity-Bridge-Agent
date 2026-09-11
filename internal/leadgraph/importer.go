@@ -236,6 +236,11 @@ type ImportResult struct {
 	Rated         int      `json:"rated"`
 	Noted         int      `json:"noted"`
 	ObservationID string   `json:"observation_id"`
+	// Linked and Unlinked are the reporting lines a screenshot implied: how many
+	// were drawn, and each one that was not with applyLinks' own reason - an
+	// ambiguous name or a person still waiting on a decision.
+	Linked   int        `json:"linked,omitempty"`
+	Unlinked []Unlinked `json:"unlinked,omitempty"`
 }
 
 var (
@@ -682,17 +687,32 @@ func (s *Store) ApplyImport(v View, plan ImportPlan, res map[int]Resolution, at 
 		}
 	}
 
+	// Reporting lines a screenshot implied, drawn once the people exist and
+	// through applyLinks - the path a relationship named in conversation takes -
+	// so an ambiguous name is refused the same way, and the same picture twice is
+	// one source (the digest is the turn reference).
+	if len(plan.Links) > 0 {
+		out.Linked, out.Unlinked = s.applyLinks(v, ActorUser, plan.Links, "import:"+plan.Digest)
+	}
+
 	obs := s.record(v, Document{
 		URL: "import:" + plan.Digest, Kind: DocImportedFile, Title: plan.File,
 		Text: plan.File + " · " + itoa(plan.Rows) + " rows", FetchedAt: at,
 	}, append(append([]string{}, out.Created...), out.Updated...))
 	out.ObservationID = obs.ID
 
-	s.audit(v, AuditImport, map[string]string{
+	fields := map[string]string{
 		"file": plan.File, "digest": plan.Digest, "rows": itoa(plan.Rows),
 		"created": itoa(len(out.Created)), "updated": itoa(len(out.Updated)),
 		"needs_you": itoa(len(out.Pending)), "skipped": itoa(len(plan.Skipped)),
-	}, at)
+	}
+	if plan.Source != SourceTable {
+		fields["source"] = string(plan.Source)
+		fields["held"] = itoa(len(plan.Held))
+		fields["linked"] = itoa(out.Linked)
+		fields["unlinked"] = itoa(len(out.Unlinked))
+	}
+	s.audit(v, AuditImport, fields, at)
 	return out, nil
 }
 
@@ -726,8 +746,30 @@ type ImportSession struct {
 	// raw is the file as it arrived. Kept so a correction re-reads the original
 	// rather than patching a plan: there is no half-corrected state, and what
 	// the user sees is always one coherent reading.
+	//
+	// For a screenshot, raw is the model's READING and the picture is not kept.
+	// A correction re-plans from that same reading: asking the model again would
+	// cost a minute, and could read a name the person just corrected some other
+	// way, since two readings of one picture are not identical.
 	raw      []byte
 	fileName string
+	source   ImportSource
+	// digest is the picture's, for a screenshot: the reading changes between
+	// readings, the picture does not, and the evidence is keyed on what it was.
+	digest string
+}
+
+// ImportPerson is one row of a screenshot import as the review shows it: what
+// the model proposed next to the words it proposed it from.
+type ImportPerson struct {
+	Index    int      `json:"index"`
+	Row      int      `json:"row"`
+	Label    string   `json:"label"`
+	Org      string   `json:"org,omitempty"`
+	Title    string   `json:"title,omitempty"`
+	Text     string   `json:"text"`
+	Note     string   `json:"note,omitempty"`
+	Decision Decision `json:"decision"`
 }
 
 // ImportDecision is one row a person has to settle, with the line it came from
@@ -768,6 +810,22 @@ type ImportSummary struct {
 	SkippedRows map[string][]int `json:"skipped_rows"`
 	// RowsWithoutStrength is why path_find will still be empty afterwards.
 	RowsWithoutStrength int `json:"rows_without_strength"`
+
+	// ---- a screenshot adds these; empty for a spreadsheet ----
+
+	Source ImportSource `json:"source,omitempty"`
+	// People is every row of a screenshot import with the text it was read
+	// from. A spreadsheet lists only the rows that raised a question; in a
+	// screenshot EVERY row is a model's proposal, so every row is shown.
+	People []ImportPerson `json:"people,omitempty"`
+	// Held are people kept out as departed, until included.
+	Held []HeldRow `json:"held,omitempty"`
+	// Checks are rows worth a closer look, such as a name the topic does not say.
+	Checks []RowCheck `json:"checks,omitempty"`
+	// Links is how many reporting lines committing would try to draw.
+	Links int `json:"links,omitempty"`
+	// UnlinkedRows are imported people whose manager is not in the import.
+	UnlinkedRows []SkippedRow `json:"unlinked_rows,omitempty"`
 }
 
 // StageImport reads a file and holds the plan for review. Writes nothing to the
@@ -777,27 +835,52 @@ func (s *Store) StageImport(v View, fileName string, raw []byte) (ImportSession,
 	if err != nil {
 		return ImportSession{}, err
 	}
+	return s.stage(v, plan, raw, fileName, SourceTable, ""), nil
+}
+
+// StageScreenshot holds a screenshot's reading for review. Writes nothing to the
+// graph and reads no picture: reading is what a model already said about it,
+// and image is used only for its digest. See planScreenshot.
+func (s *Store) StageScreenshot(v View, fileName string, image []byte, reading string) (ImportSession, error) {
+	digest := digestOf(string(image))
+	plan, err := s.planScreenshot(v, fileName, digest, reading, ImportOverrides{})
+	if err != nil {
+		return ImportSession{}, err
+	}
+	return s.stage(v, plan, []byte(reading), fileName, SourceScreenshot, digest), nil
+}
+
+func (s *Store) stage(v View, plan ImportPlan, raw []byte, fileName string, source ImportSource, digest string) ImportSession {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	sess := ImportSession{
 		ID: s.nextID("im"), TeamID: v.TeamID, SeatID: v.SeatID,
 		Plan: plan, StagedAt: s.now(), raw: append([]byte{}, raw...), fileName: fileName,
+		source: source, digest: digest,
 	}
 	s.imports[sess.ID] = &sess
-	return sess, nil
+	return sess
 }
 
 // RestageImport re-reads a staged file with the user's corrections applied.
 //
 // The whole file is read again from the original bytes, so the plan that comes
 // back is one coherent reading rather than a base plus amendments - which is
-// what makes it safe to correct something three times.
+// what makes it safe to correct something three times. A screenshot is re-read
+// from its staged READING, never from the picture: see ImportSession.raw.
 func (s *Store) RestageImport(v View, id string, ov ImportOverrides) (ImportSession, error) {
 	sess, ok := s.stagedFor(v, id)
 	if !ok {
 		return ImportSession{}, ErrNotFound
 	}
-	plan, err := s.PlanImport(v, sess.fileName, sess.raw, ov)
+	var plan ImportPlan
+	var err error
+	switch sess.source {
+	case SourceScreenshot:
+		plan, err = s.planScreenshot(v, sess.fileName, sess.digest, string(sess.raw), ov)
+	default:
+		plan, err = s.PlanImport(v, sess.fileName, sess.raw, ov)
+	}
 	if err != nil {
 		return ImportSession{}, err
 	}
@@ -845,6 +928,16 @@ func (s *Store) ImportSummary(v View, id string) (ImportSummary, bool) {
 		File: p.File, Rows: p.Rows, Encoding: p.Encoding, Delimiter: p.Delimiter,
 		Mapping: p.Mapping, Unmapped: p.Unmapped, Counts: p.Counts(),
 		Decisions: []ImportDecision{}, SkippedRows: map[string][]int{},
+		Source: p.Source, Held: p.Held, Checks: p.Checks, Links: len(p.Links), UnlinkedRows: p.UnlinkedRows,
+	}
+	if p.Source == SourceScreenshot {
+		for i, prop := range p.Proposals {
+			sum.People = append(sum.People, ImportPerson{
+				Index: i, Row: p.RowOf[i], Label: prop.Candidate.Label, Org: prop.Candidate.Org,
+				Title: prop.Candidate.RoleTitle, Text: p.Topics[p.RowOf[i]], Note: p.Notes[i],
+				Decision: prop.Decision,
+			})
+		}
 	}
 	for i, prop := range p.Proposals {
 		if prop.Decision == DecideCreate || prop.Decision == DecideUpdate {
