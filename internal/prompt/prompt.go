@@ -267,8 +267,32 @@ func verifierPlain(name string) string {
 		return "if you searched for a city, the answer is written for that city and names it."
 	case "reply_language":
 		return "the answer is written in the language stated at the top of this turn's context."
+	case "next_step_is_tracked":
+		return "if a search found a named programme to act on, the one next step is recorded with case_task_create " +
+			"(or case_task_update on the step already tracked), not left in the text; a handoff, a filing or a " +
+			"prepared document also counts."
+	case "no_candidate_scoring":
+		return "after candidate_search, no sentence ranks, scores, grades or compares people or names a best one; " +
+			"saying you do not rank people is fine."
+	case "candidate_anonymity":
+		return "after candidate_search, outreach or a talent scan, no phone number, email, ID or card number appears " +
+			"for anybody who has not accepted and shared a contact; refer to people by candidate_ref."
+	case "outreach_is_an_ask":
+		return "if a contact request is pending, the answer says the person still has to decide whether to accept it."
+	case "external_leads_not_candidates":
+		return "no count of people larger than candidate_search matched appears unless external_talent_scan ran, and " +
+			"a scan's figure is reported as people outside the pool who cannot be contacted here."
 	}
-	return "see docs/13-guardrails.md"
+	// Reached only by a name the guardrail registry does not know, which Verify
+	// itself reports as UNKNOWN_VERIFIER. Every registered check has a case
+	// above, and TestEveryRegisteredVerifierIsDescribedToTheModel fails on the
+	// first one that does not.
+	//
+	// This used to say "see docs/13-guardrails.md" - a file that has never
+	// existed; docs/13 is name-and-voice - and five registered checks fell
+	// through to it, so the model was told they existed but not what they look
+	// for. See docs/bugfix/2026-09-11-five-checks-were-never-described-to-the-model.md
+	return "not described here; see docs/07-guardrails-and-verifiers.md."
 }
 
 // ContextLayer is layer 3. It is assembled from state, never from raw history,

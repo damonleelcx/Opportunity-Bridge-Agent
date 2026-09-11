@@ -1,10 +1,14 @@
 package prompt_test
 
 import (
+	"os"
+	"path/filepath"
+	"sort"
 	"strings"
 	"testing"
 
 	"github.com/damonleelcx/Opportunity-Bridge-Agent/internal/domain"
+	"github.com/damonleelcx/Opportunity-Bridge-Agent/internal/guardrail"
 	"github.com/damonleelcx/Opportunity-Bridge-Agent/internal/intent"
 	"github.com/damonleelcx/Opportunity-Bridge-Agent/internal/prompt"
 	"github.com/damonleelcx/Opportunity-Bridge-Agent/internal/store"
@@ -99,6 +103,56 @@ func TestIntentLayerIsRenderedFromTheRegistry(t *testing.T) {
 			t.Errorf("verifier %q is not disclosed to the model; an unstated test is a retry tax", v)
 		}
 	}
+}
+
+// Every registered check reaches the model as a description, never as the
+// fallback. verifierPlain is a hand-kept switch beside the guardrail registry,
+// so a verifier registered without a case renders as a pointer: the model is
+// told a check exists and not what it looks for, and pays for it in redrafts.
+//
+// Five were in that state, all pointing at a file that never existed. The test
+// above could not see it: it asks whether the NAME appears, and the name is
+// printed before the colon whether or not anything follows it.
+// See docs/bugfix/2026-09-11-five-checks-were-never-described-to-the-model.md
+func TestEveryRegisteredVerifierIsDescribedToTheModel(t *testing.T) {
+	// The fallback is read from the code rather than restated here, so rewording
+	// it cannot turn this into a comparison against nothing.
+	const unknown = "a_check_nobody_registered"
+	fallback := checkLine(t, prompt.IntentLayer(intent.Intent{Verifiers: []string{unknown}}), unknown)
+
+	names := guardrail.VerifierNames()
+	if len(names) == 0 {
+		t.Fatal("the guardrail registry is empty; there is nothing to check against")
+	}
+	sort.Strings(names)
+	layer := prompt.IntentLayer(intent.Intent{Verifiers: names})
+	for _, name := range names {
+		if got := checkLine(t, layer, name); got == fallback {
+			t.Errorf("verifier %q is registered but the model is only told %q; add a case to verifierPlain", name, got)
+		}
+	}
+
+	// And the fallback must not send anybody to a file that is not there.
+	for _, word := range strings.Fields(fallback) {
+		if path := strings.TrimRight(word, ".,;:"); strings.HasPrefix(path, "docs/") {
+			if _, err := os.Stat(filepath.Join("..", "..", path)); err != nil {
+				t.Errorf("the fallback cites %s, which does not exist", path)
+			}
+		}
+	}
+}
+
+// checkLine returns what the intent layer tells the model about one check.
+func checkLine(t *testing.T, layer, name string) string {
+	t.Helper()
+	prefix := "- " + name + ": "
+	for _, line := range strings.Split(layer, "\n") {
+		if strings.HasPrefix(line, prefix) {
+			return strings.TrimPrefix(line, prefix)
+		}
+	}
+	t.Fatalf("verifier %q is not listed under THIS TURN IS CHECKED FOR at all", name)
+	return ""
 }
 
 func firstLine(s string) string {
