@@ -57,6 +57,10 @@ type Input struct {
 	Message   string
 	// Intent, when set, is the intent chip the person selected in the interface.
 	Intent intent.ID
+	// Tier is the thinking tier the person chose (ThinkingTiers). Empty keeps the
+	// intent's own effort with thinking on, which is what every turn did before
+	// the choice existed. See tier.go.
+	Tier string
 	// Sink receives streaming events for the interface. It must not block.
 	Sink func(Event)
 }
@@ -145,6 +149,20 @@ func (a *Agent) Run(ctx context.Context, in Input) (Result, error) {
 		rec.Subscribe(obs.LogSink(ctx, a.Log))
 	}
 	start := time.Now()
+
+	// The thinking tier is checked before anything runs or is written, so a turn
+	// the agent will not run leaves no trace. The API refuses an unknown tier
+	// first; this holds for every other caller. nil means no choice. See tier.go.
+	var tier *ThinkingTier
+	if in.Tier != "" {
+		chosen, ok := LookupThinkingTier(in.Tier)
+		if !ok {
+			return Result{RunID: runID, StopReason: StopFailed}, fmt.Errorf(
+				"THINKING_TIER_INVALID: %q is not a thinking tier; use one of %s",
+				in.Tier, strings.Join(ThinkingTierNames(), ", "))
+		}
+		tier = &chosen
+	}
 
 	ses, ok := a.Store.Session(in.SessionID)
 	if !ok {
@@ -293,6 +311,13 @@ func (a *Agent) Run(ctx context.Context, in Input) (Result, error) {
 			Corrections: corrections, Alerts: alerts, GraphNews: graphNews,
 			Locale: replyLanguage(a.Cfg, ses), CitiesCovered: a.Corpus.Cities(),
 		})
+		// The person's thinking tier, when they chose one, wins over the intent's
+		// effort - including on a redraft, which is the same turn. "off" arrives as
+		// thinking false with no effort, never as an effort. See tier.go.
+		thinking, reqEffort, tierName := true, effort, ""
+		if tier != nil {
+			thinking, reqEffort, tierName = tier.Thinking, tier.Effort, tier.Name
+		}
 		req := llm.Request{
 			Model: a.Cfg.AgentModel,
 			System: []llm.SystemBlock{
@@ -301,10 +326,10 @@ func (a *Agent) Run(ctx context.Context, in Input) (Result, error) {
 				{Text: contextLayer},
 			},
 			Messages: messages, Tools: toolDefs,
-			MaxTokens: a.Cfg.MaxTokens, Effort: effort, Thinking: true,
+			MaxTokens: a.Cfg.MaxTokens, Effort: reqEffort, Thinking: thinking,
 		}
 		rec.Info(obs.ModelRequested, "model request", map[string]any{
-			"model": req.Model, "effort": effort, "tools": len(toolDefs),
+			"model": req.Model, "effort": reqEffort, "thinking": thinking, "tier": tierName, "tools": len(toolDefs),
 			"messages": len(messages), "system_chars": len(charter) + len(intentLayer) + len(contextLayer),
 		})
 

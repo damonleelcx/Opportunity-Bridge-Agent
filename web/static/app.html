@@ -267,6 +267,11 @@
         <label class="check"><input type="checkbox" id="a11yPlain"><span data-i18n="a11y.plain">大白话模式</span></label>
         <label class="check"><input type="checkbox" id="a11yLarge"><span data-i18n="a11y.large">大字号</span></label>
         <label class="check"><input type="checkbox" id="a11yVoice"><span data-i18n="a11y.voice">读给我听</span></label>
+        <!-- 思考档位. The options come from /api/meta (thinking_tiers), not from
+             this markup, so a tier the server stops accepting cannot stay on
+             offer here. Hidden until they arrive. See buildThinkingSelect. -->
+        <label class="check tier-pick" hidden><span data-i18n="ctl.thinking">思考</span>
+          <select id="thinkingTier" data-i18n-title="thinking.hint" title="思考越少回答越快，复杂问题可能不够准"></select></label>
         <span id="status" class="status"></span>
       </div>
     </form>

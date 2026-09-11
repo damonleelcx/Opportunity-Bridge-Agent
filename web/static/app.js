@@ -151,6 +151,31 @@ function buildRoleSelect() {
   }
 }
 
+// buildThinkingSelect offers the thinking tiers the server accepts, showing the
+// person's last choice.
+//
+// The options come from meta.thinking_tiers rather than a list kept here, so a
+// tier the server stops accepting cannot stay on offer and turn every message
+// into a 400. Each option carries its string key, so the language switch's sweep
+// over [data-i18n] relabels it without a rebuild. A remembered choice the server
+// no longer offers falls back to the server's default.
+function buildThinkingSelect() {
+  const sel = $("#thinkingTier");
+  if (!sel) return;
+  const tiers = state.meta.thinking_tiers || [];
+  sel.innerHTML = "";
+  for (const name of tiers) {
+    const o = document.createElement("option");
+    o.value = name;
+    o.dataset.i18n = `thinking.${name}`;
+    o.textContent = t(`thinking.${name}`);
+    sel.append(o);
+  }
+  const wanted = recall("oba.thinking", "");
+  sel.value = tiers.includes(wanted) ? wanted : state.meta.thinking_tier_default || "";
+  sel.closest(".tier-pick").hidden = tiers.length === 0;
+}
+
 function wire() {
   $("#locale").addEventListener("change", async (e) => {
     setLocale(e.target.value);
@@ -221,6 +246,11 @@ function wire() {
         : "以后不用大白话了，正常说就行。");
     }
   });
+
+  // 思考档位: kept in the browser and sent with every message (see send). The
+  // server stores nothing for it. See docs/14-interface.md, "Thinking tier".
+  buildThinkingSelect();
+  $("#thinkingTier").addEventListener("change", (e) => remember("oba.thinking", e.target.value));
 
   $("#theme").addEventListener("change", (e) => applyTheme(e.target.value));
   $("#mic").addEventListener("click", startDictation);
@@ -539,7 +569,8 @@ async function send(text) {
   userTurn(text);
   const turn = agentTurn();
   setBusy(true);
-  status(t("status.thinking"), "busy");
+  // With thinking off there is nothing to think about: say what is happening.
+  status(t($("#thinkingTier")?.value === "off" ? "status.answering" : "status.thinking"), "busy");
   let streamed = "";
 
   try {
@@ -547,9 +578,13 @@ async function send(text) {
       method: "POST",
       signal: ctl.signal,
       headers: { "Content-Type": "application/json" },
-      // The locale rides on every message: choosing a language in the sidebar
-      // must change the next answer, not the next conversation.
-      body: JSON.stringify({ message: text, intent: state.pinnedIntent, locale: locale() }),
+      // The locale and the thinking tier ride on every message: choosing either
+      // must change the next answer, not the next conversation. An empty tier is
+      // left out of the body, which means the server's default.
+      body: JSON.stringify({
+        message: text, intent: state.pinnedIntent, locale: locale(),
+        thinking: $("#thinkingTier")?.value || undefined,
+      }),
     });
     if (!res.ok) {
       const e = await res.json().catch(() => ({ message: res.statusText }));
