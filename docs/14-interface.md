@@ -72,6 +72,15 @@ result, so a card cannot show something the agent was not allowed to say.
 collapse into one `系统运行详情 · N 步` per turn, off by default, with a global
 toggle in the header for operators.
 
+The model's **reasoning** is in there too, and nowhere else (拍板 2026-09-11). It
+used to sit in an italic block above the answer that nothing took down, so the
+raw chain of thought — English, and free to promise a tool call the turn never
+made — stayed under every finished answer. It is one row per model call, placed
+between the tool steps in the order things happened, and **not counted** in
+"N 步": that number is what the agent did, not what it considered. A drawer with
+reasoning but no steps is headed `系统运行详情` alone. See
+[the bugfix note](bugfix/2026-09-11-the-reasoning-was-left-on-screen.md).
+
 That is not a retreat from "the interface shows its own machinery". What changed
 is *where*: **anything that altered the answer is in the answer**, written by the
 agent in the person's own language — a blocked turn says which rule stopped it

@@ -226,7 +226,6 @@ button, select, textarea, input { font: inherit; color: inherit; }
 }
 .route-pill button:hover { opacity: 1; text-decoration: underline; }
 
-.thinking { font-size: .84em; color: var(--ink-400); font-style: italic; padding-left: 48px; }
 
 /* ── result cards ──────────────────────────────────────────────────────── */
 .results { display: flex; flex-direction: column; gap: 12px; padding-left: 48px; }
@@ -348,6 +347,11 @@ button, select, textarea, input { font: inherit; color: inherit; }
   margin: 0; padding: 10px 12px; background: var(--surface);
   font-family: var(--mono); font-size: .72em; overflow-x: auto; max-height: 260px;
 }
+/* Reasoning is prose, not JSON. A <pre> keeps a paragraph on one line and makes
+   the reader scroll sideways through it; wrap it instead. The 260px cap above
+   still bounds the row, and it scrolls vertically inside that.
+   See docs/bugfix/2026-09-11-the-reasoning-was-left-on-screen.md */
+.tech-reasoning pre { white-space: pre-wrap; overflow-wrap: anywhere; }
 .trace-row {
   display: flex; gap: 8px; padding: 3px 12px;
   font-family: var(--mono); font-size: .68em; color: var(--ink-400);
