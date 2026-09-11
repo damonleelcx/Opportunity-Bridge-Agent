@@ -556,7 +556,8 @@ func Tools() *Registry {
 		},
 		Tool{
 			Name: "import_summary", Risk: RiskRead,
-			Description: "Describe a file the user uploaded and what importing it would do: how it was read, which columns were used, which were ignored, what will be created, what still needs their decision, and which rows were skipped and why. Writes nothing.",
+			Description: "Describe a file the user uploaded and what importing it would do: how it was read, which columns were used, which were ignored, what will be created, what still needs their decision, and which rows were skipped and why. Writes nothing. " +
+				"For a mind-map SCREENSHOT (source \"screenshot\") it also lists every person the model read, each beside the verbatim text it came from (people); people held because the picture says they have left (held); rows to look at twice, such as a name that is not written on its own in its topic (checks); and how many reporting lines committing would draw (links). Every one of those rows is a model's reading: go through them with the user, and never describe the reading as correct on their behalf.",
 			Schema: Obj("which staged file", map[string]*Schema{
 				"import_id": Str("the staged import; omit for the most recent one"),
 			}),
@@ -601,7 +602,8 @@ func Tools() *Registry {
 			// the approval comes later, on the commit, and covers the reading
 			// this produced.
 			Name: "import_remap", Risk: RiskWrite,
-			Description: "Correct how a staged file is read, AFTER the user has confirmed the correction: which column is which, what its values mean (很熟 = 3), a value they supplied for a row that was missing one, and rows to leave out. Re-reads the whole file and returns the new plan. Propose first, look at the header and sample rows in import_summary, and never guess on the user's behalf: guessing that column 3 is the company imports two hundred wrong records that all look right.",
+			Description: "Correct how a staged import is read, AFTER the user has confirmed the correction: which column is which, what its values mean (很熟 = 3), a value they supplied for a row that was missing one, and rows to leave out. Re-reads the whole import and returns the new plan. Propose first, look at the header and sample rows in import_summary, and never guess on the user's behalf: guessing that column 3 is the company imports two hundred wrong records that all look right. " +
+				"For a mind-map SCREENSHOT the row is the topic number: `rows` also corrects a name or title the model read wrongly, and `include` imports somebody held because the picture says they have left - only when the user says so. A screenshot correction re-plans from the reading already staged; the picture is not read again.",
 			Schema: Obj("the corrections", map[string]*Schema{
 				"import_id": Str("the staged import; omit for the most recent one"),
 				"columns": Arr("which column holds which field", Obj("one column", map[string]*Schema{
@@ -613,12 +615,16 @@ func Tools() *Registry {
 					"from":  Str("what the file says, e.g. 很熟"),
 					"to":    Str("what it means here, e.g. 3"),
 				}, "field", "from", "to")),
-				"rows": Arr("a cell the USER supplied for a row that was missing one", Obj("one cell", map[string]*Schema{
-					"row":   Int("the line number as reported", 2, 1000000),
+				"rows": Arr("a value the USER supplied: a cell missing from a file, or in a screenshot a name or title the model read wrongly", Obj("one cell", map[string]*Schema{
+					// From 1, not 2: a screenshot's topics are numbered from 1. A
+					// file's line 1 is its header, which no override touches.
+					"row":   Int("the line or topic number as reported", 1, 1000000),
 					"field": Str("the field", string(ColLabel), string(ColOrg), string(ColUnit), string(ColRole), string(ColDuty), string(ColStrength), string(ColNote)),
 					"value": Str("what the user said it is - never what you inferred"),
 				}, "row", "field", "value")),
-				"ignore": Arr("line numbers the user said to leave out", Int("a line number", 2, 1000000)),
+				"ignore": Arr("line or topic numbers the user said to leave out", Int("a line or topic number", 1, 1000000)),
+				"include": Arr("topic numbers of people held because the screenshot says they have left, which the USER said to import after all",
+					Int("a topic number", 1, 1000000)),
 			}),
 			Run: func(s *Store, v View, a map[string]any) (any, error) {
 				ov := ImportOverrides{
@@ -645,6 +651,9 @@ func Tools() *Registry {
 				}
 				for _, x := range argInts(a, "ignore") {
 					ov.Ignore = append(ov.Ignore, x)
+				}
+				for _, x := range argInts(a, "include") {
+					ov.Include = append(ov.Include, x)
 				}
 				sess, err := s.RestageImport(v, argStr(a, "import_id"), ov)
 				if err != nil {

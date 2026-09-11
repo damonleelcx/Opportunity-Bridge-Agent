@@ -204,7 +204,8 @@ func run(addrOverride string, log *slog.Logger) error {
 		return fmt.Errorf("WEB_ASSETS_MISSING: %w", err)
 	}
 	srv := &httpapi.Server{Agent: ag, Store: st, Cfg: cfg, Web: webFS, Log: log,
-		TTS: speechProvider(cfg, log), Mail: mailSender(cfg, log)}
+		TTS: speechProvider(cfg, log), Mail: mailSender(cfg, log),
+		Vision: visionReader(cfg, client, graph, log)}
 
 	httpSrv := &http.Server{
 		Addr:              cfg.Addr,

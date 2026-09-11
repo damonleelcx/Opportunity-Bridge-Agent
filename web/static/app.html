@@ -244,11 +244,13 @@
         <div class="input-actions">
           <!-- 批量导入. Hidden outside the employer role, because the route
                behind it is recruiter-only — a control that refuses half the
-               people who press it is worse than no control. The file never
+               people who press it is worse than no control. A spreadsheet never
                reaches the model: it is staged on the server and what comes back
-               is a PLAN, which is what lands in the conversation.
-               See docs/20-lead-graph.zh-CN.md §10.2. -->
-          <input type="file" id="importFile" accept=".csv,.tsv,.txt,text/csv,text/plain" hidden>
+               is a PLAN, which is what lands in the conversation. A screenshot
+               of a mind map is read by a model, and only after the person
+               confirms it may be sent (checked again by the server).
+               See docs/20-lead-graph.zh-CN.md §10.2 and §10.3. -->
+          <input type="file" id="importFile" accept=".csv,.tsv,.txt,text/csv,text/plain,.png,.jpg,.jpeg,.webp,image/png,image/jpeg,image/webp" hidden>
           <button type="button" id="importBtn" class="icon-btn" hidden
                   data-i18n-title="ctl.import" data-i18n-aria="ctl.import" title="导入名单">
             <span class="ico" data-icon="plus"></span>

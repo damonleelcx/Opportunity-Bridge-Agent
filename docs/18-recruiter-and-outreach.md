@@ -98,6 +98,14 @@ matches words, so a screened list phrased without any of them gets through.
 Fenced by `TestProtectedAttributeScreeningIsCaught` and the
 `turn-sourcing-age-screening-blocked` turn.
 
+**Screenshot imports write the same kind of note.** Importing a mind-map
+screenshot ([docs/20 §10.3](20-lead-graph.zh-CN.md)) puts each topic verbatim
+into the importing seat's private note, "41 女 沈若溪 穿戴设计负责人" included, so
+everything above applies to those notes unchanged. Highlights are written down as
+what they look like and never read as "target" or "priority": in the owner's
+screenshot they sit on ages and degrees, and reading them as a verdict would
+mark people for their age.
+
 ### The candidate_ref
 
 `CandidateRef(recruiterID, subjectID)` is a hash of the pair, not a stored

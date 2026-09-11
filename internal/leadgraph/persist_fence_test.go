@@ -28,7 +28,7 @@ import (
 // which is the point: adding a name is a decision somebody has to write down.
 var readOnlyUnderWriteLock = map[string]string{
 	"SetClock":        "test seam; changes a function pointer, not data",
-	"StageImport":     "a staged plan is in-memory by design - see importer.go",
+	"stage":           "a staged plan is in-memory by design - see importer.go; StageImport and StageScreenshot both stage through it",
 	"RestageImport":   "same",
 	"DiscardImport":   "same",
 	"CommitImport":    "persists through ApplyImport; only drops the staged plan itself",

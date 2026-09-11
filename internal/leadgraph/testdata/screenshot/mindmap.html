@@ -1,0 +1,23 @@
+<!doctype html><html><head><meta charset="utf-8"><style>
+body{margin:0;background:#fff;font:14px "PingFang SC","Hiragino Sans GB","STHeiti",sans-serif;color:#1f2329}
+#t{position:relative;padding:18px 30px;display:inline-block}
+.n{display:flex;align-items:center}
+.l{white-space:nowrap;padding:1px 3px;margin:8px 0;border-radius:2px;position:relative;z-index:1}
+.k{display:flex;flex-direction:column;margin-left:70px}
+svg{position:absolute;left:0;top:0;overflow:visible;z-index:0}
+</style></head><body><div id="t"><div class="n"><span class="l" data-line="#4c7cf3" style="">设计人才地图</span><div class="k"><div class="n"><span class="l" data-line="#4c7cf3" style="">星河互联 NOVA</span><div class="k"><div class="n"><span class="l" data-line="#3fc26a" style="">林默然，设计总监、视觉、包装（已离职去Brightly）</span></div><div class="n"><span class="l" data-line="#4c7cf3" style="background:#e6ddfb">韩子墨 高级视觉</span><div class="k"><div class="n"><span class="l" data-line="#4c7cf3" style="">qmx 品牌</span></div></div></div><div class="n"><span class="l" data-line="#4c7cf3" style="">Leo Chen UED 用户体验设计负责人 字节、网易、创业</span><div class="k"><div class="n"><span class="l" data-line="#4c7cf3" style="">苏晓棠 高级ux</span></div><div class="n"><span class="l" data-line="#4c7cf3" style="">顾一鸣 高级ux 同济背景</span></div></div></div><div class="n"><span class="l" data-line="#4c7cf3" style="">何思远 三维</span></div></div></div><div class="n"><span class="l" data-line="#4c7cf3" style="">远航科技</span><div class="k"><div class="n"><span class="l" data-line="#4c7cf3" style="">41 女 沈若溪 穿戴设计负责人，华为背景</span></div><div class="n"><span class="l" data-line="#4c7cf3" style="">30左右 女 叶知秋 品牌总监 vivo 工业背景</span></div><div class="n"><span class="l" data-line="#4c7cf3" style="">36 陆行舟（25年2月进的） 资深设计专家 版本 UI 设计规划</span><div class="k"><div class="n"><span class="l" data-line="#4c7cf3" style=""><span style="background:#e6ddfb">34</span> 周予安 资深ux，oppo，微软 <span style="background:#e6ddfb">海硕</span></span></div><div class="n"><span class="l" data-line="#4c7cf3" style=""><span style="background:#e6ddfb">31</span> 江北辰 UI，百度阿里小鹏</span></div><div class="n"><span class="l" data-line="#4c7cf3" style="color:#f5770a;font-weight:600">8 秦朗 uiux，视觉（不看创业团队）</span></div><div class="n"><span class="l" data-line="#4c7cf3" style="">Mika ui 华为，海硕</span></div><div class="n"><span class="l" data-line="#4c7cf3" style="">36 许南风 ux</span></div></div></div><div class="n"><span class="l" data-line="#4c7cf3" style="">39 创新设计部 负责人 程昱，ID设计 美图</span></div><div class="n"><span class="l" data-line="#4c7cf3" style="">12 创意设计主管 东南亚 WANG oppo</span></div><div class="n"><span class="l" data-line="#4c7cf3" style="">7 陈望舒 （24年离开）追觅品牌视觉</span><div class="k"><div class="n"><span class="l" data-line="#4c7cf3" style="">10 孟川 平面主管</span></div></div></div><div class="n"><span class="l" data-line="#4c7cf3" style="">33 Ivan 48w 15 ai平板 海本海硕</span></div></div></div><div class="n"><span class="l" data-line="#4c7cf3" style="">青岩智能</span><div class="k"><div class="n"><span class="l" data-line="#4c7cf3" style="">视觉总 中台负责人（2023-10-01至今） <span style="background:#f6d80b">白砚秋 （上海）tcl、欧莱雅</span></span><div class="k"><div class="n"><span class="l" data-line="#4c7cf3" style="background:#e6ddfb">Creative Team Leader Marcus</span></div><div class="n"><span class="l" data-line="#4c7cf3" style="">37 UX总 杜明远 阿里、蔚来（北京）</span><div class="k"><div class="n"><span class="l" data-line="#4c7cf3" style="color:#a3a3a3;font-weight:600;font-size:13px">输入文本</span></div><div class="n"><span class="l" data-line="#4c7cf3" style="background:#e6ddfb">32 UX专家 宋清和 深圳 小米</span></div></div></div></div></div><div class="n"><span class="l" data-line="#4c7cf3" style="">45 罗子衿 （杭州）设计中心负责人</span></div><div class="n"><span class="l" data-line="#4c7cf3" style="">19 Audio 首席体验官 冯时雨</span></div></div></div></div></div><svg id="s"></svg></div>
+<script>
+const t=document.getElementById('t'),s=document.getElementById('s'),o=t.getBoundingClientRect();
+s.setAttribute('width',t.scrollWidth);s.setAttribute('height',t.scrollHeight);
+document.querySelectorAll('.n').forEach(n=>{
+  const p=n.querySelector(':scope>.l'),k=n.querySelector(':scope>.k'); if(!k) return;
+  const a=p.getBoundingClientRect(), x0=a.right-o.left+4, y0=a.top+a.height/2-o.top;
+  k.querySelectorAll(':scope>.n>.l').forEach(c=>{
+    const b=c.getBoundingClientRect(), x1=b.left-o.left-4, y1=b.top+b.height/2-o.top, m=(x0+x1)/2;
+    const e=document.createElementNS('http://www.w3.org/2000/svg','path');
+    e.setAttribute('d',`M${x0},${y0} C${m},${y0} ${m},${y1} ${x1},${y1}`);
+    e.setAttribute('stroke',c.dataset.line);e.setAttribute('stroke-width','1.6');e.setAttribute('fill','none');
+    s.appendChild(e);
+  });
+});
+</script></body></html>

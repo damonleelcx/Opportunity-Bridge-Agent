@@ -2075,14 +2075,22 @@ func TestEveryImportCountHasAWord(t *testing.T) {
 // something a person can go and fix, and "跳过 3" is not — which only works if
 // the key is rendered as a sentence rather than as no_name.
 func TestEverySkipReasonHasAWord(t *testing.T) {
-	src, err := os.ReadFile("../internal/leadgraph/importer.go")
-	if err != nil {
-		t.Fatalf("read importer.go: %v", err)
-	}
+	// Both files that declare Skip* reasons. This read importer.go alone until
+	// the screenshot import added four reasons in screenshot_plan.go, which left
+	// the fence green while those four would have reached a reader as Go
+	// constants: a fence over a list is only as good as its list of files.
 	decl := regexp.MustCompile(`Skip[A-Za-z]+\s+=\s+"([a-z_]+)"`)
-	reasons := decl.FindAllStringSubmatch(string(src), -1)
-	if len(reasons) < 2 {
-		t.Fatalf("found only %d skip reasons; the fence is not reading the source", len(reasons))
+	var reasons [][]string
+	for file, atLeast := range map[string]int{"importer.go": 3, "screenshot_plan.go": 4} {
+		src, err := os.ReadFile("../internal/leadgraph/" + file)
+		if err != nil {
+			t.Fatalf("read %s: %v", file, err)
+		}
+		found := decl.FindAllStringSubmatch(string(src), -1)
+		if len(found) < atLeast {
+			t.Fatalf("found only %d skip reasons in %s; the fence is not reading the source", len(found), file)
+		}
+		reasons = append(reasons, found...)
 	}
 	table := stringsTable(t)
 	for _, m := range reasons {

@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"bytes"
 	"context"
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -66,10 +67,30 @@ const (
 	// high-volume calls where the strong model's price buys nothing. Roughly a
 	// fourteenth of the agent model's rate on both input and output.
 	QwenClassifierModel = "qwen3.8-flash"
+	// QwenVisionModel transcribes screenshots for the lead-graph import.
+	//
+	// Not the agent or classifier model, on evidence: on a synthetic mind-map
+	// screenshot (2026-09-11, 31 nodes, invented names) it got every node, parent
+	// and name right on 2 runs of 2, where qwen3.8-flash split a highlighted node
+	// in two on 2 runs of 4 and hung two people under the wrong manager. It is
+	// slower, about 65s against 25s. A person checks every row anyway, and a
+	// wrong manager is the error they are least likely to catch.
+	// See docs/20-lead-graph.zh-CN.md §10.3.
+	QwenVisionModel = "qwen3.7-plus"
 )
 
 // QwenKnownModels are the ids this build has been written against.
 var QwenKnownModels = []string{QwenAgentModel, QwenClassifierModel, "qwen3.8-27b", "qwen3.7-max", "qwen3.7-plus", "qwen3.7-flash"}
+
+// QwenVisionModels are the ids PROVEN to read an image on the token-plan host:
+// on 2026-09-11 each named an unguessable colour sequence correctly and counted
+// the picture in its input tokens (53-66 more than the same question without
+// it). `make vision-probe MODEL=<id>` is how an id earns a place here.
+//
+// ‼️ glm-5.2 and deepseek-v4-pro are absent on purpose. Both answer an image
+// request with HTTP 200, count nothing for the image, and invent an answer.
+// qwen3.7-max refuses images with a 400.
+var QwenVisionModels = []string{QwenVisionModel, QwenClassifierModel, QwenAgentModel, "qwen3.6-flash"}
 
 func NewQwen(apiKey, baseURL string) *QwenClient {
 	if baseURL == "" {
@@ -95,6 +116,39 @@ type qwMessage struct {
 	ToolCalls []qwToolCall `json:"tool_calls,omitempty"`
 	// ToolCallID is set on role:"tool" messages.
 	ToolCallID string `json:"tool_call_id,omitempty"`
+	// Parts replaces Content on a user message that carries a picture.
+	Parts []qwPart `json:"-"`
+}
+
+// MarshalJSON sends content as a string, which is what every message was before
+// pictures, and switches to the parts array only when the message carries one.
+// Why not make Content an interface: an empty string would then stop being
+// omitted, and every assistant turn that only calls tools would change shape on
+// the wire.
+func (m qwMessage) MarshalJSON() ([]byte, error) {
+	type plain qwMessage
+	if len(m.Parts) == 0 {
+		return json.Marshal(plain(m))
+	}
+	return json.Marshal(struct {
+		plain
+		Content []qwPart `json:"content"`
+	}{plain(m), m.Parts})
+}
+
+// qwPart is one element of a multi-part user message.
+type qwPart struct {
+	Type     string      `json:"type"`
+	Text     string      `json:"text,omitempty"`
+	ImageURL *qwImageURL `json:"image_url,omitempty"`
+}
+
+type qwImageURL struct {
+	URL string `json:"url"`
+}
+
+type qwResponseFormat struct {
+	Type string `json:"type"`
 }
 
 type qwToolCall struct {
@@ -133,6 +187,8 @@ type qwRequest struct {
 	// count by thinkingBudget.
 	ThinkingBudget *int64   `json:"thinking_budget,omitempty"`
 	Tools          []qwTool `json:"tools,omitempty"`
+	// ResponseFormat is set only when a JSON object is asked for.
+	ResponseFormat *qwResponseFormat `json:"response_format,omitempty"`
 }
 
 type qwChunk struct {
@@ -247,6 +303,9 @@ func (c *QwenClient) buildRequest(req Request) (qwRequest, error) {
 			}
 		}
 	}
+	if req.JSON {
+		out.ResponseFormat = &qwResponseFormat{Type: "json_object"}
+	}
 
 	for _, t := range req.Tools {
 		var qt qwTool
@@ -281,8 +340,16 @@ func toQwenMessages(in []Message) ([]qwMessage, error) {
 		case RoleUser:
 			var text strings.Builder
 			var results []qwMessage
+			var images []qwPart
 			for _, b := range m.Blocks {
 				switch b.Kind {
+				case KindImage:
+					if b.MediaType == "" || len(b.Data) == 0 {
+						return nil, fmt.Errorf("IMAGE_BLOCK_EMPTY: an image block needs a media type and its bytes")
+					}
+					images = append(images, qwPart{Type: "image_url", ImageURL: &qwImageURL{
+						URL: "data:" + b.MediaType + ";base64," + base64.StdEncoding.EncodeToString(b.Data),
+					}})
 				case KindText:
 					if text.Len() > 0 {
 						text.WriteString("\n")
@@ -306,7 +373,16 @@ func toQwenMessages(in []Message) ([]qwMessage, error) {
 			// Tool results first, then any accompanying text, so the results sit
 			// immediately after the assistant turn that asked for them.
 			out = append(out, results...)
-			if text.Len() > 0 {
+			switch {
+			case len(images) > 0:
+				// Pictures first, then the question about them: the order the
+				// vendor documents and the order the 2026-09-11 spike measured.
+				parts := images
+				if text.Len() > 0 {
+					parts = append(parts, qwPart{Type: "text", Text: text.String()})
+				}
+				out = append(out, qwMessage{Role: "user", Parts: parts})
+			case text.Len() > 0:
 				out = append(out, qwMessage{Role: "user", Content: text.String()})
 			}
 		case RoleAssistant:
