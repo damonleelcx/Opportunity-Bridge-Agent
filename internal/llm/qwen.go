@@ -588,6 +588,48 @@ func mapQwenFinishReason(in string) string {
 	return in
 }
 
+// qwenAccountFailures maps the vendor's own error codes for an account that
+// cannot be served. They are read BEFORE the HTTP status, because the status
+// alone misreads all three kinds, each toward the wrong fix: a used-up quota
+// arrives as 429 and was retried as a rate limit ("will be retried"), a used-up
+// free tier arrives as 403 and was reported as a bad key, and arrears arrive as
+// 400 and were reported as a bug in request assembly.
+// Codes: https://help.aliyun.com/zh/model-studio/error-code
+// See docs/bugfix/2026-09-11-quota-429-retried-and-health-always-ok.md
+var qwenAccountFailures = map[string]string{
+	"Throttling.AllocationQuota":   "MODEL_QUOTA_EXHAUSTED",
+	"insufficient_quota":           "MODEL_QUOTA_EXHAUSTED",
+	"AllocationQuota.FreeTierOnly": "MODEL_QUOTA_EXHAUSTED",
+	"Arrearage":                    "MODEL_BILLING",
+}
+
+// accountFailure names the failure when the vendor says the account cannot be
+// served, and returns "" otherwise.
+func accountFailure(status int, e qwError) string {
+	for _, id := range []string{e.Code, e.Type} {
+		if code, ok := qwenAccountFailures[id]; ok {
+			return code
+		}
+	}
+	// The token plan's weekly-quota refusal ("Your token-plan 1-week quota has
+	// been exhausted", production 2026-09-11) carries no code from the vendor's
+	// list, so a 429 whose MESSAGE mentions a quota is one too. Rate-limit
+	// messages ("Requests rate limit exceeded", "Too many concurrent requests")
+	// do not mention it. Only the message is read: the rate-limit CODE
+	// Throttling.RateQuota contains the word.
+	if status == http.StatusTooManyRequests && strings.Contains(strings.ToLower(e.Message), "quota") {
+		return "MODEL_QUOTA_EXHAUSTED"
+	}
+	return ""
+}
+
+// billingError is the one wording for an account with no money behind it: 402,
+// and a 400 Arrearage.
+func billingError(detail string) error {
+	return fmt.Errorf("MODEL_BILLING: the Alibaba Cloud account has no remaining balance or is in arrears "+
+		"for this model. Top it up at bailian.console.aliyun.com; no retry will help: %s", detail)
+}
+
 func translateQwenError(res *http.Response) error {
 	b, _ := io.ReadAll(io.LimitReader(res.Body, 8<<10))
 	var e struct {
@@ -597,6 +639,18 @@ func translateQwenError(res *http.Response) error {
 	detail := strings.TrimSpace(e.Error.Message)
 	if detail == "" {
 		detail = strings.TrimSpace(string(b))
+	}
+	switch accountFailure(res.StatusCode, e.Error) {
+	case "MODEL_QUOTA_EXHAUSTED":
+		// Not retried: MODEL_QUOTA_EXHAUSTED is not in retry.go's list, so the
+		// person is not made to wait three times for the same refusal. The
+		// vendor's detail is kept because it names when the quota resets.
+		return fmt.Errorf("MODEL_QUOTA_EXHAUSTED: the model quota this service runs on is used up, so no "+
+			"answer can be produced until it is restored. Retrying will not help. An operator has to top up "+
+			"or raise the quota at bailian.console.aliyun.com (token plan or Model Studio), or wait for the "+
+			"reset the provider names: %s", detail)
+	case "MODEL_BILLING":
+		return billingError(detail)
 	}
 	switch res.StatusCode {
 	case http.StatusUnauthorized, http.StatusForbidden:
@@ -611,8 +665,7 @@ func translateQwenError(res *http.Response) error {
 	case http.StatusPaymentRequired:
 		// Worth its own branch: this is the failure that otherwise reads as a
 		// generic outage and costs somebody an hour.
-		return fmt.Errorf("MODEL_BILLING: the Alibaba Cloud account has no remaining balance or free "+
-			"quota for this model. Top it up at bailian.console.aliyun.com; no retry will help: %s", detail)
+		return billingError(detail)
 	case http.StatusNotFound:
 		return fmt.Errorf("MODEL_NOT_FOUND: Qwen does not recognise this model id. "+
 			"Set OBA_AGENT_MODEL to %s or %s: %s", QwenAgentModel, QwenClassifierModel, detail)
@@ -620,8 +673,12 @@ func translateQwenError(res *http.Response) error {
 		return fmt.Errorf("MODEL_REQUEST_INVALID: Qwen rejected the request as malformed. "+
 			"This is a bug in request assembly, not something the user did: %s", detail)
 	case http.StatusTooManyRequests:
-		return fmt.Errorf("MODEL_RATE_LIMITED: Qwen rate limited the request. "+
-			"It will be retried; if this persists the answer will be delayed rather than wrong: %s", detail)
+		// This text is what the person finally reads once the retries are spent
+		// (wrapped in MODEL_RETRIES_EXHAUSTED), so it must not promise a retry
+		// that has already happened. It used to say "It will be retried".
+		// See docs/bugfix/2026-09-11-quota-429-retried-and-health-always-ok.md
+		return fmt.Errorf("MODEL_RATE_LIMITED: Qwen rate limited the request; it is retried a few times "+
+			"before giving up: %s", detail)
 	case http.StatusServiceUnavailable, http.StatusBadGateway, http.StatusGatewayTimeout:
 		return fmt.Errorf("MODEL_UNAVAILABLE: Qwen returned %d. Retrying: %s", res.StatusCode, detail)
 	}

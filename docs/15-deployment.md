@@ -92,6 +92,17 @@ answers are what is in place today:
 - No real personal data anywhere — the corpus is sample data, and the only thing
   stored is what a visitor types.
 
+**Whether the model answers.** `/api/health` reports `status` as the model's
+state — `ok`, `degraded` or `unknown` — with the detail under `model`
+(`last_ok_at`, `last_failure_at`, `last_error_code`, `consecutive_failures`).
+Every real model call is recorded; when nothing has been recorded for 10 minutes,
+reading health sends one 1-token check (at most one per 10 minutes, about 2k
+tokens a day). A used-up quota, a rejected key or arrears is `degraded` at once; a
+rate limit or a 5xx only after three in a row. The HTTP status stays 200 in every
+state, because the probes read only the code and a model outage must not get the
+pod restarted. It said `ok` unconditionally until 2026-09-11 — see
+`docs/bugfix/2026-09-11-quota-429-retried-and-health-always-ok.md`.
+
 **What to watch.** `/api/health` reports `spend_today_tokens` against
 `spend_ceiling_tokens`. The shipped ceiling is a starting value that no invoice
 informed; read the gauge for a week and set it from what the service actually

@@ -265,7 +265,8 @@ Every failure carries a code, what it means for the person, and what to do next.
 | `EVIDENCE_REQUIRED` | a task cannot be closed on a report alone |
 | `OPPORTUNITY_NOT_FOUND` | the id is not in the corpus — search first, do not guess |
 | `MODEL_AUTH_FAILED` / `MODEL_RATE_LIMITED` / `MODEL_UNAVAILABLE` | with the remedy attached |
-| `MODEL_BILLING` | Alibaba Cloud balance or free quota exhausted — permanent, so it is never retried |
+| `MODEL_BILLING` | Alibaba Cloud balance exhausted or the account is in arrears (402, 400 `Arrearage`) — permanent, so it is never retried |
+| `MODEL_QUOTA_EXHAUSTED` | the model quota is used up (429 `Throttling.AllocationQuota` / `insufficient_quota`, the token plan's weekly quota, 403 `AllocationQuota.FreeTierOnly`) — never retried, and `/api/health` turns `degraded` |
 | `SCRIPT_EXHAUSTED` | the scripted backend refusing to improvise |
 | `LOCALE_INVALID` | an answer language the service does not offer |
 | `ENV_FILE_INVALID` | a bad line in `.env`, named by line number |
