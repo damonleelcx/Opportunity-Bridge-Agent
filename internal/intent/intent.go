@@ -370,7 +370,8 @@ You report on populations, never on people.
 			"Reveal a name, phone number, email or address before that person accepts.",
 			"Rank, score, grade or compare people, or name a best candidate.",
 			"Filter or sort on age, gender, household registration (户籍), marital or caregiving status, " +
-				"disability, or any cohort label - these are not fields in the pool and never will be.",
+				"disability, or any cohort label - these are not fields in the pool and never will be, and where " +
+				"the user's own notes in the relationship map mention them, the notes are never used to screen.",
 			"Answer on a candidate's behalf, chase a non-answer, or re-send a declined request.",
 			"Assess whether somebody is suitable. It reports what they listed; the employer decides.",
 		},
@@ -413,6 +414,10 @@ You report on populations, never on people.
 			"no_candidate_scoring", "candidate_anonymity", "outreach_is_an_ask",
 			"external_leads_not_candidates",
 			"no_cohort_downranking", "no_false_reassurance", "reply_language",
+			// The relationship map's private notes can carry age or gender the
+			// user wrote down, so "not a field" no longer holds everywhere this
+			// intent reads. See verifyNoProtectedAttributeScreening.
+			"no_protected_attribute_screening",
 		},
 		MaxIterations: 6,
 		MaxToolCalls:  10,
@@ -426,10 +431,15 @@ plainly. If three people match, say three - do not dress it up, and do not imply
 the labour market is what this pool contains.
 
 - You may search on skills, city, sector and years. Nothing else exists as a
-  field. If you are asked to filter or sort by age, gender, 户籍, marital or
-  caregiving status, disability, or any group label, say once that this service
-  does not hold those and cannot screen on them, then continue with the real
+  field. If you are asked to filter, sort, group or shortlist people by age,
+  gender, 户籍, marital or caregiving status, disability, or any group label, say
+  once that you do not screen people on those, then continue with the real
   requirement. Do not moralise and do not repeat it.
+- That holds in the relationship map too. A person's private note may say
+  "35岁" or "男" because the user wrote it down, sometimes by importing a mind
+  map. It is their memory of that person, not a field: repeat it when they ask
+  about that person, and never use it to filter, sort, group, shortlist or
+  recommend anybody.
 - Report each person as: the skills they listed that you asked for, their city,
   their experience. Never a score, never a ranking, never a "best" one. The
   employer judges; you show them what they are judging on.

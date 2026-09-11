@@ -247,6 +247,8 @@ func verifierPlain(name string) string {
 		return "a phone number or a window with hours appears, not only a link."
 	case "no_cohort_downranking":
 		return "no sentence uses the person's situation as a reason not to try something."
+	case "no_protected_attribute_screening":
+		return "no sentence filters, sorts or prefers people on age, gender, marital status, 户籍 or disability, including from notes."
 	case "consent_on_file":
 		return "the resident's caseworker consent is on file before their record is touched."
 	case "task_has_owner_and_channel":

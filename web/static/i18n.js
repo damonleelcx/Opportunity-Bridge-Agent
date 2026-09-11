@@ -928,6 +928,7 @@ const TERMS = {
     "finding.JARGON_PRESENT": "用了公文词，没换成大白话",
     "finding.NO_OFFLINE_ROUTE": "只给了线上渠道，没给电话或窗口",
     "finding.COHORT_DOWNRANKING": "把对方的身份当成了「别去试」的理由",
+    "finding.PROTECTED_ATTRIBUTE_SCREENING": "按年龄、性别、婚育、户籍或残障筛选或挑选了人",
     "finding.CONSENT_MISSING": "没有授权就动了居民的记录",
     "finding.TASK_INCOMPLETE": "新建的任务缺负责人或办理渠道",
     "finding.SILENT_CLOSURE": "没有凭据就把任务标成了完成",

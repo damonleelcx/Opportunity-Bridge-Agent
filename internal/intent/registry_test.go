@@ -1,6 +1,7 @@
 package intent_test
 
 import (
+	"strings"
 	"testing"
 
 	"github.com/damonleelcx/Opportunity-Bridge-Agent/internal/domain"
@@ -227,5 +228,33 @@ func TestUniversalToolsDoNotClobberTheIntentsOwnList(t *testing.T) {
 				t.Errorf("%s lost %q when the universal tools were merged in", id, n)
 			}
 		}
+	}
+}
+
+// talent_sourcing reads the relationship map, whose private notes can say
+// "35岁 · 男" verbatim. Two things follow, and each is a way the line against
+// screening on a protected characteristic quietly stops holding: the directive
+// telling the model this service holds no such thing (untrue once notes carry
+// it), and the check that replaced the missing field not being attached.
+// See docs/18-recruiter-and-outreach.md, "Where an absent field is not enough".
+func TestTalentSourcingDoesNotScreenOnNotes(t *testing.T) {
+	in, ok := intent.Get(intent.TalentSourcing)
+	if !ok {
+		t.Fatal("talent_sourcing is not in the registry")
+	}
+	attached := false
+	for _, v := range in.Verifiers {
+		if v == "no_protected_attribute_screening" {
+			attached = true
+		}
+	}
+	if !attached {
+		t.Error("talent_sourcing does not run no_protected_attribute_screening; nothing stops a screen built from notes")
+	}
+	if strings.Contains(in.Directive, "does not hold those") {
+		t.Error("the directive still tells the model this service holds no age or gender, which private notes made untrue")
+	}
+	if !strings.Contains(in.Directive, "private note") {
+		t.Error("the directive never tells the model that a private note is not a field to screen on")
 	}
 }
