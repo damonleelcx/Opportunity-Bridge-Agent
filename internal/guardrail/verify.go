@@ -46,28 +46,29 @@ type VerifyInput struct {
 type Verifier func(VerifyInput) []Finding
 
 var verifiers = map[string]Verifier{
-	"citations_present":             verifyCitationsPresent,
-	"no_eligibility_verdict":        verifyNoEligibilityVerdict,
-	"actionable_next_step":          verifyActionableNextStep,
-	"next_step_is_tracked":          verifyNextStepIsTracked,
-	"no_invented_identifiers":       verifyNoInventedIdentifiers,
-	"plain_language":                verifyPlainLanguage,
-	"offline_route_present":         verifyOfflineRoute,
-	"no_cohort_downranking":         verifyNoCohortDownranking,
-	"consent_on_file":               verifyConsentOnFile,
-	"task_has_owner_and_channel":    verifyTaskOwnerAndChannel,
-	"no_silent_closure":             verifyNoSilentClosure,
-	"k_anonymity":                   verifyKAnonymity,
-	"no_identifiers":                verifyNoIdentifiers,
-	"coverage_stated":               verifyCoverageStated,
-	"no_causal_overreach":           verifyNoCausalOverreach,
-	"no_false_reassurance":          verifyNoFalseReassurance,
-	"reply_language":                verifyReplyLanguage,
-	"answers_the_city":              verifyAnswersTheCity,
-	"no_candidate_scoring":          verifyNoCandidateScoring,
-	"candidate_anonymity":           verifyCandidateAnonymity,
-	"outreach_is_an_ask":            verifyOutreachIsAsk,
-	"external_leads_not_candidates": verifyExternalLeadsAreNotCandidates,
+	"citations_present":                verifyCitationsPresent,
+	"no_eligibility_verdict":           verifyNoEligibilityVerdict,
+	"actionable_next_step":             verifyActionableNextStep,
+	"next_step_is_tracked":             verifyNextStepIsTracked,
+	"no_invented_identifiers":          verifyNoInventedIdentifiers,
+	"plain_language":                   verifyPlainLanguage,
+	"offline_route_present":            verifyOfflineRoute,
+	"no_cohort_downranking":            verifyNoCohortDownranking,
+	"consent_on_file":                  verifyConsentOnFile,
+	"task_has_owner_and_channel":       verifyTaskOwnerAndChannel,
+	"no_silent_closure":                verifyNoSilentClosure,
+	"k_anonymity":                      verifyKAnonymity,
+	"no_identifiers":                   verifyNoIdentifiers,
+	"coverage_stated":                  verifyCoverageStated,
+	"no_causal_overreach":              verifyNoCausalOverreach,
+	"no_false_reassurance":             verifyNoFalseReassurance,
+	"reply_language":                   verifyReplyLanguage,
+	"answers_the_city":                 verifyAnswersTheCity,
+	"no_candidate_scoring":             verifyNoCandidateScoring,
+	"candidate_anonymity":              verifyCandidateAnonymity,
+	"outreach_is_an_ask":               verifyOutreachIsAsk,
+	"external_leads_not_candidates":    verifyExternalLeadsAreNotCandidates,
+	"no_protected_attribute_screening": verifyNoProtectedAttributeScreening,
 }
 
 // universalVerifiers run on every turn, whatever intent is answering and
@@ -983,6 +984,76 @@ func verifyNoCandidateScoring(in VerifyInput) []Finding {
 		Evidence: hits,
 		Remedy: "Say which skills each person listed that the role asked for, and let the employer judge. " +
 			"Do not order people by worth, do not name a best one, and do not attach a number to a person.",
+	}}
+}
+
+// protectedTrait finds a protected characteristic named in a sentence: age,
+// gender, marital or childbearing status, 户籍, disability.
+//
+// English terms sit on word boundaries. "age" is inside "manager", "page" and
+// "stage"; a verifier that blocks an honest answer over a substring gets deleted
+// rather than fixed (see rankVerb).
+var protectedTrait = regexp.MustCompile(
+	`(?i)(年龄|年纪|\d{1,2}\s*岁|年轻|大龄|[5-9][05]后|0[05]后|性别|男性|女性|男的|女的|已婚|未婚|婚育|生育|户籍|残疾|残障` +
+		`|\bage[sd]?\b|\byears old\b|\byounger\b|\bolder\b|\bgender\b|\bmale\b|\bfemale\b|\bmen\b|\bwomen\b` +
+		`|\bmarried\b|\bpregnan|\bhukou\b|\bdisab)`)
+
+// screensOn finds a sentence choosing between people: filtering, excluding,
+// preferring, sorting, or an age bound.
+//
+// Narrow on purpose. 以上 and 以下 alone are not here, because "以下是他的情况"
+// introduces a description; they count only straight after a number, where they
+// are a bound.
+var screensOn = regexp.MustCompile(
+	`(?i)(筛|过滤|排除|剔除|只要|只选|只留|只考虑|优先|排序|挑出|按\s*(年龄|年纪|性别|婚育|户籍)|\d{1,2}\s*岁?\s*(以下|以上|以内|之内)` +
+		`|\bfilter|\bscreen|\bexclud|\bprefer|\bsort(s|ed|ing)?\b|\bshortlist|(younger|older) than)`)
+
+// refusesToScreen matches the agent declining to screen, which is exactly the
+// sentence the directive asks for. Without it this check blocks the refusal,
+// the same trap refusesToRank was written for: "我不按年龄筛人" names an
+// attribute and a screening verb, and is the correct answer.
+var refusesToScreen = regexp.MustCompile(
+	`(?i)(\bi\s+(do not|don['’]t|will not|won['’]t|cannot|can['’]t)\s+(\w+\s+){0,3}?(filter|screen|sort|shortlist|select|choose|pick)` +
+		`|我(不会|不能|无法|不)(按|根据|用|以|拿)` +
+		`|不是[^，。]{0,10}(筛选|筛人|挑人|排序)的(依据|条件|标准))`)
+
+// verifyNoProtectedAttributeScreening: nobody is filtered, sorted or preferred
+// on a protected characteristic.
+//
+// WHY A VERIFIER, WHEN THE POOL ALREADY HAS NO SUCH FIELD
+//
+//	The opt-in pool holds this line structurally: candidateCard carries no age,
+//	gender or 户籍, and the search schema cannot be given one. The relationship
+//	map cannot hold it that way. A private note may say "35岁 · 男" because the
+//	user wrote it, or imported a mind map that did, and the owner decided on
+//	2026-09-11 to keep such notes verbatim. The agent reads those notes, so
+//	"只要35岁以下的" is one sentence away again, and what is left between that
+//	sentence and a screened list is the directive and this check.
+//	See docs/18-recruiter-and-outreach.md.
+//
+// It runs on every answer of the intent, not only after a graph tool: the
+// attribute arrives from the conversation as easily as from a note.
+func verifyNoProtectedAttributeScreening(in VerifyInput) []Finding {
+	var hits []string
+	for _, s := range splitSentences(in.Answer) {
+		if refusesToScreen.MatchString(s) {
+			continue
+		}
+		if protectedTrait.MatchString(s) && screensOn.MatchString(s) {
+			hits = append(hits, strings.TrimSpace(s))
+		}
+	}
+	if len(hits) == 0 {
+		return nil
+	}
+	return []Finding{{
+		Guard: "verify", Code: "PROTECTED_ATTRIBUTE_SCREENING", Severity: Block,
+		Message: "The answer filters, sorts or prefers people on a protected characteristic: " +
+			"age, gender, marital or childbearing status, 户籍 or disability.",
+		Evidence: hits,
+		Remedy: "Say once that you do not screen people on these, even where the user's own notes mention them, " +
+			"then continue with the real requirement: the role, the skills, the experience. Repeating what a note " +
+			"says about the one person the user asked about is fine; using it to choose between people is not.",
 	}}
 }
 

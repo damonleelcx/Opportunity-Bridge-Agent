@@ -31,6 +31,7 @@ what happened.
 | `plain_language` | repair | Sentence length and a jargon table with plain replacements. Thresholds are **per script** — 22 words or 30 characters — because twenty English words and twenty Chinese characters are very different sentences, and one threshold flagged every readable Chinese answer |
 | `offline_route_present` | repair | Not only a link |
 | `no_cohort_downranking` | **block** | No sentence uses the person's situation as a reason not to try something |
+| `no_protected_attribute_screening` | **block** | No sentence filters, sorts or prefers people on age, gender, marital or childbearing status, 户籍 or disability — including from the user's own notes in the relationship map. The refusal itself ("我不按年龄筛人") is exempt, or the check would block the sentence the directive asks for. See [18](18-recruiter-and-outreach.md#where-an-absent-field-is-not-enough-the-relationship-map) |
 | `consent_on_file` | **block** | Fires only when the turn actually touched the record — a turn that explains what permission is needed, and offers to ask, is correct behaviour |
 | `task_has_owner_and_channel` | repair | Read from tool `Meta`, not from prose |
 | `no_silent_closure` | **block** | No task marked done without evidence |

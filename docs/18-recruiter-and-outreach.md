@@ -77,6 +77,27 @@ The search **schema** has only five fields: `skills`, `city`, `sectors`,
 smuggle it through — the call is refused before `Run` is entered. That is fenced
 by `TestSearchSchemaOffersNoProtectedFilters`.
 
+### Where an absent field is not enough: the relationship map
+
+The pool holds this line by absence. The relationship map (猎源图谱,
+[docs/20](20-lead-graph.zh-CN.md)) cannot. A seat's private note on a person can
+say "35岁 · 男" because the user wrote it down, or imported a mind map that did.
+The owner decided on 2026-09-11 to keep such notes verbatim, since they are the
+user's own memory of somebody, and the agent reads them. Dropping age and gender
+at import was the alternative, and it was considered and declined.
+
+So in `talent_sourcing` the line is held by two things instead of one:
+
+| Layer | What it does |
+|---|---|
+| Directive | A note is repeated when the user asks about that person, and is never used to filter, sort, group, shortlist or recommend anybody |
+| `no_protected_attribute_screening` (block) | A sentence naming a protected characteristic together with a screening verb is refused and redrafted. The refusal itself ("我不按年龄筛人", "I don't screen people on age") is exempt, because blocking the sentence the directive asks for turns a correct answer into a failure, the same trap `refusesToRank` exists for |
+
+**This is weaker than an absent field, and is recorded as weaker.** A verifier
+matches words, so a screened list phrased without any of them gets through.
+Fenced by `TestProtectedAttributeScreeningIsCaught` and the
+`turn-sourcing-age-screening-blocked` turn.
+
 ### The candidate_ref
 
 `CandidateRef(recruiterID, subjectID)` is a hash of the pair, not a stored
