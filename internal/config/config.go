@@ -21,8 +21,11 @@ type Config struct {
 	// Model selection (step 4 of the build flow). See docs/04-model-choice.md.
 	AgentModel      string
 	ClassifierModel string
-	Effort          string // default effort; an intent may raise it
-	MaxTokens       int64
+	// VisionModel reads screenshots for the lead-graph import. It has to be one
+	// of the backend's proven vision models; see checkVisionModel.
+	VisionModel string
+	Effort      string // default effort; an intent may raise it
+	MaxTokens   int64
 
 	// Stopping conditions (step 14). Per-intent caps in the intent registry are
 	// clamped by these process-wide ones.
@@ -191,6 +194,7 @@ func Load() (Config, error) {
 		Addr:            env("OBA_ADDR", ":8787"),
 		AgentModel:      env("OBA_AGENT_MODEL", spec.DefaultAgent),
 		ClassifierModel: env("OBA_CLASSIFIER_MODEL", spec.DefaultClassifier),
+		VisionModel:     env("OBA_VISION_MODEL", spec.DefaultVision),
 		Effort:          env("OBA_EFFORT", "high"),
 		MaxTokens:       int64(envInt("OBA_MAX_TOKENS", 16000)),
 		MaxIterations:   envInt("OBA_MAX_ITERATIONS", 8),
@@ -260,6 +264,9 @@ func Load() (Config, error) {
 		if warn != "" {
 			c.Warnings = append(c.Warnings, warn)
 		}
+	}
+	if err := checkVisionModel(backend, c.VisionModel); err != nil {
+		return c, err
 	}
 	sort.Strings(c.Warnings)
 	if c.CorpusDir == "" {

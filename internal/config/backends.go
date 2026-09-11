@@ -32,23 +32,53 @@ const (
 type backendSpec struct {
 	DefaultAgent      string
 	DefaultClassifier string
+	// DefaultVision reads screenshots for the lead-graph import.
+	DefaultVision string
 	// Prefix identifies model ids that belong to this provider.
 	Prefix string
 	// Known lists the model ids this build has been written against. An id
 	// outside the list is allowed - proxies and new releases are legitimate -
 	// but it is logged, not silently accepted.
 	Known []string
+	// Vision lists the ids PROVEN to read an image on this provider. Unlike
+	// Known, an id outside it is refused rather than logged: a model that cannot
+	// see still answers HTTP 200 and invents what the picture showed, so there
+	// is no "proceeding anyway" that is safe. Empty means this backend has no
+	// vision path at all.
+	Vision []string
 	// RequiresKey is true where there is no other credential source.
 	RequiresKey bool
 	KeyEnv      string
+}
+
+// checkVisionModel refuses a vision model that has not been proven to read
+// images on this backend. See llm.QwenVisionModels for how an id is proven, and
+// internal/vision for what an unproven one does.
+func checkVisionModel(b Backend, model string) error {
+	spec, ok := b.spec()
+	if !ok || len(spec.Vision) == 0 {
+		return nil
+	}
+	for _, v := range spec.Vision {
+		if v == model {
+			return nil
+		}
+	}
+	return fmt.Errorf("OBA_VISION_MODEL=%q has not been proven to read an image on the %s backend. A model that "+
+		"cannot see still answers HTTP 200 and invents what the picture showed, so an unproven id is refused "+
+		"rather than logged. Set OBA_VISION_MODEL to one of: %s. To admit another id, run "+
+		"`make vision-probe MODEL=<id>` and add it to llm.QwenVisionModels only if it passes",
+		model, b, strings.Join(spec.Vision, ", "))
 }
 
 var backends = map[Backend]backendSpec{
 	BackendQwen: {
 		DefaultAgent:      llm.QwenAgentModel,
 		DefaultClassifier: llm.QwenClassifierModel,
+		DefaultVision:     llm.QwenVisionModel,
 		Prefix:            "qwen",
 		Known:             llm.QwenKnownModels,
+		Vision:            llm.QwenVisionModels,
 		// There is no OAuth or ambient-credential path here: an empty
 		// QWEN_API_KEY means there is no credential, so startup can say so
 		// rather than letting the first person's question discover it.

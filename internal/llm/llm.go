@@ -28,6 +28,9 @@ const (
 	KindThinking   BlockKind = "thinking"
 	KindToolUse    BlockKind = "tool_use"
 	KindToolResult BlockKind = "tool_result"
+	// KindImage is a picture in a user message. internal/vision is the only
+	// sender, and it checks that every reading actually counted the picture.
+	KindImage BlockKind = "image"
 )
 
 // Block is one content block. Keeping a single struct rather than an interface
@@ -51,9 +54,20 @@ type Block struct {
 	ResultFor string `json:"result_for,omitempty"`
 	Result    string `json:"result,omitempty"`
 	IsError   bool   `json:"is_error,omitempty"`
+
+	// image. The picture travels as bytes and becomes a data URL only on the
+	// wire, so a block can never carry a remote URL the vendor would fetch.
+	MediaType string `json:"media_type,omitempty"`
+	Data      []byte `json:"data,omitempty"`
 }
 
 func Text(s string) Block { return Block{Kind: KindText, Text: s} }
+
+// Image is a picture for a model that can read one. See internal/vision, the
+// only sender, which checks that every reading actually counted the picture.
+func Image(mediaType string, data []byte) Block {
+	return Block{Kind: KindImage, MediaType: mediaType, Data: data}
+}
 
 func ToolResult(forID, content string, isError bool) Block {
 	return Block{Kind: KindToolResult, ResultFor: forID, Result: content, IsError: isError}
@@ -93,6 +107,9 @@ type Request struct {
 	// Thinking, when true, sends adaptive thinking with summarised display, so
 	// the interface can show the model working rather than a long silence.
 	Thinking bool `json:"thinking,omitempty"`
+	// JSON asks for a JSON object back. The messages must then contain the word
+	// "json": Qwen rejects that mode otherwise, as DeepSeek did before it.
+	JSON bool `json:"json,omitempty"`
 }
 
 type Usage struct {

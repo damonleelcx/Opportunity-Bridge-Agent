@@ -120,6 +120,12 @@ talent-smoke: ## Live smoke the external talent vendors (needs keys in .env)
 	@set -a; . ./.env; set +a; \
 	go test ./internal/talentsource/ -run 'TestLive' -count=1 -v
 
+.PHONY: vision-probe
+vision-probe: ## Prove a model reads images before adding it to llm.QwenVisionModels: make vision-probe MODEL=<id> (needs .env)
+	@test -n "$(MODEL)" || { echo "usage: make vision-probe MODEL=<model id>"; exit 2; }
+	@set -a; . ./.env; set +a; \
+	OBA_VISION_PROBE_MODEL="$(MODEL)" go test ./internal/vision/ -run 'TestLiveVisionProbe' -count=1 -v
+
 .PHONY: fmt
 fmt: ## Format everything
 	gofmt -w .
