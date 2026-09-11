@@ -30,6 +30,12 @@ const (
 	msgAnswerEmpty    msgKey = "answer.empty"
 	msgIntentDisabled msgKey = "intent.disabled"
 	msgUnresolved     msgKey = "verify.unresolved"
+	// The two turns a staged upload leaves in the conversation. They mirror
+	// "import.uploaded" and "import.staged" in web/static/i18n.js word for word,
+	// because the live turn is drawn from that table and the reopened one from
+	// this one. Fence: TestTheUploadTurnsSayWhatTheInterfaceSays.
+	msgImportUploaded msgKey = "import.uploaded"
+	msgImportStaged   msgKey = "import.staged"
 )
 
 var messages = map[string]map[msgKey]string{
@@ -55,8 +61,12 @@ var messages = map[string]map[msgKey]string{
 			"Nothing was done. A member of staff can help in the meantime.",
 		msgUnresolved: "\n\n(I checked this answer against my own rules and it still does not pass: %s. " +
 			"It is the best I produced — ask me to say it again, or call 12333 and ask for a person.)",
+		msgImportUploaded: "Uploaded a file to import: %s",
+		msgImportStaged:   "Read, and nothing written yet. Here is what importing it would do.",
 	},
 	"zh-CN": {
+		msgImportUploaded: "上传了导入文件：%s",
+		msgImportStaged:   "读完了，还没有写进图里。下面是它打算做的事。",
 		msgStopIterations: "走了 %d 步还没办完，我先停下来了。上面是已经找到的部分。" +
 			"你可以挑其中一件让我细说，也可以让我找个人来接手。",
 		msgStopToolCalls: "查了 %d 次还没办完，我先停下来了。把问题收窄一点——一个城市、一类补助——" +

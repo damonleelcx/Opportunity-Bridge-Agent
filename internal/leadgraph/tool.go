@@ -555,7 +555,7 @@ func Tools() *Registry {
 			},
 		},
 		Tool{
-			Name: "import_summary", Risk: RiskRead,
+			Name: ToolImportSummary, Risk: RiskRead,
 			Description: "Describe a file the user uploaded and what importing it would do: how it was read, which columns were used, which were ignored, what will be created, what still needs their decision, and which rows were skipped and why. Writes nothing. " +
 				"For a mind-map SCREENSHOT (source \"screenshot\") it also lists every person the model read, each beside the verbatim text it came from (people); people held because the picture says they have left (held); rows to look at twice, such as a name that is not written on its own in its topic (checks); and how many reporting lines committing would draw (links). Every one of those rows is a model's reading: go through them with the user, and never describe the reading as correct on their behalf.",
 			Schema: Obj("which staged file", map[string]*Schema{
