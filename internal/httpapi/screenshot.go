@@ -78,7 +78,7 @@ var readingRefusals = []struct {
 
 // stageScreenshot reads a screenshot with the vision model and stages what it
 // read for review. Like a spreadsheet upload, it writes nothing to the graph.
-func (s *Server) stageScreenshot(w http.ResponseWriter, r *http.Request, v leadgraph.View, fileName, mediaType string, raw []byte) {
+func (s *Server) stageScreenshot(w http.ResponseWriter, r *http.Request, sessionID string, v leadgraph.View, fileName, mediaType string, raw []byte) {
 	if !vision.MediaTypes[mediaType] {
 		writeErr(w, http.StatusUnsupportedMediaType, "SCREENSHOT_TYPE_UNSUPPORTED",
 			fmt.Sprintf("This is a %s picture, which the screenshot import does not read.", mediaType),
@@ -127,6 +127,9 @@ func (s *Server) stageScreenshot(w http.ResponseWriter, r *http.Request, v leadg
 		"image_tokens", res.ImageTokens, "output_tokens", res.Usage.OutputTokens,
 		"seconds", time.Since(started).Round(time.Second).Seconds())
 	sum, _ := s.Agent.Graph.ImportSummary(v, sess.ID)
+	// Only on success, as for a spreadsheet: a refused reading leaves nothing.
+	// See docs/bugfix/2026-09-11-upload-only-conversation-was-hidden.md
+	s.recordUpload(r.Context(), sessionID, fileName, sum)
 	writeJSON(w, map[string]any{"staged": true, "summary": sum})
 }
 

@@ -2522,6 +2522,10 @@ function confirmScreenshot(file) {
 }
 
 async function stageImport(file, confirmed) {
+  // The upload is the person's turn, drawn the same as the one the server keeps,
+  // so the conversation reads the same live and reopened.
+  // See docs/bugfix/2026-09-11-upload-only-conversation-was-hidden.md
+  userTurn(t("import.uploaded").replace("{file}", file.name));
   const turn = agentTurn();
   turn.typing = false;
   const picture = file.type.startsWith("image/");
@@ -2557,6 +2561,11 @@ async function stageImport(file, confirmed) {
     b.textContent = t(data.summary?.source === "screenshot" ? "suggest.shotReview" : "suggest.importReview");
     b.addEventListener("click", () => send(b.textContent));
     turn.suggest.append(b);
+    // The server has just written this upload into the conversation, which is
+    // what makes it listable. Without a refresh the row stays missing until a
+    // reload. Not awaited inside this try: a list that fails to refresh must not
+    // repaint a successful import as a failed one.
+    refreshSessions().catch(() => {});
   } catch (err) {
     turn.bubble.textContent = t("import.failed");
     notice(turn, "block", "IMPORT_FAILED", String(err), "");

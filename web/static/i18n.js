@@ -18,6 +18,7 @@ const STRINGS = {
     "ctl.import": "导入名单（CSV / TSV / 导图截图）",
     "import.reading": "正在读你的文件……",
     "import.failed": "这个文件没读进去",
+    "import.uploaded": "上传了导入文件：{file}",
     "import.staged": "读完了，还没有写进图里。下面是它打算做的事。",
     "suggest.importReview": "这个导入计划有问题吗？",
     // ── 导图截图导入 (docs/20 §10.3) ──
@@ -485,6 +486,7 @@ const STRINGS = {
     "ctl.import": "Import a contact list (CSV / TSV / mind-map screenshot)",
     "import.reading": "Reading your file…",
     "import.failed": "That file could not be read",
+    "import.uploaded": "Uploaded a file to import: {file}",
     "import.staged": "Read, and nothing written yet. Here is what importing it would do.",
     "suggest.importReview": "Is anything wrong with this import plan?",
     "import.readingShot": "Reading the screenshot; this takes about a minute…",

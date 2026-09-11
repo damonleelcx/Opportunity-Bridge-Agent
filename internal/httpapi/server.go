@@ -701,7 +701,7 @@ func (s *Server) stageGraphImport(w http.ResponseWriter, r *http.Request) {
 	// it; a spreadsheet never goes near one. stageScreenshot also enforces the
 	// per-upload confirmation that the picture may be sent.
 	if mediaType, isPicture := pictureType(raw); isPicture {
-		s.stageScreenshot(w, r, v, header.Filename, mediaType, raw)
+		s.stageScreenshot(w, r, ses.ID, v, header.Filename, mediaType, raw)
 		return
 	}
 	sess, err := s.Agent.Graph.StageImport(v, header.Filename, raw)
@@ -711,6 +711,9 @@ func (s *Server) stageGraphImport(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	sum, _ := s.Agent.Graph.ImportSummary(v, sess.ID)
+	// Only on success: a refused upload did nothing and leaves nothing.
+	// See docs/bugfix/2026-09-11-upload-only-conversation-was-hidden.md
+	s.recordUpload(r.Context(), ses.ID, header.Filename, sum)
 	writeJSON(w, map[string]any{"staged": true, "summary": sum})
 }
 
