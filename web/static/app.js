@@ -949,7 +949,12 @@ function ratingGapCard(r) {
 
 function importPlanCard(r) {
   const c = r.counts || {};
-  const note = `${esc(r.file || "")} · ${r.rows ?? 0} ${t("graph.importRows")}`;
+  // A screenshot is counted in people read, not rows: it has no rows, and "31
+  // rows" for a picture would be a number nobody can find in it.
+  const shot = r.source === "screenshot";
+  const note = shot
+    ? `${esc(r.file || "")} · ${esc(t("graph.shotPeople").replace("{n}", String((r.people || []).length)))}`
+    : `${esc(r.file || "")} · ${r.rows ?? 0} ${t("graph.importRows")}`;
   // Zero counts are dropped, not printed: "跳过 0" is four characters saying
   // nothing happened. What did happen is what the reader needs.
   const counts = Object.keys(c).filter((k) => c[k]).map((k) =>
@@ -957,15 +962,46 @@ function importPlanCard(r) {
   // skipped_rows groups line numbers BY REASON. The count is already a chip
   // above, so this says the thing the count cannot: WHICH rows and WHY. That is
   // what the grouping exists for — "第 7、19、23 行没有姓名" is actionable and
-  // "跳过 3" is not.
+  // "跳过 3" is not. A screenshot's numbers are topics, and are called that.
+  const where = shot ? "skip.topics" : "skip.rows";
   const skipped = Object.entries(r.skipped_rows || {})
     .filter(([, rows]) => rows?.length)
     .map(([reason, rows]) => `<div class="decision-note">${esc(tOr("skip." + reason, reason))} ·
-      ${esc(t("skip.rows").replace("{n}", rows.slice(0, 12).join("、")))}</div>`)
+      ${esc(t(where).replace("{n}", rows.slice(0, 12).join("、")))}</div>`)
     .join("");
   const decisions = (r.decisions || []).length
     ? `<span class="chip chip-warn">${esc(t("graph.queued"))} ${esc(String(r.decisions.length))}</span>` : "";
-  return gcard("graph.import", note, `<p>${counts} ${decisions}</p>${skipped}`);
+  if (!shot) return gcard("graph.import", note, `<p>${counts} ${decisions}</p>${skipped}`);
+  const links = r.links
+    ? `<span class="chip">${esc(t("graph.shotLinks"))} ${esc(String(r.links))}</span>` : "";
+  return gcard("graph.import", note, `<p>${counts} ${decisions} ${links}</p>${screenshotRows(r)}${skipped}`);
+}
+
+// screenshotRows shows every person a screenshot was read as, next to the words
+// they were read from. In a spreadsheet only the rows that raised a question are
+// listed; in a screenshot EVERY row is a model's proposal, and a name read
+// wrongly looks exactly like a name read rightly unless the text is beside it.
+// Owner's decision, 2026-09-11. See docs/20-lead-graph.zh-CN.md §10.3.
+function screenshotRows(r) {
+  const flagged = {};
+  for (const ck of r.checks || []) (flagged[ck.row] ||= []).push(tOr("check." + ck.check, ck.check));
+  const topic = (n) => esc(t("graph.topic").replace("{n}", String(n)));
+  const people = (r.people || []).map((p) => {
+    const who = [p.label, p.org, p.title].filter(Boolean).map(esc).join(" · ");
+    const flags = (flagged[p.row] || []).map((f) => `<span class="chip chip-warn">${esc(f)}</span>`).join(" ");
+    return `<li><b>${topic(p.row)}</b> ${who} ${flags}
+      <div class="decision-note">${esc(t("graph.shotText"))}：${esc(p.text || "")}</div></li>`;
+  }).join("");
+  const held = (r.held || []).map((h) =>
+    `<li><b>${topic(h.row)}</b> ${esc(tOr("hold." + h.reason, h.reason))}
+      <div class="decision-note">${esc(t("graph.shotText"))}：${esc(h.text || "")}</div></li>`).join("");
+  const unlinked = (r.unlinked_rows || []).length
+    ? `<div class="decision-note">${esc(t("graph.shotUnlinked"))} · ${(r.unlinked_rows || []).map((u) => topic(u.row)).join("、")}</div>`
+    : "";
+  return `<div class="decision-note">${esc(t("graph.shotCheck"))}</div>` +
+    (people ? `<ul class="glist">${people}</ul>` : "") +
+    (held ? `<div class="gsub">${esc(t("graph.held"))}</div><ul class="glist">${held}</ul>` : "") +
+    unlinked;
 }
 
 function importedCard(r) {
@@ -2430,16 +2466,68 @@ function wireImport() {
     // Cleared immediately so picking the SAME file twice still fires a change.
     input.value = "";
     if (!file || !state.session) return;
-    await stageImport(file);
+    // A picture is sent to a model vendor to be read, with every person in it.
+    // Nothing is posted until the person says so. The server checks too: this
+    // is the courtesy, the server is the guarantee. See screenshot.go.
+    if (file.type.startsWith("image/")) {
+      confirmScreenshot(file);
+      return;
+    }
+    await stageImport(file, false);
   });
 }
 
-async function stageImport(file) {
+// confirmScreenshot asks before a screenshot leaves the device.
+//
+// Where it goes is read from /api/health (state.meta), never written into the
+// copy: a privacy statement in the page is true only where it was written. If
+// the facts are missing the card says it cannot name the vendor - unknown leans
+// towards the warning, never towards reassurance.
+// See docs/bugfix/2026-08-31-the-privacy-claim-was-false.md
+function confirmScreenshot(file) {
   const turn = agentTurn();
   turn.typing = false;
-  turn.bubble.textContent = t("import.reading");
+  const m = state.meta || {};
+  if (m.screenshot_import_enabled === false) {
+    turn.bubble.textContent = t("import.shotOff");
+    scroll();
+    return;
+  }
+  const body = m.vision_endpoint_host && m.vision_model
+    ? t("import.shotConfirmBody").replace("{host}", m.vision_endpoint_host).replace("{model}", m.vision_model)
+    : t("import.shotConfirmUnknown");
+  turn.bubble.textContent = t("import.shotConfirmTitle");
+  show(turn.decides);
+  const card = el(`<div class="decide">
+    <h3></h3><p class="plain"></p>
+    <div class="decide-actions">
+      <button class="btn btn-primary" data-yes></button>
+      <button class="btn" data-no></button>
+    </div></div>`);
+  card.querySelector("h3").textContent = t("import.shotConfirmTitle");
+  card.querySelector(".plain").textContent = body;
+  card.querySelector("[data-yes]").textContent = t("import.shotAllow");
+  card.querySelector("[data-no]").textContent = t("import.shotDeny");
+  const settle = async (confirmed) => {
+    card.classList.add("is-done");
+    card.querySelector(".decide-actions").textContent = confirmed ? t("import.shotAllow") : t("import.shotDeclined");
+    if (confirmed) await stageImport(file, true);
+  };
+  card.querySelector("[data-yes]").addEventListener("click", () => settle(true), { once: true });
+  card.querySelector("[data-no]").addEventListener("click", () => settle(false), { once: true });
+  turn.decides.append(card);
+  scroll();
+}
+
+async function stageImport(file, confirmed) {
+  const turn = agentTurn();
+  turn.typing = false;
+  const picture = file.type.startsWith("image/");
+  turn.bubble.textContent = t(picture ? "import.readingShot" : "import.reading");
   try {
     const body = new FormData();
+    // The confirmation travels in the request, and only when the person gave it.
+    if (confirmed) body.append("vendor_consent", "screenshot_recognition");
     body.append("file", file);
     const res = await fetch(`/api/sessions/${state.session.id}/graph/imports`, {
       method: "POST", body, credentials: "same-origin",
@@ -2464,7 +2552,7 @@ async function stageImport(file) {
     show(turn.suggest);
     const b = document.createElement("button");
     b.type = "button";
-    b.textContent = t("suggest.importReview");
+    b.textContent = t(data.summary?.source === "screenshot" ? "suggest.shotReview" : "suggest.importReview");
     b.addEventListener("click", () => send(b.textContent));
     turn.suggest.append(b);
   } catch (err) {

@@ -26,6 +26,7 @@ import (
 	"github.com/damonleelcx/Opportunity-Bridge-Agent/internal/store"
 	"github.com/damonleelcx/Opportunity-Bridge-Agent/internal/tools"
 	"github.com/damonleelcx/Opportunity-Bridge-Agent/internal/tts"
+	"github.com/damonleelcx/Opportunity-Bridge-Agent/internal/vision"
 )
 
 type Server struct {
@@ -45,6 +46,11 @@ type Server struct {
 	// with no provider the browser reads answers in its own built-in voice,
 	// which is what it did before this existed. See tts.go.
 	TTS tts.Provider
+
+	// Vision reads a screenshot of a mind map for the lead-graph import. NIL
+	// MEANS OFF: a picture upload is answered "not available here", and the page
+	// knows beforehand from /api/health. See screenshot.go.
+	Vision *vision.Reader
 
 	// Failed sign-in attempts, per username. See auth.go for why this is in
 	// memory rather than in the store.
@@ -205,7 +211,7 @@ func writeJSON(w http.ResponseWriter, v any) {
 // front-page sentence would trade a security boundary for a decoration.
 // See docs/bugfix/2026-08-31-honest-limits-were-not-honest.md
 func (s *Server) deploymentFacts() map[string]any {
-	return map[string]any{
+	facts := map[string]any{
 		// Why live_search_enabled is surfaced at all: with no search key the only
 		// live provider is the directory, which returns the official portal for a
 		// region and never a named employer or course. So a person outside the
@@ -244,6 +250,13 @@ func (s *Server) deploymentFacts() map[string]any {
 		// backbones report true — see tts.paidBackbones for why that direction.
 		"speech_vendor_trains_on_text": s.TTS != nil && tts.TrainsOnRequests(s.Cfg.TTSModel),
 	}
+	// Whether a screenshot can be imported, and where it would be sent: the
+	// confirmation card reads these rather than naming a vendor itself. One
+	// producer, shared with the refusal an unconfirmed upload gets.
+	for k, v := range s.screenshotFacts() {
+		facts[k] = v
+	}
+	return facts
 }
 
 func (s *Server) health(w http.ResponseWriter, r *http.Request) {
@@ -671,7 +684,8 @@ func (s *Server) stageGraphImport(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		writeErr(w, http.StatusBadRequest, "FILE_REQUIRED",
 			"No file arrived with this request.",
-			"Attach it as the form field `file`. CSV or TSV; a sheet exported from Excel is fine.")
+			"Attach it as the form field `file`: a CSV or TSV (a sheet exported from Excel is fine), "+
+				"or a PNG, JPEG or WebP screenshot of a mind map.")
 		return
 	}
 	defer file.Close()
@@ -683,6 +697,13 @@ func (s *Server) stageGraphImport(w http.ResponseWriter, r *http.Request) {
 	}
 
 	v := leadgraph.View{TeamID: s.graphTeam(ses.SubjectID), SeatID: ses.SubjectID}
+	// A picture has to be read by a model before anything can be planned from
+	// it; a spreadsheet never goes near one. stageScreenshot also enforces the
+	// per-upload confirmation that the picture may be sent.
+	if mediaType, isPicture := pictureType(raw); isPicture {
+		s.stageScreenshot(w, r, v, header.Filename, mediaType, raw)
+		return
+	}
 	sess, err := s.Agent.Graph.StageImport(v, header.Filename, raw)
 	if err != nil {
 		writeErr(w, http.StatusBadRequest, "IMPORT_UNREADABLE", err.Error(),
