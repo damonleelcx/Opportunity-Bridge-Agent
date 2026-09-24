@@ -1,3 +1,5 @@
+<img src="web/static/mascot.png" alt="阿桥：白发、琥珀色光环、白金制服" width="140" align="right">
+
 # 阿桥 · Opportunity Bridge Agent
 
 [English](README.md)
