@@ -1,3 +1,5 @@
+<img src="web/static/mascot.png" alt="阿桥 (Aqiao): white hair, amber halo, white-and-gold uniform" width="140" align="right">
+
 # 阿桥 · Opportunity Bridge Agent
 
 [中文](README.zh-CN.md)
