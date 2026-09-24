@@ -107,7 +107,12 @@ halo. The halo is what does the work at small sizes: it is the one element of th
 silhouette still legible at 24px, and 24px is the size that actually matters,
 because the avatar sits beside every answer and not only in the header.
 
-Two crops of one reference sheet, wired in `web/static/avatar.js`:
+Two crops of one reference sheet, wired in `web/static/avatar.js`. The sheet is
+committed at [`docs/assets/aqiao-character-sheet.webp`](assets/aqiao-character-sheet.webp)
+(1536×1024): the head comes from the large portrait at its left, the figure from
+the full-length pose beside it, padded on the sheet's own white to 340×800 — the
+reaching hand's fingertips stop where the sheet's turnaround panel begins.
+Re-crop from this file; never swap in a drawing that is not on it.
 
 | File | Intrinsic | Where it is drawn |
 |---|---|---|
