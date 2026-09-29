@@ -1,6 +1,7 @@
 package httpapi_test
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
@@ -9,6 +10,7 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/damonleelcx/Opportunity-Bridge-Agent/internal/httpapi"
 	"github.com/damonleelcx/Opportunity-Bridge-Agent/internal/llm"
@@ -16,10 +18,11 @@ import (
 )
 
 type fakeTTS struct {
-	audio []byte
-	err   error
-	calls int
-	got   string
+	audio  []byte
+	stream io.ReadCloser
+	err    error
+	calls  int
+	got    string
 }
 
 func (f *fakeTTS) Name() string { return "fake" }
@@ -29,7 +32,10 @@ func (f *fakeTTS) Speak(_ context.Context, text string) (tts.Speech, error) {
 	if f.err != nil {
 		return tts.Speech{}, f.err
 	}
-	return tts.Speech{Audio: f.audio, ContentType: "audio/mpeg"}, nil
+	if f.stream != nil {
+		return tts.Speech{Audio: f.stream, ContentType: "audio/mpeg"}, nil
+	}
+	return tts.Speech{Audio: io.NopCloser(bytes.NewReader(f.audio)), ContentType: "audio/mpeg"}, nil
 }
 
 func ttsServer(t *testing.T, p tts.Provider) *httptest.Server {
@@ -245,5 +251,37 @@ func TestSpeakRefusesEmptyText(t *testing.T) {
 	}
 	if fake.calls != 0 {
 		t.Errorf("the vendor was billed for empty text (%d calls)", fake.calls)
+	}
+}
+
+// The audio must reach the browser as it is rendered, through every wrapper
+// Routes() puts round the handler. One that buffers — or a handler that
+// collects the render before writing — puts back the silence that made
+// read-aloud fail on every long answer.
+// See docs/bugfix/2026-09-29-read-aloud-waited-for-the-whole-answer.md
+func TestSpeakStreamsAudioAsItIsRendered(t *testing.T) {
+	pr, pw := io.Pipe()
+	fake := &fakeTTS{stream: pr}
+	srv := ttsServer(t, fake)
+	c := signedIn(t, srv, "listener")
+	sid := readAloudSession(t, srv, c, true)
+	t.Cleanup(func() { pw.Close() })
+
+	go pw.Write([]byte("ID3first")) // the rest is still being rendered
+	got := make(chan string, 1)
+	go func() {
+		res := postAs(t, c, srv.URL+"/api/tts", map[string]any{"text": "你好", "session_id": sid})
+		defer res.Body.Close()
+		buf := make([]byte, 8)
+		io.ReadFull(res.Body, buf)
+		got <- string(buf)
+	}()
+	select {
+	case first := <-got:
+		if first != "ID3first" {
+			t.Errorf("first audio = %q", first)
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("no audio reached the browser until the render finished")
 	}
 }

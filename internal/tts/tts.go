@@ -15,19 +15,35 @@
 // and it applies here unchanged.
 package tts
 
-import "context"
+import (
+	"context"
+	"io"
+)
 
-// Speech is one rendered utterance, ready to hand to the browser.
+// Speech is one utterance, STILL BEING RENDERED when it is handed back.
+//
+// Audio is a stream, not a byte slice, and that is the fix for read-aloud
+// failing on every long answer. The free backbone renders at roughly a tenth of
+// real time — a 420-character answer took 39s, and anything near the 3,000
+// character cap ran past the old 90s client timeout and came back as a 502 after
+// a minute and a half of silence. The first bytes, though, arrive in about a
+// second. Passing them on as they come is what turns "wait for the whole answer
+// to be rendered" into "start hearing it almost at once".
+// See docs/bugfix/2026-09-29-read-aloud-waited-for-the-whole-answer.md
+//
+// The caller must Close Audio.
 type Speech struct {
-	Audio       []byte
+	Audio       io.ReadCloser
 	ContentType string
 }
 
 // Provider renders text as speech.
 //
-// An error means the render FAILED and the caller should fall back. There is no
-// "returned nothing" case: unlike a search, a request to speak either produces
-// audio or does not.
+// An error means the render FAILED before any audio existed and the caller
+// should fall back. There is no "returned nothing" case: a provider has already
+// seen the first byte of audio by the time it returns a Speech. A failure AFTER
+// that surfaces as an error from reading Audio, when the reader has already been
+// hearing it and falling back would read the answer from the top a second time.
 type Provider interface {
 	Name() string
 	Speak(ctx context.Context, text string) (Speech, error)

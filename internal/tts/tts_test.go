@@ -13,6 +13,7 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/damonleelcx/Opportunity-Bridge-Agent/internal/tts"
 )
@@ -57,8 +58,10 @@ func TestFishSendsTheVoiceInTheBodyAndTheModelInTheHeader(t *testing.T) {
 	if body["normalize"] != true {
 		t.Error("normalize is not on: 12333 and 09:00-16:30 get read out digit by digit")
 	}
-	if string(got.Audio) != "ID3fake-audio" || got.ContentType != "audio/mpeg" {
-		t.Errorf("got %q %q", got.Audio, got.ContentType)
+	defer got.Audio.Close()
+	audio, _ := io.ReadAll(got.Audio)
+	if string(audio) != "ID3fake-audio" || got.ContentType != "audio/mpeg" {
+		t.Errorf("got %q %q", audio, got.ContentType)
 	}
 }
 
@@ -124,9 +127,11 @@ func TestFishTruncatesRatherThanRefusingLongText(t *testing.T) {
 		w.Write([]byte("audio"))
 	})
 	long := strings.Repeat("补", tts.MaxChars+500)
-	if _, err := tts.NewFish(srv.URL, "k", "v", "", nil).Speak(context.Background(), long); err != nil {
+	got, err := tts.NewFish(srv.URL, "k", "v", "", nil).Speak(context.Background(), long)
+	if err != nil {
 		t.Fatalf("long text was refused: %v", err)
 	}
+	got.Audio.Close()
 	if n := len([]rune(sent)); n != tts.MaxChars {
 		t.Errorf("sent %d chars, want the cap of %d", n, tts.MaxChars)
 	}
@@ -164,5 +169,76 @@ func TestUnknownBackboneIsAssumedToTrain(t *testing.T) {
 		if got := tts.TrainsOnRequests(c.model); got != c.train {
 			t.Errorf("TrainsOnRequests(%q) = %v, want %v — %s", c.model, got, c.train, c.why)
 		}
+	}
+}
+
+// Speak must hand back audio as soon as the vendor has sent SOME, not when it
+// has sent all of it.
+//
+// The free backbone renders about a tenth of real time. Waiting for the whole
+// render kept a 420-character answer silent for 39s, and every answer long
+// enough to pass the 90s client timeout came back as a 502 — read-aloud simply
+// did not work for long answers. The first bytes arrive in about a second.
+// See docs/bugfix/2026-09-29-read-aloud-waited-for-the-whole-answer.md
+func TestFishReturnsBeforeTheRenderHasFinished(t *testing.T) {
+	finish := make(chan struct{})
+	srv := fishServer(t, func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "audio/mpeg")
+		w.Write([]byte("ID3first"))
+		w.(http.Flusher).Flush()
+		<-finish // the rest of the answer is still being rendered
+		w.Write([]byte("-rest"))
+	})
+	t.Cleanup(func() { close(finish) })
+
+	done := make(chan tts.Speech, 1)
+	go func() {
+		got, err := tts.NewFish(srv.URL, "k", "v", "", nil).Speak(context.Background(), "hello")
+		if err != nil {
+			t.Errorf("Speak: %v", err)
+		}
+		done <- got
+	}()
+	select {
+	case got := <-done:
+		defer got.Audio.Close()
+		buf := make([]byte, 8)
+		if _, err := io.ReadFull(got.Audio, buf); err != nil || string(buf) != "ID3first" {
+			t.Errorf("first audio = %q, %v", buf, err)
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("Speak waited for the whole render; a long answer is silent until it times out")
+	}
+}
+
+// With no timeout on the whole render, a connection that stops sending must
+// still end, and must say that is what happened.
+func TestFishEndsARenderThatStopsSendingAudio(t *testing.T) {
+	release := make(chan struct{})
+	srv := fishServer(t, func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "audio/mpeg")
+		w.Write([]byte("ID3first"))
+		w.(http.Flusher).Flush()
+		select {
+		case <-release:
+		case <-r.Context().Done():
+		}
+	})
+	t.Cleanup(func() { close(release) })
+
+	f := tts.NewFish(srv.URL, "k", "v", "", nil)
+	f.StallTimeout = 200 * time.Millisecond
+	got, err := f.Speak(context.Background(), "hello")
+	if err != nil {
+		t.Fatalf("Speak: %v", err)
+	}
+	defer got.Audio.Close()
+	start := time.Now()
+	_, err = io.ReadAll(got.Audio)
+	if err == nil || !strings.Contains(err.Error(), "TTS_STALLED") {
+		t.Errorf("error = %v, want TTS_STALLED", err)
+	}
+	if time.Since(start) > 5*time.Second {
+		t.Error("a stalled render was not ended by the stall timeout")
 	}
 }
