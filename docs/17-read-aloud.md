@@ -60,6 +60,16 @@ Three things that follow, all load-bearing:
 - **The audio is `no-store`.** It is a rendering of one person's answer, naming
   their city and their situation. It must not sit in a shared cache.
 
+### The audio streams
+
+The free backbone renders at about a tenth of real time: a 1,400-character
+answer takes about two minutes to render in full, but its first audio arrives in
+about a second. So nothing on this path waits for the whole render. `Fish.Speak`
+returns at the first byte, `/api/tts` flushes each chunk as it arrives, and the
+browser plays through `MediaSource` as bytes come in. Waiting for the whole
+render made long answers fail with a 502 at 90s. See
+`bugfix/2026-09-29-read-aloud-waited-for-the-whole-answer.md`.
+
 ### The voice is a model id, not a setting
 
 Fish picks the voice with `reference_id`, a published model id — the last path
@@ -100,11 +110,9 @@ Note also that the free window is dated: Fish published it as running **through
 
 ## What is not built
 
-- **No streaming.** The whole file is rendered, then played. Synthesis runs at
-  roughly a fifth of real time, so a long answer takes ten seconds or more
-  before it starts. Fish supports chunked streaming and the browser can play
-  progressive MP3; the reason it is not wired is that streaming through a POST
-  needs `MediaSource`, and a GET would put the answer text in a URL.
+- **No streaming on Safari.** Where `MediaSource` cannot take `audio/mpeg`,
+  the browser still waits for the whole file. It no longer fails at 90s, but a
+  long answer there is silent until its render finishes.
 - **No cache.** Two identical answers render twice. Worth adding if the paid
   backbone is ever switched on; pointless while the free one is in use.
 - **No commercial-use check.** Voice models on fish.audio may carry separate

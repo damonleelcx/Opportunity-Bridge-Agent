@@ -1,14 +1,17 @@
 package tts
 
 import (
+	"bufio"
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"log/slog"
 	"net/http"
 	"strings"
+	"sync/atomic"
 	"time"
 )
 
@@ -43,7 +46,11 @@ type Fish struct {
 	// Model is the synthesis backbone: s2.1-pro-free | s2.1-pro | s2-pro | s1.
 	Model  string
 	Client *http.Client
-	Log    *slog.Logger
+	// StallTimeout ends a render that has stopped sending audio. It replaces a
+	// timeout on the whole render, which a long answer on the free backbone
+	// legitimately outruns. See the Speech type for why.
+	StallTimeout time.Duration
+	Log          *slog.Logger
 }
 
 const (
@@ -97,12 +104,27 @@ func NewFish(endpoint, apiKey, voiceID, model string, log *slog.Logger) *Fish {
 	model = resolveModel(model)
 	return &Fish{
 		Endpoint: endpoint, APIKey: apiKey, VoiceID: voiceID, Model: model,
-		// A generous timeout: synthesis is roughly a fifth of real time, so a
-		// long answer legitimately takes ten seconds or more. Cutting it short
-		// would read as "the vendor is broken" when it is merely working.
-		Client: &http.Client{Timeout: 90 * time.Second},
-		Log:    log,
+		// ‼️ NO Client.Timeout. That bounds the WHOLE response, body included,
+		// and the body is the render: it was 90s, and every answer long enough
+		// to take longer came back as a 502 after a minute and a half of
+		// silence. What is bounded instead is the two ways a render can hang —
+		// never answering (ResponseHeaderTimeout) and stopping mid-audio
+		// (StallTimeout). See docs/bugfix/2026-09-29-read-aloud-waited-for-the-whole-answer.md
+		Client:       &http.Client{Transport: fishTransport()},
+		StallTimeout: DefaultStallTimeout,
+		Log:          log,
 	}
+}
+
+// DefaultStallTimeout is how long a render may go without sending a byte.
+// Fish sends its first audio in about a second and keeps it coming; half a
+// minute of nothing is a hung connection, not a slow voice.
+const DefaultStallTimeout = 30 * time.Second
+
+func fishTransport() http.RoundTripper {
+	t := http.DefaultTransport.(*http.Transport).Clone()
+	t.ResponseHeaderTimeout = 30 * time.Second
+	return t
 }
 
 func (f *Fish) Name() string { return "fish" }
@@ -147,8 +169,12 @@ func (f *Fish) Speak(ctx context.Context, text string) (Speech, error) {
 	if err != nil {
 		return Speech{}, fmt.Errorf("TTS_REQUEST_INVALID: %w", err)
 	}
+	// The render outlives this call — the body is read after Speak returns — so
+	// its cancel belongs to the stream's Close, not to a defer here.
+	ctx, cancel := context.WithCancel(ctx)
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, f.Endpoint, bytes.NewReader(body))
 	if err != nil {
+		cancel()
 		return Speech{}, fmt.Errorf("TTS_REQUEST_INVALID: %w", err)
 	}
 	req.Header.Set("Authorization", "Bearer "+f.APIKey)
@@ -159,30 +185,88 @@ func (f *Fish) Speak(ctx context.Context, text string) (Speech, error) {
 
 	resp, err := f.Client.Do(req)
 	if err != nil {
+		cancel()
 		return Speech{}, fmt.Errorf("TTS_UNREACHABLE: %s could not be reached: %w", f.Name(), err)
 	}
-	defer resp.Body.Close()
+	stream := &stallGuard{body: resp.Body, cancel: cancel, after: f.stallTimeout()}
+	stream.timer = time.AfterFunc(stream.after, stream.stalled)
 
 	if resp.StatusCode != http.StatusOK {
+		defer stream.Close()
 		// The body carries the vendor's own reason. Passing it through is the
 		// difference between "read-aloud is broken" and "the key expired".
 		detail, _ := io.ReadAll(io.LimitReader(resp.Body, 2048))
 		return Speech{}, fmt.Errorf("TTS_REFUSED: %s answered %d: %s",
 			f.Name(), resp.StatusCode, strings.TrimSpace(string(detail)))
 	}
-	audio, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return Speech{}, fmt.Errorf("TTS_TRUNCATED: reading audio from %s: %w", f.Name(), err)
-	}
-	if len(audio) == 0 {
-		// 200 with an empty body. Called out rather than returned as valid
-		// silence, because silence is exactly what a broken read-aloud sounds
-		// like and it would never be reported.
-		return Speech{}, fmt.Errorf("TTS_EMPTY_AUDIO: %s answered 200 with no audio", f.Name())
+	// Wait for the FIRST byte and no more. Up to here a failure is still one
+	// the browser can recover from with its own voice; after it, the person is
+	// already listening.
+	buffered := bufio.NewReaderSize(stream, 32<<10)
+	if _, err := buffered.Peek(1); err != nil {
+		stream.Close()
+		if errors.Is(err, io.EOF) {
+			// 200 with an empty body. Called out rather than returned as valid
+			// silence, because silence is exactly what a broken read-aloud
+			// sounds like and it would never be reported.
+			return Speech{}, fmt.Errorf("TTS_EMPTY_AUDIO: %s answered 200 with no audio", f.Name())
+		}
+		return Speech{}, fmt.Errorf("TTS_TRUNCATED: reading audio from %s: %w", f.Name(), stream.explain(err))
 	}
 	ct := resp.Header.Get("Content-Type")
 	if ct == "" {
 		ct = "audio/mpeg"
 	}
-	return Speech{Audio: audio, ContentType: ct}, nil
+	return Speech{Audio: readCloser{Reader: buffered, Closer: stream}, ContentType: ct}, nil
+}
+
+func (f *Fish) stallTimeout() time.Duration {
+	if f.StallTimeout > 0 {
+		return f.StallTimeout
+	}
+	return DefaultStallTimeout
+}
+
+// stallGuard ends a render that has stopped sending audio: each read that
+// brings bytes pushes the deadline back, and a deadline that arrives cancels
+// the request.
+type stallGuard struct {
+	body   io.ReadCloser
+	cancel context.CancelFunc
+	after  time.Duration
+	timer  *time.Timer
+	hung   atomic.Bool
+}
+
+func (g *stallGuard) Read(p []byte) (int, error) {
+	n, err := g.body.Read(p)
+	if n > 0 {
+		g.timer.Reset(g.after)
+	}
+	if err != nil && !errors.Is(err, io.EOF) {
+		err = g.explain(err)
+	}
+	return n, err
+}
+
+func (g *stallGuard) stalled() { g.hung.Store(true); g.cancel() }
+
+// explain names the stall, which otherwise surfaces as a bare "context
+// canceled" — the same words a person closing the tab produces.
+func (g *stallGuard) explain(err error) error {
+	if g.hung.Load() {
+		return fmt.Errorf("TTS_STALLED: no audio for %s: %w", g.after, err)
+	}
+	return err
+}
+
+func (g *stallGuard) Close() error {
+	g.timer.Stop()
+	g.cancel()
+	return g.body.Close()
+}
+
+type readCloser struct {
+	io.Reader
+	io.Closer
 }

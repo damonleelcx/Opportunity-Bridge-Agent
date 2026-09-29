@@ -1992,6 +1992,10 @@ async function speakWithVendor(text, turn) {
       return false;
     }
     if (!r.ok) return false;
+    // Play the audio as it arrives. The vendor renders at about a tenth of real
+    // time, so waiting for the whole file kept a long answer silent for up to a
+    // minute and a half. See docs/bugfix/2026-09-29-read-aloud-waited-for-the-whole-answer.md
+    if (r.body && canStreamAudio()) return await playAsItArrives(r);
     const blob = await r.blob();
     if (!blob.size) return false;
     vendorVoice = true;
@@ -2007,6 +2011,84 @@ async function speakWithVendor(text, turn) {
       return false;
     }
   } catch {
+    return false;
+  }
+}
+
+function canStreamAudio() {
+  try {
+    return typeof MediaSource !== "undefined" && MediaSource.isTypeSupported("audio/mpeg");
+  } catch {
+    return false;
+  }
+}
+
+// playAsItArrives returns true once the audio is playing, false when it never
+// started — which is still early enough for the built-in voice to take over.
+// After that, a failure just ends the audio: the person has been listening, and
+// the built-in voice would start the answer again from the top.
+async function playAsItArrives(r) {
+  const reader = r.body.getReader();
+  const source = new MediaSource();
+  const audio = new Audio();
+  audio.src = URL.createObjectURL(source);
+  vendorAudio = audio;
+  const current = () => vendorAudio === audio;
+  try {
+    await new Promise((resolve, reject) => {
+      source.addEventListener("sourceopen", resolve, { once: true });
+      setTimeout(() => reject(new Error("sourceopen")), 5000);
+    });
+    const buffer = source.addSourceBuffer("audio/mpeg");
+    const settle = () => new Promise((resolve, reject) => {
+      buffer.addEventListener("updateend", resolve, { once: true });
+      buffer.addEventListener("error", reject, { once: true });
+    });
+    const append = async (chunk) => {
+      try {
+        const done = settle();
+        buffer.appendBuffer(chunk);
+        await done;
+      } catch (e) {
+        if (e?.name !== "QuotaExceededError") throw e;
+        // A long answer can outgrow the buffer. What has already been heard is
+        // the part that can go.
+        const keep = Math.max(0, audio.currentTime - 5);
+        if (keep <= 0) throw e;
+        const removed = settle();
+        buffer.remove(0, keep);
+        await removed;
+        const done = settle();
+        buffer.appendBuffer(chunk);
+        await done;
+      }
+    };
+    const first = await reader.read();
+    if (first.done || !first.value?.length) throw new Error("empty");
+    await append(first.value);
+    // Feed the rest while playback starts: play() waits for enough audio to
+    // begin, so awaiting it before feeding more would wait forever.
+    const fed = (async () => {
+      for (;;) {
+        const { done, value } = await reader.read();
+        if (!current()) { reader.cancel().catch(() => {}); return; }
+        if (done) break;
+        await append(value);
+      }
+      if (source.readyState === "open") source.endOfStream();
+    })().catch(() => {
+      reader.cancel().catch(() => {});
+      if (current() && source.readyState === "open") {
+        try { source.endOfStream(); } catch { /* already ended */ }
+      }
+    });
+    await audio.play();
+    vendorVoice = true;
+    void fed;
+    return true;
+  } catch {
+    reader.cancel().catch(() => {});
+    if (current()) stopSpeaking();
     return false;
   }
 }

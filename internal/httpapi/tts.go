@@ -21,6 +21,8 @@ package httpapi
 
 import (
 	"encoding/json"
+	"errors"
+	"io"
 	"net/http"
 	"strings"
 
@@ -114,13 +116,52 @@ func (s *Server) speak(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	defer speech.Audio.Close()
+
 	w.Header().Set("Content-Type", speech.ContentType)
 	// no-store because the audio is a rendering of one person's answer, which
 	// names their city and their situation. It must not sit in a shared cache.
 	w.Header().Set("Cache-Control", "no-store")
 	w.Header().Set("X-Content-Type-Options", "nosniff")
-	if _, err := w.Write(speech.Audio); err != nil {
-		s.Log.WarnContext(r.Context(), "audio was rendered but not delivered",
-			"code", "TTS_NOT_DELIVERED", "bytes", len(speech.Audio), "error", err)
+	// Tell any buffering proxy in front of this to pass bytes on as they come.
+	w.Header().Set("X-Accel-Buffering", "no")
+
+	// Each chunk goes out as the vendor renders it. Collecting the whole render
+	// first is what kept a long answer silent for up to 90s and then failed it.
+	// See docs/bugfix/2026-09-29-read-aloud-waited-for-the-whole-answer.md
+	flusher, _ := w.(http.Flusher)
+	buf := make([]byte, 16<<10)
+	sent := 0
+	for {
+		n, rerr := speech.Audio.Read(buf)
+		if n > 0 {
+			if _, werr := w.Write(buf[:n]); werr != nil {
+				// The reader went away — a new answer, the toggle, a closed tab.
+				s.Log.InfoContext(r.Context(), "read-aloud stopped by the listener",
+					"code", "TTS_NOT_DELIVERED", "bytes", sent, "error", werr)
+				return
+			}
+			sent += n
+			if flusher != nil {
+				flusher.Flush()
+			}
+		}
+		if errors.Is(rerr, io.EOF) {
+			return
+		}
+		if rerr != nil {
+			if r.Context().Err() != nil {
+				s.Log.InfoContext(r.Context(), "read-aloud stopped by the listener",
+					"code", "TTS_NOT_DELIVERED", "bytes", sent, "error", rerr)
+				return
+			}
+			// Past the first byte there is no clean fallback: the person has
+			// been listening, and the browser voice would start again from the
+			// top. So the audio just ends — and that is logged, because an
+			// answer read two-thirds of the way through is otherwise invisible.
+			s.Log.WarnContext(r.Context(), "read-aloud audio ended early",
+				"code", "TTS_TRUNCATED", "provider", s.TTS.Name(), "bytes", sent, "error", rerr)
+			return
+		}
 	}
 }
